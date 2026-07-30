@@ -1,0 +1,121 @@
+<cnsl-refresh-table [hideRefresh]="true" [loading]="listOrganizationsQuery.isPending()">
+  <cnsl-filter-org actions (filterChanged)="applySearchQuery($any($event), paginator)"> </cnsl-filter-org>
+
+  <ng-template actions cnslHasRole [hasRole]="['org.create', 'iam.write']">
+    <a [routerLink]="['/orgs', 'create']" color="primary" mat-raised-button>
+      <div class="cnsl-action-button">
+        <mat-icon class="icon">add</mat-icon>
+        <span>{{ 'ACTIONS.NEW' | translate }}</span>
+        <cnsl-action-keys (actionTriggered)="router.navigate(['/orgs', 'create'])"> </cnsl-action-keys>
+      </div>
+    </a>
+  </ng-template>
+
+  <table
+    [dataSource]="dataSource"
+    mat-table
+    class="table"
+    aria-label="Organizations"
+    matSort
+    (matSortChange)="sortChange($event)"
+  >
+    <ng-container matColumnDef="id">
+      <th mat-header-cell *matHeaderCellDef>{{ 'ORG.PAGES.ID' | translate }}</th>
+      <td mat-cell *cnslCellDef="let org; dataSource: dataSource" (click)="setAndNavigateToOrg(org)">{{ org.id }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="primaryDomain">
+      <th mat-header-cell *matHeaderCellDef>{{ 'ORG.PAGES.PRIMARYDOMAIN' | translate }}</th>
+      <td mat-cell *cnslCellDef="let org; dataSource: dataSource" (click)="setAndNavigateToOrg(org)">
+        <div class="primary-domain-wrapper">
+          <span>{{ org.primaryDomain }}</span>
+          <button
+            class="cpy-button"
+            mat-icon-button
+            [disabled]="copied === org.primaryDomain"
+            [matTooltip]="(copied !== org.primaryDomain ? 'ACTIONS.COPY' : 'ACTIONS.COPIED') | translate"
+            cnslCopyToClipboard
+            [valueToCopy]="org.primaryDomain"
+            (copiedValue)="copied = $event"
+          >
+            @if (copied !== org.primaryDomain) {
+              <i class="las la-clipboard"></i>
+            }
+            @if (copied === org.primaryDomain) {
+              <i class="las la-clipboard-check"></i>
+            }
+          </button>
+        </div>
+      </td>
+    </ng-container>
+
+    <ng-container matColumnDef="name">
+      <th mat-header-cell mat-sort-header *matHeaderCellDef>
+        {{ 'ORG.PAGES.NAME' | translate }}
+      </th>
+      <td mat-cell *cnslCellDef="let org; dataSource: dataSource" (click)="setAndNavigateToOrg(org)">
+        <span>{{ org.name }}</span>
+        @if (defaultOrgId === org.id) {
+          <span class="state orgdefaultlabel">{{ 'ORG.PAGES.DEFAULTLABEL' | translate }}</span>
+        }
+      </td>
+    </ng-container>
+
+    <ng-container matColumnDef="state">
+      <th mat-header-cell *matHeaderCellDef>{{ 'ORG.PAGES.STATE' | translate }}</th>
+      <td mat-cell *cnslCellDef="let org; dataSource: dataSource" (click)="setAndNavigateToOrg(org)">
+        @if (org.state) {
+          <span
+            class="state"
+            [ngClass]="{
+              active: org.state === OrganizationState.ACTIVE,
+              inactive: org.state === OrganizationState.INACTIVE,
+            }"
+            >{{ 'ORG.STATE.' + org.state | translate }}</span
+          >
+        }
+      </td>
+    </ng-container>
+
+    <ng-container matColumnDef="creationDate">
+      <th mat-header-cell *matHeaderCellDef>
+        {{ 'ORG.PAGES.CREATIONDATE' | translate }}
+      </th>
+      <td mat-cell *cnslCellDef="let org; dataSource: dataSource" (click)="setAndNavigateToOrg(org)">
+        {{ org.details?.creationDate | timestampToDate | localizedDate: 'fromNow' }}
+      </td>
+    </ng-container>
+
+    <ng-container matColumnDef="changeDate">
+      <th mat-header-cell *matHeaderCellDef>
+        {{ 'ORG.PAGES.DATECHANGED' | translate }}
+      </th>
+      <td mat-cell *cnslCellDef="let org; dataSource: dataSource" (click)="setAndNavigateToOrg(org)">
+        {{ org.details?.changeDate | timestampToDate | localizedDate: 'fromNow' }}
+      </td>
+    </ng-container>
+
+    <ng-container matColumnDef="actions" stickyEnd>
+      <th mat-header-cell *matHeaderCellDef class="user-tr-actions"></th>
+      <td mat-cell *cnslCellDef="let org; dataSource: dataSource" class="user-tr-actions">
+        <cnsl-table-actions [hasActions]="true">
+          <button menuActions mat-menu-item (click)="setDefaultOrg(org)" data-e2e="set-default-button">
+            {{ 'ORG.PAGES.SETASDEFAULT' | translate }}
+          </button>
+        </cnsl-table-actions>
+      </td>
+    </ng-container>
+
+    <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+    <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+  </table>
+  <cnsl-paginator
+    #paginator
+    class="paginator"
+    [timestamp]="listOrganizationsQuery.data()?.details?.timestamp"
+    [length]="Number(listOrganizationsQuery.data()?.details?.totalResult ?? 0)"
+    [pageSize]="listQuery().limit"
+    [pageSizeOptions]="[10, 20, 50, 100]"
+    (page)="pageChanged($event)"
+  ></cnsl-paginator>
+</cnsl-refresh-table>

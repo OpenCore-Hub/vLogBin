@@ -1,0 +1,30 @@
+{{template "main-top" .}}
+
+<div class="lgn-head">
+  <h1>{{t "LinkingUsersDone.Title"}}</h1>
+  {{ template "user-profile" . }}
+
+  {{if not .ErrID}}
+  <p>{{t "LinkingUsersDone.Description"}}</p>
+  {{end}}
+</div>
+
+<form action="{{ loginUrl }}" method="POST">
+  {{ .CSRF }}
+
+  <input type="hidden" name="authRequestID" value="{{ .AuthReqID }}" />
+
+  {{template "error-message" .}}
+
+  <div class="lgn-actions">
+    <a class="lgn-stroked-button" href="{{ loginUrl }}">
+      {{t "LinkingUsersDone.CancelButtonText"}}
+    </a>
+    <span class="fill-space"></span>
+    <button class="lgn-raised-button lgn-primary" type="submit">
+      {{t "LinkingUsersDone.NextButtonText"}}
+    </button>
+  </div>
+</form>
+
+{{template "main-bottom" .}}

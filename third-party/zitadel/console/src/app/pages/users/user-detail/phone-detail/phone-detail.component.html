@@ -1,0 +1,6 @@
+<span class="name">
+  @if (country) {
+    <span class="fi fi-{{ country | lowercase }} margin-right"></span>
+  }
+  {{ phone ? phone : ('USER.PHONEEMPTY' | translate) }}
+</span>

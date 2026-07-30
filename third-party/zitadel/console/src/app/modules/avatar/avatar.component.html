@@ -1,0 +1,24 @@
+<div
+  class="avatar-circle dontcloseonclick"
+  matRipple
+  [matRippleColor]="'#ffffff20'"
+  [matRippleUnbounded]="false"
+  [ngStyle]="{
+    height: size + 'px',
+    width: size + 'px',
+    fontSize: fontSize - 1 + 'px',
+    fontWeight: fontWeight,
+    background: (themeService.isDarkTheme | async) ? color[900] : color[300],
+    color: (themeService.isDarkTheme | async) ? color[200] : color[900],
+  }"
+  [ngClass]="{ active: active }"
+>
+  @if (isMachine) {
+    <i class="machine-icon las la-robot"></i>
+  } @else {
+    <span class="dontcloseonclick">{{ credentials }}</span>
+    @if (avatarUrl) {
+      <img class="dontcloseonclick" [src]="avatarUrl" (error)="errorHandler($event)" />
+    }
+  }
+</div>

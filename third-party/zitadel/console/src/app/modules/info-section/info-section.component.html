@@ -1,0 +1,23 @@
+<div
+  class="info-section-row"
+  [ngClass]="{
+    info: type === infoSectionType.INFO,
+    warn: type === infoSectionType.WARN,
+    alert: type === infoSectionType.ALERT,
+    fit: fitWidth,
+  }"
+>
+  @if (type === infoSectionType.INFO) {
+    <i class="icon las la-info"></i>
+  }
+  @if (type === infoSectionType.WARN) {
+    <i class="icon las la-exclamation"></i>
+  }
+  @if (type === infoSectionType.ALERT) {
+    <i class="icon las la-exclamation"></i>
+  }
+
+  <div class="info-section-content">
+    <ng-content></ng-content>
+  </div>
+</div>

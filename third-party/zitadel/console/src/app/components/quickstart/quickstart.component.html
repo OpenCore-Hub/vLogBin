@@ -1,0 +1,27 @@
+<div class="quickstart-header">
+  <div class="quickstart-left">
+    <h2>{{ 'QUICKSTART.TITLE' | translate }}</h2>
+    <p class="description">{{ 'QUICKSTART.DESCRIPTION' | translate }}</p>
+
+    <div class="btn-wrapper">
+      <a mat-raised-button color="primary" [routerLink]="['/projects', 'app-create']">{{
+        'QUICKSTART.BTN_START' | translate
+      }}</a>
+      <a mat-stroked-button color="primary" href="https://zitadel.com/docs/sdk-examples/introduction" target="_blank">{{
+        'QUICKSTART.BTN_LEARNMORE' | translate
+      }}</a>
+    </div>
+  </div>
+  <div class="quickstart-card-wrapper">
+    @for (framework of frameworks.slice(0, 18); track framework) {
+      <a [routerLink]="['/projects', 'app-create']" [queryParams]="{ framework: framework.id }" class="quickstart-card card">
+        @if (framework.imgSrcDark) {
+          <img class="dark-only" [src]="framework.imgSrcDark" alt="{{ framework.title }}" />
+        }
+        @if (framework.imgSrcLight) {
+          <img class="light-only" [src]="framework.imgSrcLight" alt="{{ framework.title }}" />
+        }
+      </a>
+    }
+  </div>
+</div>

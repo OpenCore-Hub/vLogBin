@@ -1,0 +1,168 @@
+version: "2"
+run:
+  concurrency: 4
+  go: "1.25"
+linters:
+  enable:
+    - asciicheck
+    - bodyclose
+    - contextcheck
+    - errname
+    - errorlint
+    - exhaustive
+    - gocognit
+    - gocritic
+    - misspell
+    - nakedret
+    - nolintlint
+    - nosprintfhostport
+    - rowserrcheck
+    - sqlclosecheck
+    - unconvert
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - nilnil
+  disable:
+    - bidichk
+    - containedctx
+    - cyclop
+    - decorder
+    - depguard
+    - dogsled
+    - dupl
+    - dupword
+    - durationcheck
+    - err113
+    - errchkjson
+    - exhaustruct
+    - forbidigo
+    - forcetypeassert
+    - funlen
+    - gochecknoglobals
+    - gochecknoinits
+    - goconst
+    - gocyclo
+    - godot
+    - godox
+    - goheader
+    - gomoddirectives
+    - gomodguard
+    - goprintffuncname
+    - gosec
+    - grouper
+    - importas
+    - interfacebloat
+    - ireturn
+    - lll
+    - loggercheck
+    - maintidx
+    - makezero
+    - mnd
+    - nestif
+    - nilerr
+    - nilnil
+    - nlreturn
+    - noctx
+    - nonamedreturns
+    - paralleltest
+    - prealloc
+    - predeclared
+    - promlinter
+    - reassign
+    - revive
+    - tagliatelle
+    - testableexamples
+    - testpackage
+    - thelper
+    - tparallel
+    - unparam
+    - usestdlibvars
+    - varnamelen
+    - wastedassign
+    - whitespace
+    - wrapcheck
+    - wsl
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: apps/docs/.*
+        linters:
+          - typecheck
+      # contextcheck requires a context to be passed to the function, but in tests we use `testing.T.Context()` which is not recognized as a context by the linter, so we disable it for the function.
+      - path: internal/query/projection/.*_relational_test\.go
+        linters:
+          - contextcheck
+        source: callReduce\(
+    paths:
+      - .artifacts
+      - .backups
+      - .codecov
+      - .github
+      - .keys
+      - .vscode
+      - .devcontainer
+      - build
+      - deploy
+      - guides
+      - internal/api/ui/login/static
+      - openapi
+      - proto
+      - tools
+      - third_party$
+      - builtin$
+      - examples$
+      - apps
+      - packages
+      - console
+      - docs
+      - benchmark
+      - tests
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  new-from-rev: origin/main
+formatters:
+  enable:
+    - gci
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/zitadel/zitadel)
+      custom-order: true
+  exclusions:
+    generated: lax
+    paths:
+      - .artifacts
+      - .backups
+      - .codecov
+      - .github
+      - .keys
+      - .vscode
+      - .devcontainer
+      - build
+      - deploy
+      - guides
+      - internal/api/ui/login/static
+      - openapi
+      - proto
+      - tools
+      - third_party$
+      - builtin$
+      - examples$
+      - apps
+      - packages
+      - console
+      - docs
+      - benchmark
+      - tests

@@ -1,0 +1,87 @@
+<div class="org-context-card" cdkTrapFocus>
+  <div class="spinner-w">
+    @if (orgLoading$ | async) {
+      <mat-spinner diameter="20" color="accent"> </mat-spinner>
+    }
+  </div>
+
+  <div class="filter-wrapper">
+    <input
+      cnslInput
+      class="filter-input"
+      [formControl]="filterControl"
+      autocomplete="off"
+      (click)="$event.stopPropagation()"
+      placeholder="{{ 'ORG.PAGES.FILTERPLACEHOLDER' | translate }}"
+      #input
+    />
+  </div>
+
+  <div class="org-wrapper" cnslScrollable (scrollPosition)="onNearEndScroll($event)">
+    @for (pinnedorg of pinned.selected; track pinnedorg; let i = $index) {
+      <button
+        class="org-button-with-pin"
+        mat-button
+        [ngClass]="{
+          active: pinnedorg.id === org.id,
+          'border-bottom': pinned.selected.length && i === pinned.selected.length - 1,
+        }"
+        [disabled]="!pinnedorg.id"
+        (click)="setActiveOrg(pinnedorg)"
+      >
+        <div class="org-flex-row">
+          <span class="org-span">{{ pinnedorg?.name ? pinnedorg.name : 'NO NAME' }}</span>
+          <template [ngTemplateOutlet]="toggleButton" [ngTemplateOutletContext]="{ key: pinnedorg }"></template>
+        </div>
+      </button>
+    }
+    @for (temporg of orgs$ | async; track temporg) {
+      @if (!pinned.isSelected(temporg)) {
+        <button
+          class="org-button-with-pin"
+          mat-button
+          [ngClass]="{ active: temporg.id === org.id }"
+          [disabled]="!temporg.id"
+          (click)="setActiveOrg(temporg)"
+        >
+          <div class="org-flex-row">
+            <span class="org-span">{{ temporg?.name ? temporg.name : 'NO NAME' }}</span>
+            <template [ngTemplateOutlet]="toggleButton" [ngTemplateOutletContext]="{ key: temporg }"></template>
+          </div>
+        </button>
+      }
+    }
+  </div>
+
+  <ng-template cnslHasRole [hasRole]="['iam.read']">
+    <button mat-button class="show-all" [routerLink]="['/orgs']" (click)="closedCard.emit()">
+      {{ 'MENU.SHOWORGS' | translate }}
+    </button>
+  </ng-template>
+
+  <ng-template cnslHasRole [hasRole]="['org.create', 'iam.write']">
+    <button mat-button [routerLink]="['/orgs/create']" (click)="closedCard.emit()">
+      <div class="cnsl-action-button">
+        <mat-icon class="avatar">add</mat-icon>
+        <span>{{ 'MENU.NEWORG' | translate }}</span>
+      </div>
+    </button>
+  </ng-template>
+</div>
+
+<ng-template #toggleButton let-key="key">
+  <button
+    matTooltip="{{ 'ACTIONS.PIN' | translate }}"
+    [ngClass]="{ selected: pinned.isSelected(key) }"
+    (click)="toggle(key, $event)"
+    class="edit-button"
+    mat-icon-button
+  >
+    @if (pinned.isSelected(key)) {
+      <mat-icon svgIcon="mdi_pin"></mat-icon>
+    }
+    @if (!pinned.isSelected(key)) {
+      <mat-icon svgIcon="mdi_pin_outline"></mat-icon>
+    }
+  </button>
+</ng-template>

@@ -1,0 +1,79 @@
+<cnsl-sidenav [indented]="true" [setting]="setting()" (settingChange)="setting.set($event)" [settingsList]="settingsList">
+  @if (setting()?.id === 'features') {
+    <cnsl-features></cnsl-features>
+  }
+  @if (setting()?.id === 'complexity') {
+    <cnsl-password-complexity-policy [serviceType]="serviceType"></cnsl-password-complexity-policy>
+  }
+  @if (setting()?.id === 'age') {
+    <cnsl-password-age-policy [serviceType]="serviceType"></cnsl-password-age-policy>
+  }
+  @if (setting()?.id === 'lockout') {
+    <cnsl-password-lockout-policy [serviceType]="serviceType"></cnsl-password-lockout-policy>
+  }
+  @if (setting()?.id === 'login') {
+    <cnsl-login-policy [serviceType]="serviceType"></cnsl-login-policy>
+  }
+  @if (setting()?.id === 'verified_domains') {
+    <cnsl-domains></cnsl-domains>
+  }
+  @if (setting()?.id === 'domain' && (['iam.policy.write'] | hasRole | async) === true) {
+    <cnsl-domain-policy [serviceType]="serviceType"></cnsl-domain-policy>
+  }
+  @if (setting()?.id === 'idp') {
+    <cnsl-idp-settings [serviceType]="serviceType"></cnsl-idp-settings>
+  }
+  @if (setting()?.id === 'notifications') {
+    <cnsl-notification-policy [serviceType]="serviceType"></cnsl-notification-policy>
+  }
+  @if (setting()?.id === 'smtpprovider' && serviceType === PolicyComponentServiceType.ADMIN) {
+    <cnsl-notification-smtp-provider></cnsl-notification-smtp-provider>
+  }
+  @if (setting()?.id === 'smsprovider' && serviceType === PolicyComponentServiceType.ADMIN) {
+    <cnsl-notification-sms-provider [serviceType]="serviceType"></cnsl-notification-sms-provider>
+  }
+  @if (setting()?.id === 'oidc' && serviceType === PolicyComponentServiceType.ADMIN) {
+    <cnsl-oidc-configuration></cnsl-oidc-configuration>
+  }
+  @if (setting()?.id === 'webkeys' && serviceType === PolicyComponentServiceType.ADMIN) {
+    <cnsl-oidc-webkeys />
+  }
+  @if (setting()?.id === 'secrets' && serviceType === PolicyComponentServiceType.ADMIN) {
+    <cnsl-secret-generator></cnsl-secret-generator>
+  }
+  @if (setting()?.id === 'security' && serviceType === PolicyComponentServiceType.ADMIN) {
+    <cnsl-security-policy></cnsl-security-policy>
+  }
+  @if (setting()?.id === 'branding') {
+    <cnsl-private-labeling-policy [serviceType]="serviceType"></cnsl-private-labeling-policy>
+  }
+  @if (setting()?.id === 'messagetexts') {
+    <cnsl-message-texts [serviceType]="serviceType"></cnsl-message-texts>
+  }
+  @if (setting()?.id === 'logintexts') {
+    <cnsl-login-texts [serviceType]="serviceType"></cnsl-login-texts>
+  }
+  @if (setting()?.id === 'privacypolicy') {
+    <cnsl-privacy-policy [serviceType]="serviceType"></cnsl-privacy-policy>
+  }
+  @if (setting()?.id === 'languages' && serviceType === PolicyComponentServiceType.ADMIN) {
+    <cnsl-language-settings></cnsl-language-settings>
+  }
+  @if (setting()?.id === 'views' && serviceType === PolicyComponentServiceType.ADMIN) {
+    <cnsl-iam-views></cnsl-iam-views>
+  }
+  @if (setting()?.id === 'events' && serviceType === PolicyComponentServiceType.ADMIN) {
+    <cnsl-events></cnsl-events>
+  }
+  @if (setting()?.id === 'failedevents' && serviceType === PolicyComponentServiceType.ADMIN) {
+    <cnsl-iam-failed-events></cnsl-iam-failed-events>
+  }
+  @if (setting()?.id === 'actions') {
+    <cnsl-actions-two-actions />
+  }
+  @if (setting()?.id === 'actions_targets') {
+    <cnsl-actions-two-targets />
+  }
+
+  <ng-content></ng-content>
+</cnsl-sidenav>

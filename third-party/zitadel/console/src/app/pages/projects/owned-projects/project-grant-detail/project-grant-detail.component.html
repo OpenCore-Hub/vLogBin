@@ -1,0 +1,106 @@
+<cnsl-detail-layout [hasBackButton]="true" title="{{ 'PROJECT.GRANT.DETAIL.TITLE' | translate }}">
+  <p class="subinfo" sub>
+    <span class="cnsl-secondary-text">{{ 'PROJECT.GRANT.DETAIL.DESC' | translate }}</span>
+    <a
+      mat-icon-button
+      href="https://zitadel.com/docs/guides/manage/console/organizations-overview#organization-grants"
+      target="_blank"
+    >
+      <mat-icon class="icon">info_outline</mat-icon>
+    </a>
+  </p>
+
+  <div actions>
+    <button class="actions-trigger-desk" mat-raised-button color="primary" [matMenuTriggerFor]="actions">
+      <div class="cnsl-action-button">
+        <span>{{ 'ACTIONS.ACTIONS' | translate }}</span>
+        <mat-icon class="icon">keyboard_arrow_down</mat-icon>
+      </div>
+    </button>
+    <button
+      class="actions-trigger-mob"
+      matTooltip="{{ 'ACTIONS.ACTIONS' | translate }}"
+      mat-icon-button
+      [matMenuTriggerFor]="actions"
+    >
+      <i class="las la-ellipsis-v"></i>
+    </button>
+  </div>
+
+  <mat-menu #actions="matMenu" xPosition="before">
+    @if (grant && grant.state === ProjectGrantState.PROJECT_GRANT_STATE_ACTIVE) {
+      <button mat-menu-item (click)="changeState(grant, ProjectGrantState.PROJECT_GRANT_STATE_INACTIVE)">
+        {{ 'USER.PAGES.DEACTIVATE' | translate }}
+      </button>
+    }
+    @if (grant && grant.state === ProjectGrantState.PROJECT_GRANT_STATE_INACTIVE) {
+      <button mat-menu-item (click)="changeState(grant, ProjectGrantState.PROJECT_GRANT_STATE_ACTIVE)">
+        {{ 'USER.PAGES.REACTIVATE' | translate }}
+      </button>
+    }
+  </mat-menu>
+
+  <div class="master-row">
+    <div></div>
+  </div>
+
+  @if (grant && projectRoleOptions) {
+    <cnsl-project-grant-illustration
+      [grantedProject]="grant"
+      [projectRoleOptions]="projectRoleOptions"
+      (roleRemoved)="removeRole(grant, $event)"
+      (editRoleClicked)="editRoles(grant)"
+    >
+    </cnsl-project-grant-illustration>
+  }
+
+  <h2 class="project-grant-h2">{{ 'PROJECT.GRANT.DETAIL.MEMBERTITLE' | translate }}</h2>
+  <p class="desc cnsl-secondary-text max-width-description">{{ 'PROJECT.GRANT.DETAIL.MEMBERDESC' | translate }}</p>
+
+  @if (grant) {
+    <cnsl-members-table
+      [dataSource]="dataSource"
+      [canWrite]="['project.grant.member.write', 'project.grant.member.write:' + grant.grantId] | hasRole | async"
+      [canDelete]="['project.grant.member.delete', 'project.grant.member.delete:' + grant.grantId] | hasRole | async"
+      [memberRoleOptions]="memberRoleOptions"
+      (updateRoles)="updateMemberRoles(grant, $event.member, $event.change)"
+      (deleteMember)="removeProjectMember(grant, $event)"
+      [factoryLoadFunc]="changePageFactory"
+      (changedSelection)="selection = $event"
+      [refreshTrigger]="changePage"
+    >
+      <button
+        selectactions
+        (click)="removeProjectMemberSelection(grant)"
+        [disabled]="
+          (['project.grant.member.delete', 'project.grant.member.delete:' + grant.grantId] | hasRole | async) === false
+        "
+        matTooltip="{{ 'ORG_DETAIL.TABLE.DELETE' | translate }}"
+        color="warn"
+        mat-raised-button
+      >
+        <div class="cnsl-action-button">
+          <i class="las la-trash"></i>
+          <span>{{ 'ACTIONS.SELECTIONDELETE' | translate }}</span>
+          <cnsl-action-keys [type]="ActionKeysType.DELETE" (actionTriggered)="removeProjectMemberSelection(grant)">
+          </cnsl-action-keys>
+        </div>
+      </button>
+      <button
+        writeactions
+        color="primary"
+        [disabled]="
+          (['project.grant.member.write', 'project.grant.member.write:' + grant.grantId] | hasRole | async) === false
+        "
+        (click)="openAddMember(grant)"
+        color="primary"
+        mat-raised-button
+      >
+        <div class="cnsl-action-button">
+          <mat-icon class="icon">add</mat-icon>{{ 'ACTIONS.NEW' | translate }}
+          <cnsl-action-keys (actionTriggered)="openAddMember(grant)"> </cnsl-action-keys>
+        </div>
+      </button>
+    </cnsl-members-table>
+  }
+</cnsl-detail-layout>

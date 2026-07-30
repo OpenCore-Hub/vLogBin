@@ -1,0 +1,787 @@
+package command
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/zitadel/zitadel/internal/domain"
+	"github.com/zitadel/zitadel/internal/eventstore"
+	"github.com/zitadel/zitadel/internal/eventstore/v1/models"
+	"github.com/zitadel/zitadel/internal/repository/org"
+	"github.com/zitadel/zitadel/internal/zerrors"
+)
+
+func TestCommandSide_SetOrgMetadata(t *testing.T) {
+	type fields struct {
+		eventstore *eventstore.Eventstore
+	}
+	type (
+		args struct {
+			ctx      context.Context
+			orgID    string
+			metadata *domain.Metadata
+		}
+	)
+	type res struct {
+		want *domain.Metadata
+		err  func(error) bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		res    res
+	}{
+		{
+			name: "org not existing, pre condition error",
+			fields: fields{
+				eventstore: eventstoreExpect(
+					t,
+					expectFilter(),
+				),
+			},
+			args: args{
+				ctx:   context.Background(),
+				orgID: "org1",
+				metadata: &domain.Metadata{
+					Key:   "key",
+					Value: []byte("value"),
+				},
+			},
+			res: res{
+				err: zerrors.IsPreconditionFailed,
+			},
+		},
+		{
+			name: "invalid metadata, pre condition error",
+			fields: fields{
+				eventstore: eventstoreExpect(
+					t,
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"ZITADEL",
+							),
+						),
+					),
+				),
+			},
+			args: args{
+				ctx:   context.Background(),
+				orgID: "org1",
+				metadata: &domain.Metadata{
+					Key: "key",
+				},
+			},
+			res: res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			name: "add metadata, ok",
+			fields: fields{
+				eventstore: eventstoreExpect(
+					t,
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"ZITADEL",
+							),
+						),
+					),
+					expectPush(
+						org.NewMetadataSetEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"key",
+							[]byte("value"),
+						),
+					),
+				),
+			},
+			args: args{
+				ctx:   context.Background(),
+				orgID: "org1",
+				metadata: &domain.Metadata{
+					Key:   "key",
+					Value: []byte("value"),
+				},
+			},
+			res: res{
+				want: &domain.Metadata{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID:   "org1",
+						ResourceOwner: "org1",
+					},
+					Key:   "key",
+					Value: []byte("value"),
+					State: domain.MetadataStateActive,
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &Commands{
+				eventstore: tt.fields.eventstore,
+			}
+			got, err := r.SetOrgMetadata(tt.args.ctx, tt.args.orgID, tt.args.metadata)
+			if tt.res.err == nil {
+				assert.NoError(t, err)
+			}
+			if tt.res.err != nil && !tt.res.err(err) {
+				t.Errorf("got wrong err: %v ", err)
+			}
+			if tt.res.err == nil {
+				assert.Equal(t, tt.res.want, got)
+			}
+		})
+	}
+}
+
+func TestCommandSide_BulkSetOrgMetadata(t *testing.T) {
+	type fields struct {
+		eventstore func(*testing.T) *eventstore.Eventstore
+	}
+	type (
+		args struct {
+			ctx             context.Context
+			orgID           string
+			permissionCheck OrganizationPermissionCheck
+			metadataList    []*domain.Metadata
+		}
+	)
+	type res struct {
+		want *domain.ObjectDetails
+		err  func(error) bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		res    res
+	}{
+		{
+			name: "empty metadata list, pre condition error",
+			fields: fields{
+				eventstore: expectEventstore(),
+			},
+			args: args{
+				ctx:   context.Background(),
+				orgID: "org1",
+			},
+			res: res{
+				err: zerrors.IsPreconditionFailed,
+			},
+		},
+		{
+			name: "org not existing, pre condition error",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(),
+				),
+			},
+			args: args{
+				ctx:   context.Background(),
+				orgID: "org1",
+				metadataList: []*domain.Metadata{
+					{Key: "key", Value: []byte("value")},
+					{Key: "key1", Value: []byte("value1")},
+				},
+			},
+			res: res{
+				err: zerrors.IsPreconditionFailed,
+			},
+		},
+		{
+			name: "add metadata, ok",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"ZITADEL",
+							),
+						),
+					),
+					expectFilter(),
+					expectPush(
+						org.NewMetadataSetEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"key",
+							[]byte("value"),
+						),
+						org.NewMetadataSetEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"key1",
+							[]byte("value1"),
+						),
+					),
+				),
+			},
+			args: args{
+				ctx:   context.Background(),
+				orgID: "org1",
+				metadataList: []*domain.Metadata{
+					{Key: "key", Value: []byte("value")},
+					{Key: "key1", Value: []byte("value1")},
+				},
+			},
+			res: res{
+				want: &domain.ObjectDetails{
+					ResourceOwner: "org1",
+				},
+			},
+		},
+		{
+			name: "add metadata (with permission check), ok",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"ZITADEL",
+							),
+						),
+					),
+					expectFilter(),
+					expectPush(
+						org.NewMetadataSetEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"key",
+							[]byte("value"),
+						),
+						org.NewMetadataSetEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"key1",
+							[]byte("value1"),
+						),
+					),
+				),
+			},
+			args: args{
+				ctx:             context.Background(),
+				orgID:           "org1",
+				permissionCheck: newMockOrganizationPermissionCheckAllowed(),
+				metadataList: []*domain.Metadata{
+					{Key: "key", Value: []byte("value")},
+					{Key: "key1", Value: []byte("value1")},
+				},
+			},
+			res: res{
+				want: &domain.ObjectDetails{
+					ResourceOwner: "org1",
+				},
+			},
+		},
+		{
+			name: "update and delete metadata, ok",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"ZITADEL",
+							),
+						),
+					),
+					expectFilter(
+						eventFromEventPusher(
+							org.NewMetadataSetEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"key",
+								[]byte("value"),
+							),
+						),
+						eventFromEventPusher(
+							org.NewMetadataSetEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"key1",
+								[]byte("value1"),
+							),
+						),
+						eventFromEventPusher(
+							org.NewMetadataSetEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"key2",
+								[]byte("value2"),
+							),
+						)),
+					expectPush(
+						org.NewMetadataSetEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"key",
+							[]byte("updated_value"),
+						),
+						org.NewMetadataRemovedEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"key1",
+						),
+						org.NewMetadataSetEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"key3",
+							[]byte("value3"),
+						),
+					),
+				),
+			},
+			args: args{
+				ctx:   context.Background(),
+				orgID: "org1",
+				metadataList: []*domain.Metadata{
+					{Key: "key", Value: []byte("updated_value")}, // update an existing key
+					{Key: "key1"},                          // delete an existing key
+					{Key: "key2", Value: []byte("value2")}, // unchanged value
+					{Key: "key3", Value: []byte("value3")}, // add a new key
+					{Key: "key4"},                          // delete a non-existing key
+				},
+			},
+			res: res{
+				want: &domain.ObjectDetails{
+					ResourceOwner: "org1",
+				},
+			},
+		},
+		{
+			name: "add metadata (no permission), error",
+			fields: fields{
+				eventstore: expectEventstore(),
+			},
+			args: args{
+				ctx:             context.Background(),
+				orgID:           "org1",
+				permissionCheck: newMockOrganizationPermissionCheckNotAllowed(),
+				metadataList: []*domain.Metadata{
+					{Key: "key", Value: []byte("value")},
+					{Key: "key1", Value: []byte("value1")},
+				},
+			},
+			res: res{
+				err: zerrors.IsPermissionDenied,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &Commands{
+				eventstore: tt.fields.eventstore(t),
+			}
+			got, err := r.BulkSetOrgMetadata(tt.args.ctx, tt.args.orgID, tt.args.permissionCheck, tt.args.metadataList...)
+			if tt.res.err == nil {
+				assert.NoError(t, err)
+			}
+			if tt.res.err != nil && !tt.res.err(err) {
+				t.Errorf("got wrong err: %v ", err)
+			}
+			if tt.res.err == nil {
+				assertObjectDetails(t, tt.res.want, got)
+			}
+		})
+	}
+}
+
+func TestCommandSide_OrgRemoveMetadata(t *testing.T) {
+	type fields struct {
+		eventstore *eventstore.Eventstore
+	}
+	type (
+		args struct {
+			ctx         context.Context
+			orgID       string
+			metadataKey string
+		}
+	)
+	type res struct {
+		want *domain.ObjectDetails
+		err  func(error) bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		res    res
+	}{
+		{
+			name: "org not existing, pre condition error",
+			fields: fields{
+				eventstore: eventstoreExpect(
+					t,
+					expectFilter(),
+				),
+			},
+			args: args{
+				ctx:         context.Background(),
+				orgID:       "org1",
+				metadataKey: "key",
+			},
+			res: res{
+				err: zerrors.IsPreconditionFailed,
+			},
+		},
+		{
+			name: "invalid metadata, pre condition error",
+			fields: fields{
+				eventstore: eventstoreExpect(
+					t,
+				),
+			},
+			args: args{
+				ctx:         context.Background(),
+				orgID:       "org1",
+				metadataKey: "",
+			},
+			res: res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			name: "metadata not existing, not found error",
+			fields: fields{
+				eventstore: eventstoreExpect(
+					t,
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"ZITADEL",
+							),
+						),
+					),
+					expectFilter(),
+				),
+			},
+			args: args{
+				ctx:         context.Background(),
+				orgID:       "org1",
+				metadataKey: "key",
+			},
+			res: res{
+				err: zerrors.IsNotFound,
+			},
+		},
+		{
+			name: "remove metadata, ok",
+			fields: fields{
+				eventstore: eventstoreExpect(
+					t,
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"ZITADEL",
+							),
+						),
+					),
+					expectFilter(
+						eventFromEventPusher(
+							org.NewMetadataSetEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"key",
+								[]byte("value"),
+							),
+						),
+					),
+					expectPush(
+						org.NewMetadataRemovedEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"key",
+						),
+					),
+				),
+			},
+			args: args{
+				ctx:         context.Background(),
+				orgID:       "org1",
+				metadataKey: "key",
+			},
+			res: res{
+				want: &domain.ObjectDetails{
+					ResourceOwner: "org1",
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &Commands{
+				eventstore: tt.fields.eventstore,
+			}
+			got, err := r.RemoveOrgMetadata(tt.args.ctx, tt.args.orgID, tt.args.metadataKey)
+			if tt.res.err == nil {
+				assert.NoError(t, err)
+			}
+			if tt.res.err != nil && !tt.res.err(err) {
+				t.Errorf("got wrong err: %v ", err)
+			}
+			if tt.res.err == nil {
+				assertObjectDetails(t, tt.res.want, got)
+			}
+		})
+	}
+}
+
+func TestCommandSide_BulkRemoveOrgMetadata(t *testing.T) {
+	type fields struct {
+		eventstore func(*testing.T) *eventstore.Eventstore
+	}
+	type (
+		args struct {
+			ctx             context.Context
+			orgID           string
+			permissionCheck OrganizationPermissionCheck
+			metadataList    []string
+		}
+	)
+	type res struct {
+		want *domain.ObjectDetails
+		err  func(error) bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		res    res
+	}{
+		{
+			name: "empty metadata list, pre condition error",
+			fields: fields{
+				eventstore: expectEventstore(),
+			},
+			args: args{
+				ctx:   context.Background(),
+				orgID: "org1",
+			},
+			res: res{
+				err: zerrors.IsPreconditionFailed,
+			},
+		},
+		{
+			name: "org not existing, pre condition error",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(),
+				),
+			},
+			args: args{
+				ctx:          context.Background(),
+				orgID:        "org1",
+				metadataList: []string{"key", "key1"},
+			},
+			res: res{
+				err: zerrors.IsPreconditionFailed,
+			},
+		},
+		{
+			name: "remove metadata keys not existing, precondition error",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"ZITADEL",
+							),
+						),
+					),
+					expectFilter(
+						eventFromEventPusher(
+							org.NewMetadataSetEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"key",
+								[]byte("value"),
+							),
+						),
+					),
+				),
+			},
+			args: args{
+				ctx:          context.Background(),
+				orgID:        "org1",
+				metadataList: []string{"key", "key1"},
+			},
+			res: res{
+				err: zerrors.IsNotFound,
+			},
+		},
+		{
+			name: "invalid metadata, pre condition error",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"ZITADEL",
+							),
+						),
+					),
+					expectFilter(
+						eventFromEventPusher(
+							org.NewMetadataSetEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"key",
+								[]byte("value"),
+							),
+						),
+						eventFromEventPusher(
+							org.NewMetadataSetEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"key1",
+								[]byte("value1"),
+							),
+						),
+					),
+				),
+			},
+			args: args{
+				ctx:          context.Background(),
+				orgID:        "org1",
+				metadataList: []string{""},
+			},
+			res: res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			name: "remove metadata, ok",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"ZITADEL",
+							),
+						),
+					),
+					expectFilter(
+						eventFromEventPusher(
+							org.NewMetadataSetEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"key",
+								[]byte("value"),
+							),
+						),
+						eventFromEventPusher(
+							org.NewMetadataSetEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"key1",
+								[]byte("value1"),
+							),
+						),
+					),
+					expectPush(
+						org.NewMetadataRemovedEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"key",
+						),
+						org.NewMetadataRemovedEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"key1",
+						),
+					),
+				),
+			},
+			args: args{
+				ctx:          context.Background(),
+				orgID:        "org1",
+				metadataList: []string{"key", "key1"},
+			},
+			res: res{
+				want: &domain.ObjectDetails{
+					ResourceOwner: "org1",
+				},
+			},
+		},
+		{
+			name: "remove metadata (with permission check), ok",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"ZITADEL",
+							),
+						),
+					),
+					expectFilter(
+						eventFromEventPusher(
+							org.NewMetadataSetEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"key",
+								[]byte("value"),
+							),
+						),
+						eventFromEventPusher(
+							org.NewMetadataSetEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"key1",
+								[]byte("value1"),
+							),
+						),
+					),
+					expectPush(
+						org.NewMetadataRemovedEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"key",
+						),
+						org.NewMetadataRemovedEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"key1",
+						),
+					),
+				),
+			},
+			args: args{
+				ctx:             context.Background(),
+				orgID:           "org1",
+				permissionCheck: newMockOrganizationPermissionCheckAllowed(),
+				metadataList:    []string{"key", "key1"},
+			},
+			res: res{
+				want: &domain.ObjectDetails{
+					ResourceOwner: "org1",
+				},
+			},
+		},
+		{
+			name: "remove metadata (no permission), ok",
+			fields: fields{
+				eventstore: expectEventstore(),
+			},
+			args: args{
+				ctx:             context.Background(),
+				orgID:           "org1",
+				permissionCheck: newMockOrganizationPermissionCheckNotAllowed(),
+				metadataList:    []string{"key", "key1"},
+			},
+			res: res{
+				err: zerrors.IsPermissionDenied,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &Commands{
+				eventstore: tt.fields.eventstore(t),
+			}
+			got, err := r.BulkRemoveOrgMetadata(tt.args.ctx, tt.args.orgID, tt.args.permissionCheck, tt.args.metadataList...)
+			if tt.res.err == nil {
+				assert.NoError(t, err)
+			}
+			if tt.res.err != nil && !tt.res.err(err) {
+				t.Errorf("got wrong err: %v ", err)
+			}
+			if tt.res.err == nil {
+				assertObjectDetails(t, tt.res.want, got)
+			}
+		})
+	}
+}

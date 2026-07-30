@@ -1,0 +1,21 @@
+<span class="title" mat-dialog-title>{{ data.titleKey | translate }}</span>
+
+<div mat-dialog-content>
+  <p class="desc cnsl-secondary-text">{{ data.descriptionKey | translate }}</p>
+</div>
+
+<div mat-dialog-actions class="action">
+  <button mat-stroked-button (click)="dialogRef.close(false)">
+    {{ data.cancelKey | translate }}
+  </button>
+  <span class="fill-space"></span>
+  <button
+    color="primary"
+    mat-raised-button
+    class="ok-button"
+    (click)="dialogRef.close(true)"
+    data-e2e="confirm-dialog-button"
+  >
+    {{ data.confirmKey | translate }}
+  </button>
+</div>

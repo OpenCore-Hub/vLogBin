@@ -1,0 +1,110 @@
+<cnsl-card title="{{ 'USER.MFA.TITLE' | translate }}" description="{{ 'USER.MFA.DESCRIPTION' | translate }}">
+  <button
+    card-actions
+    mat-icon-button
+    (click)="getMFAs()"
+    class="icon-button"
+    matTooltip="{{ 'ACTIONS.REFRESH' | translate }}"
+  >
+    <mat-icon class="icon">refresh</mat-icon>
+  </button>
+
+  <cnsl-refresh-table [hideRefresh]="true" [loading]="loading$ | async" (refreshed)="getMFAs()">
+    <button
+      actions
+      class="button"
+      (click)="addAuthFactor()"
+      mat-raised-button
+      color="primary"
+      matTooltip="{{ 'ACTIONS.NEW' | translate }}"
+    >
+      <div class="cnsl-action-button">
+        <mat-icon class="icon">add</mat-icon>
+        <span>{{ 'USER.MFA.ADD' | translate }}</span>
+      </div>
+    </button>
+
+    <table class="table" mat-table [dataSource]="dataSource">
+      <ng-container matColumnDef="type">
+        <th mat-header-cell *matHeaderCellDef>{{ 'USER.MFA.TABLETYPE' | translate }}</th>
+        <td mat-cell *cnslCellDef="let mfa; dataSource: dataSource">
+          @switch (mfa.type.case) {
+            @case ('otp') {
+              <span>TOTP</span>
+            }
+            @case ('u2f') {
+              <span>U2F (Universal 2nd Factor)</span>
+            }
+            @case ('otpSms') {
+              <span>OTP SMS</span>
+            }
+            @case ('otpEmail') {
+              <span>OTP Email</span>
+            }
+          }
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="name">
+        <th mat-header-cell *matHeaderCellDef>{{ 'USER.MFA.NAME' | translate }}</th>
+        <td mat-cell *cnslCellDef="let mfa; dataSource: dataSource">
+          @if (mfaName(mfa); as name) {
+            <span class="centered">
+              {{ name }}
+            </span>
+          }
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="state">
+        <th mat-header-cell *matHeaderCellDef>{{ 'USER.MFA.TABLESTATE' | translate }}</th>
+        <td mat-cell *cnslCellDef="let mfa; dataSource: dataSource">
+          <span class="centered">
+            <span
+              class="state"
+              [ngClass]="{
+                active: mfa.state === AuthFactorState.READY,
+                inactive: mfa.state === AuthFactorState.NOT_READY,
+              }"
+              >{{ 'USER.MFA.STATE.' + mfa.state | translate }}</span
+            >
+          </span>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="actions" stickyEnd>
+        <th mat-header-cell *matHeaderCellDef></th>
+        <td mat-cell *cnslCellDef="let mfa; dataSource: dataSource">
+          <cnsl-table-actions>
+            <button
+              actions
+              matTooltip="{{ 'ACTIONS.REMOVE' | translate }}"
+              color="warn"
+              mat-icon-button
+              (click)="deleteMFA(mfa)"
+            >
+              <i class="las la-trash"></i>
+            </button>
+          </cnsl-table-actions>
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr class="highlight" mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+    </table>
+
+    @if ((loading$ | async) === false && !dataSource.data.length) {
+      <div class="no-content-row">
+        <i class="las la-exclamation"></i>
+        <span>{{ 'USER.MFA.EMPTY' | translate }}</span>
+      </div>
+    }
+  </cnsl-refresh-table>
+  <div class="table-wrapper">
+    @if (loading$ | async) {
+      <div class="spinner-container">
+        <mat-spinner diameter="50"></mat-spinner>
+      </div>
+    }
+  </div>
+</cnsl-card>

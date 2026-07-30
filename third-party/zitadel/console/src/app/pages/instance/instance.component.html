@@ -1,0 +1,37 @@
+<cnsl-top-view
+  [hasBackButton]="false"
+  title="{{ 'DESCRIPTIONS.SETTINGS.INSTANCE.TITLE' | translate }}"
+  sub="{{ 'DESCRIPTIONS.SETTINGS.INSTANCE.DESCRIPTION' | translate }}"
+  [isActive]="instance?.state === State.STATE_RUNNING"
+  [isInactive]="instance?.state === State.STATE_STOPPED || instance?.state === State.STATE_STOPPING"
+  [hasContributors]="true"
+  stateTooltip="{{ 'INSTANCE.STATE.' + instance?.state | translate }}"
+>
+  <div topContributors class="instance-action-wrapper">
+    <cnsl-contributors
+      [totalResult]="totalMemberResult"
+      [loading]="loading$ | async"
+      [membersSubject]="membersSubject"
+      title="{{ 'PROJECT.MEMBER.TITLE' | translate }}"
+      description="{{ 'PROJECT.MEMBER.TITLEDESC' | translate }}"
+      (addClicked)="openAddMember()"
+      (showDetailClicked)="showDetail()"
+      (refreshClicked)="loadMembers()"
+      [disabled]="(['iam.member.write'] | hasRole | async) === false"
+    >
+    </cnsl-contributors>
+  </div>
+  @if (instance) {
+    <cnsl-info-row topContent [instance]="instance"></cnsl-info-row>
+  }
+</cnsl-top-view>
+
+<div class="max-width-container">
+  <div class="instance-settings-wrapper">
+    @if (settingsList$ | async; as list) {
+      <cnsl-settings-list [selectedId]="id" [serviceType]="PolicyComponentServiceType.ADMIN" [settingsList]="list">
+        <router-outlet />
+      </cnsl-settings-list>
+    }
+  </div>
+</div>

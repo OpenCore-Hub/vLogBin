@@ -1,0 +1,253 @@
+<cnsl-refresh-table
+  [loading]="loading$ | async"
+  (refreshed)="refreshPage()"
+  [emitRefreshOnPreviousRoutes]="['/instance/idp/create']"
+  [timestamp]="idpResult?.details?.viewTimestamp"
+  [selection]="selection"
+  [hideRefresh]="true"
+>
+  <div class="table-wrapper">
+    <table class="table" mat-table [dataSource]="dataSource">
+      <ng-container matColumnDef="availability">
+        <th class="availability" mat-header-cell *matHeaderCellDef>
+          <span>{{ 'IDP.AVAILABILITY' | translate }}</span>
+        </th>
+        <td class="pointer availability" mat-cell *matCellDef="let idp">
+          @if (isEnabled(idp) && idp.state === IDPState.IDP_STATE_ACTIVE) {
+            <i matTooltip="{{ 'IDP.AVAILABLE' | translate }}" class="idp-available las la-check-circle"></i>
+          }
+          @if (isEnabled(idp) && idp.state === IDPState.IDP_STATE_INACTIVE) {
+            <i matTooltip="{{ 'IDP.AVAILABLEBUTINACTIVE' | translate }}" class="idp-not-available las la-check-circle"></i>
+          }
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="name">
+        <th mat-header-cell *matHeaderCellDef>{{ 'IDP.NAME' | translate }}</th>
+        <td class="pointer" mat-cell *matCellDef="let idp">
+          <span>{{ idp?.name }}</span>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="type">
+        <th mat-header-cell *matHeaderCellDef>{{ 'IDP.TYPE' | translate }}</th>
+        <td class="pointer" mat-cell *matCellDef="let idp">
+          <div>
+            @switch (idp.type) {
+              @case (ProviderType.PROVIDER_TYPE_AZURE_AD) {
+                <div class="idp-table-provider-type">
+                  <img class="idp-logo" src="./assets/images/idp/ms.svg" alt="azure ad" />
+                  Microsoft
+                </div>
+              }
+              @case (ProviderType.PROVIDER_TYPE_GOOGLE) {
+                <div class="idp-table-provider-type">
+                  <img class="idp-logo" src="./assets/images/idp/google.png" alt="google" />
+                  Google
+                </div>
+              }
+              @case (ProviderType.PROVIDER_TYPE_GITHUB) {
+                <div class="idp-table-provider-type">
+                  <img class="idp-logo dark" src="./assets/images/idp/github-dark.svg" alt="github" />
+                  <img class="idp-logo light" src="./assets/images/idp/github.svg" alt="github" />
+                  GitHub
+                </div>
+              }
+              @case (ProviderType.PROVIDER_TYPE_OIDC) {
+                <div class="idp-table-provider-type">
+                  <mat-icon class="idp-icon" svgIcon="mdi_openid" alt="oidc" />
+                  Generic OIDC
+                </div>
+              }
+              @case (ProviderType.PROVIDER_TYPE_OAUTH) {
+                <div class="idp-table-provider-type">
+                  <img class="idp-logo" src="./assets/images/idp/oauth.svg" alt="oauth" />
+                  Generic OAuth
+                </div>
+              }
+              @case (ProviderType.PROVIDER_TYPE_JWT) {
+                <div class="idp-table-provider-type">
+                  <mat-icon class="idp-icon" svgIcon="mdi_jwt" alt="jwt" />
+                  Generic JWT
+                </div>
+              }
+              @case (ProviderType.PROVIDER_TYPE_GITLAB) {
+                <div class="idp-table-provider-type">
+                  <img class="idp-logo" src="./assets/images/idp/gitlab.svg" alt="gitlab" />
+                  Gitlab
+                </div>
+              }
+              @case (ProviderType.PROVIDER_TYPE_GITLAB_SELF_HOSTED) {
+                <div class="idp-table-provider-type">
+                  <img class="idp-logo" src="./assets/images/idp/gitlab.svg" alt="gitlab self hosted" />
+                  Gitlab Self Hosted
+                </div>
+              }
+              @case (ProviderType.PROVIDER_TYPE_GITHUB_ES) {
+                <div class="idp-table-provider-type">
+                  <img class="idp-logo dark" src="./assets/images/idp/github-dark.svg" alt="github" />
+                  <img class="idp-logo light" src="./assets/images/idp/github.svg" alt="github" />
+                  GitHub Enterprise Server
+                </div>
+              }
+              @case (ProviderType.PROVIDER_TYPE_LDAP) {
+                <div class="idp-table-provider-type">
+                  <i class="idp-icon las la-building"></i>
+                  Active Directory / LDAP
+                </div>
+              }
+              @case (ProviderType.PROVIDER_TYPE_APPLE) {
+                <div class="idp-table-provider-type">
+                  <img class="idp-logo apple dark" src="./assets/images/idp/apple-dark.svg" alt="apple" />
+                  <img class="idp-logo apple light" src="./assets/images/idp/apple.svg" alt="apple" />
+                  Apple
+                </div>
+              }
+              @case (ProviderType.PROVIDER_TYPE_SAML) {
+                <div class="idp-table-provider-type">
+                  <img class="idp-logo" src="./assets/images/idp/saml-icon.svg" alt="saml" />
+                  SAML
+                </div>
+              }
+              @default {
+                <div class="idp-table-provider-type">coming soon</div>
+              }
+            }
+          </div>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="state">
+        <th mat-header-cell *matHeaderCellDef>{{ 'IDP.STATE' | translate }}</th>
+        <td class="pointer" mat-cell *matCellDef="let idp">
+          <span
+            class="state"
+            [ngClass]="{
+              active: idp.state === IDPState.IDP_STATE_ACTIVE,
+              inactive: idp.state === IDPState.IDP_STATE_INACTIVE,
+            }"
+            >{{ 'IDP.STATES.' + idp.state | translate }}</span
+          >
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="creationDate">
+        <th mat-header-cell *matHeaderCellDef>{{ 'IDP.CREATIONDATE' | translate }}</th>
+        <td class="pointer" mat-cell *matCellDef="let idp">
+          <span>{{ idp.details.creationDate | timestampToDate | localizedDate: 'dd. MMM, HH:mm' }}</span>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="changeDate">
+        <th mat-header-cell *matHeaderCellDef>{{ 'IDP.CHANGEDATE' | translate }}</th>
+        <td class="pointer" mat-cell *matCellDef="let idp">
+          <span>{{ idp.details.changeDate | timestampToDate | localizedDate: 'dd. MMM, HH:mm' }}</span>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="owner">
+        <th mat-header-cell *matHeaderCellDef>{{ 'IDP.OWNER' | translate }}</th>
+        <td class="pointer" mat-cell *matCellDef="let idp">
+          {{ 'IDP.OWNERTYPES.' + idp.owner | translate }}
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="actions" stickyEnd>
+        <th class="idp-table-actions" mat-header-cell *matHeaderCellDef></th>
+        <td class="idp-table-actions" mat-cell *matCellDef="let idp">
+          <cnsl-table-actions>
+            @if (!isEnabled(idp)) {
+              <button
+                actions
+                [disabled]="
+                  ([
+                    serviceType === PolicyComponentServiceType.ADMIN
+                      ? 'iam.idp.write'
+                      : serviceType === PolicyComponentServiceType.MGMT
+                        ? 'org.idp.write'
+                        : '',
+                  ]
+                    | hasRole
+                    | async) === false
+                "
+                mat-icon-button
+                matTooltip="{{ 'IDP.SETAVAILABLE' | translate }}"
+                (click)="addIdp(idp); $event.stopPropagation()"
+              >
+                <i class="las la-check-circle"></i>
+              </button>
+            }
+            @if (isEnabled(idp)) {
+              <button
+                actions
+                [disabled]="
+                  ([
+                    serviceType === PolicyComponentServiceType.ADMIN
+                      ? 'iam.idp.write'
+                      : serviceType === PolicyComponentServiceType.MGMT
+                        ? 'org.idp.write'
+                        : '',
+                  ]
+                    | hasRole
+                    | async) === false
+                "
+                mat-icon-button
+                matTooltip="{{ 'IDP.SETUNAVAILABLE' | translate }}"
+                (click)="removeIdp(idp); $event.stopPropagation()"
+              >
+                <i class="las la-times-circle"></i>
+              </button>
+            }
+            @if (
+              (serviceType === PolicyComponentServiceType.MGMT && idp.owner === IDPOwnerType.IDP_OWNER_TYPE_ORG) ||
+              (serviceType === PolicyComponentServiceType.ADMIN && idp.owner === IDPOwnerType.IDP_OWNER_TYPE_SYSTEM)
+            ) {
+              <button
+                actions
+                [disabled]="
+                  (serviceType === PolicyComponentServiceType.MGMT &&
+                    idp?.providerType === IDPOwnerType.IDP_OWNER_TYPE_ORG) ||
+                  ([
+                    serviceType === PolicyComponentServiceType.ADMIN
+                      ? 'iam.idp.write'
+                      : serviceType === PolicyComponentServiceType.MGMT
+                        ? 'org.idp.write'
+                        : '',
+                  ]
+                    | hasRole
+                    | async) === false
+                "
+                mat-icon-button
+                color="warn"
+                matTooltip="{{ 'ACTIONS.REMOVE' | translate }}"
+                (click)="deleteIdp(idp); $event.stopPropagation()"
+              >
+                <i class="las la-trash"></i>
+              </button>
+            }
+          </cnsl-table-actions>
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr class="highlight" (click)="navigateToIDP(row)" mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+    </table>
+  </div>
+
+  @if ((loading$ | async) === false && !dataSource.data.length) {
+    <div class="no-content-row">
+      <i class="las la-exclamation"></i>
+      <span>{{ 'IDP.EMPTY' | translate }}</span>
+    </div>
+  }
+
+  <cnsl-paginator
+    #paginator
+    class="paginator"
+    [timestamp]="idpResult?.details?.viewTimestamp"
+    [length]="idpResult?.details?.totalResult || 0"
+    [pageSize]="10"
+    [pageSizeOptions]="[10, 20, 50, 100]"
+    (page)="changePage($event)"
+  ></cnsl-paginator>
+</cnsl-refresh-table>

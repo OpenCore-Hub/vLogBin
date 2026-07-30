@@ -1,0 +1,2027 @@
+package command
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
+	"golang.org/x/text/language"
+
+	"github.com/zitadel/zitadel/internal/api/http"
+	"github.com/zitadel/zitadel/internal/command/preparation"
+	"github.com/zitadel/zitadel/internal/crypto"
+	"github.com/zitadel/zitadel/internal/domain"
+	"github.com/zitadel/zitadel/internal/eventstore"
+	"github.com/zitadel/zitadel/internal/eventstore/v1/models"
+	"github.com/zitadel/zitadel/internal/id"
+	id_mock "github.com/zitadel/zitadel/internal/id/mock"
+	"github.com/zitadel/zitadel/internal/repository/org"
+	"github.com/zitadel/zitadel/internal/repository/user"
+	"github.com/zitadel/zitadel/internal/zerrors"
+)
+
+func TestAddDomain(t *testing.T) {
+	type args struct {
+		a               *org.Aggregate
+		domain          string
+		claimedUserIDs  []string
+		idGenerator     id.Generator
+		filter          preparation.FilterToQueryReducer
+		eventstore      func(*testing.T) *eventstore.Eventstore
+		loginPaths      func(*testing.T) LoginPaths
+		permissionCheck OrganizationPermissionCheck
+	}
+
+	agg := org.NewAggregate("test")
+	noEvents := func(ctx context.Context, queryFactory *eventstore.SearchQueryBuilder) ([]eventstore.Event, error) {
+		return nil, nil
+	}
+
+	tests := []struct {
+		name string
+		args args
+		want Want
+	}{
+		{
+			name: "invalid domain",
+			args: args{
+				a:          agg,
+				domain:     "",
+				eventstore: expectEventstore(),
+				loginPaths: expectLoginPathsNoCall,
+			},
+			want: Want{
+				ValidationErr: zerrors.ThrowInvalidArgument(nil, "ORG-r3h4J", "Errors.Invalid.Argument"),
+			},
+		},
+		{
+			name: "correct (should verify domain)",
+			args: args{
+				a:              agg,
+				domain:         "domain",
+				claimedUserIDs: []string{"userID1"},
+				filter: NewMultiFilter().
+					Append(func(ctx context.Context, queryFactory *eventstore.SearchQueryBuilder) ([]eventstore.Event, error) {
+						return []eventstore.Event{
+							org.NewOrgAddedEvent(ctx, &agg.Aggregate, "org"),
+						}, nil
+					}).
+					Append(noEvents).
+					Append(func(ctx context.Context, queryFactory *eventstore.SearchQueryBuilder) ([]eventstore.Event, error) {
+						return []eventstore.Event{
+							org.NewDomainPolicyAddedEvent(ctx, &agg.Aggregate, true, true, true),
+						}, nil
+					}).
+					Filter(),
+				eventstore: expectEventstore(),
+				loginPaths: expectLoginPathsNoCall,
+			},
+			want: Want{
+				Commands: []eventstore.Command{
+					org.NewDomainAddedEvent(context.Background(), &agg.Aggregate, "domain"),
+				},
+			},
+		},
+		{
+			name: "correct when org exists only in the current preparation",
+			args: args{
+				a:      agg,
+				domain: "domain",
+				filter: NewMultiFilter().
+					Append(func(ctx context.Context, queryFactory *eventstore.SearchQueryBuilder) ([]eventstore.Event, error) {
+						return []eventstore.Event{
+							org.NewOrgAddedEvent(ctx, &agg.Aggregate, "org"),
+						}, nil
+					}).
+					Append(noEvents).
+					Append(func(ctx context.Context, queryFactory *eventstore.SearchQueryBuilder) ([]eventstore.Event, error) {
+						return []eventstore.Event{
+							org.NewDomainPolicyAddedEvent(ctx, &agg.Aggregate, true, true, true),
+						}, nil
+					}).
+					Filter(),
+				eventstore: expectEventstore(),
+				loginPaths: expectLoginPathsNoCall,
+			},
+			want: Want{
+				Commands: []eventstore.Command{
+					org.NewDomainAddedEvent(context.Background(), &agg.Aggregate, "domain"),
+				},
+			},
+		},
+		{
+			name: "correct (should not verify domain)",
+			args: args{
+				a:              agg,
+				domain:         "domain",
+				claimedUserIDs: []string{"userID1"},
+				idGenerator:    id_mock.ExpectID(t, "newID"),
+				filter: NewMultiFilter().
+					Append(func(ctx context.Context, queryFactory *eventstore.SearchQueryBuilder) ([]eventstore.Event, error) {
+						return []eventstore.Event{
+							org.NewOrgAddedEvent(ctx, &agg.Aggregate, "org"),
+						}, nil
+					}).
+					Append(noEvents).
+					Append(func(ctx context.Context, queryFactory *eventstore.SearchQueryBuilder) ([]eventstore.Event, error) {
+						return []eventstore.Event{
+							org.NewDomainPolicyAddedEvent(ctx, &agg.Aggregate, false, false, false),
+						}, nil
+					}).
+					Append(func(ctx context.Context, queryFactory *eventstore.SearchQueryBuilder) ([]eventstore.Event, error) {
+						return []eventstore.Event{user.NewHumanAddedEvent(
+							ctx,
+							&user.NewAggregate("userID1", "org2").Aggregate,
+							"username",
+							"firstname",
+							"lastname",
+							"nickname",
+							"displayname",
+							language.Und,
+							domain.GenderUnspecified,
+							"email",
+							false,
+						)}, nil
+					}).
+					Append(func(ctx context.Context, queryFactory *eventstore.SearchQueryBuilder) ([]eventstore.Event, error) {
+						return []eventstore.Event{
+							org.NewDomainPolicyAddedEvent(ctx, &org.NewAggregate("org2").Aggregate, false, false, false),
+						}, nil
+					}).
+					Append(noEvents).
+					Filter(),
+				eventstore: expectEventstore(),
+				loginPaths: expectLoginPathsDefaultDomainClaimedURLTemplate(""),
+			},
+			want: Want{
+				Commands: []eventstore.Command{
+					org.NewDomainAddedEvent(context.Background(), &agg.Aggregate, "domain"),
+					org.NewDomainVerifiedEvent(context.Background(), &agg.Aggregate, "domain"),
+					user.NewDomainClaimedEvent(http.WithRequestedHost(context.Background(), "domain"), &user.NewAggregate("userID1", "org2").Aggregate, "newID@temporary.domain", "username", false, ""),
+				},
+			},
+		},
+		{
+			name: "already verified",
+			args: args{
+				a:              agg,
+				domain:         "domain",
+				claimedUserIDs: []string{"userID1"},
+				filter: NewMultiFilter().
+					Append(func(ctx context.Context, queryFactory *eventstore.SearchQueryBuilder) ([]eventstore.Event, error) {
+						return []eventstore.Event{
+							org.NewOrgAddedEvent(ctx, &agg.Aggregate, "org"),
+						}, nil
+					}).
+					Append(func(ctx context.Context, queryFactory *eventstore.SearchQueryBuilder) ([]eventstore.Event, error) {
+						return []eventstore.Event{
+							org.NewDomainAddedEvent(ctx, &agg.Aggregate, "domain"),
+							org.NewDomainVerificationAddedEvent(ctx, &agg.Aggregate, "domain", domain.OrgDomainValidationTypeHTTP, nil),
+							org.NewDomainVerifiedEvent(ctx, &agg.Aggregate, "domain"),
+						}, nil
+					}).
+					Filter(),
+				eventstore: expectEventstore(),
+				loginPaths: expectLoginPathsNoCall,
+			},
+			want: Want{
+				CreateErr: zerrors.ThrowAlreadyExists(nil, "", ""),
+			},
+		},
+		{
+			name: "no permission",
+			args: args{
+				a:               agg,
+				domain:          "domain",
+				claimedUserIDs:  []string{"userID1"},
+				filter:          nil,
+				eventstore:      expectEventstore(),
+				loginPaths:      expectLoginPathsNoCall,
+				permissionCheck: newMockOrganizationPermissionCheckNotAllowed(),
+			},
+			want: Want{
+				CreateErr: zerrors.ThrowPermissionDenied(nil, "", "Errors.PermissionDenied"),
+			},
+		},
+		{
+			name: "correct with permission check",
+			args: args{
+				a:              agg,
+				domain:         "domain",
+				claimedUserIDs: []string{"userID1"},
+				filter: NewMultiFilter().
+					Append(func(ctx context.Context, queryFactory *eventstore.SearchQueryBuilder) ([]eventstore.Event, error) {
+						return []eventstore.Event{
+							org.NewOrgAddedEvent(ctx, &agg.Aggregate, "org"),
+						}, nil
+					}).
+					Append(noEvents).
+					Append(func(ctx context.Context, queryFactory *eventstore.SearchQueryBuilder) ([]eventstore.Event, error) {
+						return []eventstore.Event{
+							org.NewDomainPolicyAddedEvent(ctx, &agg.Aggregate, true, true, true),
+						}, nil
+					}).
+					Filter(),
+				eventstore:      expectEventstore(),
+				loginPaths:      expectLoginPathsNoCall,
+				permissionCheck: newMockOrganizationPermissionCheckAllowed(),
+			},
+			want: Want{
+				Commands: []eventstore.Command{
+					org.NewDomainAddedEvent(context.Background(), &agg.Aggregate, "domain"),
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			AssertValidation(
+				t,
+				http.WithRequestedHost(context.Background(), "domain"),
+				(&Commands{idGenerator: tt.args.idGenerator, eventstore: tt.args.eventstore(t), loginPaths: tt.args.loginPaths(t)}).prepareAddOrgDomain(tt.args.a, tt.args.domain, tt.args.claimedUserIDs, tt.args.permissionCheck),
+				tt.args.filter,
+				tt.want,
+			)
+		})
+	}
+}
+
+func TestVerifyDomain(t *testing.T) {
+	type args struct {
+		a      *org.Aggregate
+		domain string
+	}
+
+	tests := []struct {
+		name string
+		args args
+		want Want
+	}{
+		{
+			name: "invalid domain",
+			args: args{
+				a:      org.NewAggregate("test"),
+				domain: "",
+			},
+			want: Want{
+				ValidationErr: zerrors.ThrowInvalidArgument(nil, "ORG-yqlVQ", "Errors.Invalid.Argument"),
+			},
+		},
+		{
+			name: "correct",
+			args: args{
+				a:      org.NewAggregate("test"),
+				domain: "domain",
+			},
+			want: Want{
+				Commands: []eventstore.Command{
+					org.NewDomainVerifiedEvent(context.Background(), &org.NewAggregate("test").Aggregate, "domain"),
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			AssertValidation(t, context.Background(), verifyOrgDomain(tt.args.a, tt.args.domain), nil, tt.want)
+		})
+	}
+}
+
+func TestSetDomainPrimary(t *testing.T) {
+	type args struct {
+		a      *org.Aggregate
+		domain string
+		filter preparation.FilterToQueryReducer
+	}
+
+	agg := org.NewAggregate("test")
+
+	tests := []struct {
+		name string
+		args args
+		want Want
+	}{
+		{
+			name: "invalid domain",
+			args: args{
+				a:      agg,
+				domain: "",
+			},
+			want: Want{
+				ValidationErr: zerrors.ThrowInvalidArgument(nil, "ORG-gmNqY", "Errors.Invalid.Argument"),
+			},
+		},
+		{
+			name: "not exists",
+			args: args{
+				a:      agg,
+				domain: "domain",
+				filter: func(ctx context.Context, queryFactory *eventstore.SearchQueryBuilder) ([]eventstore.Event, error) {
+					return nil, nil
+				},
+			},
+			want: Want{
+				CreateErr: zerrors.ThrowNotFound(nil, "", ""),
+			},
+		},
+		{
+			name: "not verified",
+			args: args{
+				a:      agg,
+				domain: "domain",
+				filter: func(ctx context.Context, queryFactory *eventstore.SearchQueryBuilder) ([]eventstore.Event, error) {
+					return []eventstore.Event{org.NewDomainAddedEvent(ctx, &agg.Aggregate, "domain")}, nil
+				},
+			},
+			want: Want{
+				CreateErr: zerrors.ThrowPreconditionFailed(nil, "", ""),
+			},
+		},
+		{
+			name: "already primary",
+			args: args{
+				a:      agg,
+				domain: "domain",
+				filter: func(ctx context.Context, queryFactory *eventstore.SearchQueryBuilder) ([]eventstore.Event, error) {
+					return []eventstore.Event{
+						org.NewDomainAddedEvent(ctx, &agg.Aggregate, "domain"),
+						org.NewDomainVerificationAddedEvent(ctx, &agg.Aggregate, "domain", domain.OrgDomainValidationTypeHTTP, nil),
+						org.NewDomainVerifiedEvent(ctx, &agg.Aggregate, "domain"),
+						org.NewDomainPrimarySetEvent(ctx, &agg.Aggregate, "domain"),
+					}, nil
+				},
+			},
+			want: Want{
+				CreateErr: zerrors.ThrowPreconditionFailed(nil, "", ""),
+			},
+		},
+		{
+			name: "correct",
+			args: args{
+				a:      agg,
+				domain: "domain",
+				filter: func(ctx context.Context, queryFactory *eventstore.SearchQueryBuilder) ([]eventstore.Event, error) {
+					return []eventstore.Event{
+						org.NewDomainAddedEvent(ctx, &agg.Aggregate, "domain"),
+						org.NewDomainVerificationAddedEvent(ctx, &agg.Aggregate, "domain", domain.OrgDomainValidationTypeHTTP, nil),
+						org.NewDomainVerifiedEvent(ctx, &agg.Aggregate, "domain"),
+					}, nil
+				},
+			},
+			want: Want{
+				Commands: []eventstore.Command{
+					org.NewDomainPrimarySetEvent(context.Background(), &agg.Aggregate, "domain"),
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			AssertValidation(t, context.Background(), setPrimaryOrgDomain(tt.args.a, tt.args.domain), tt.args.filter, tt.want)
+		})
+	}
+}
+
+func TestCommandSide_AddOrgDomain(t *testing.T) {
+	type fields struct {
+		eventstore func(*testing.T) *eventstore.Eventstore
+	}
+	type args struct {
+		ctx             context.Context
+		orgID           string
+		domain          string
+		claimedUserIDs  []string
+		permissionCheck OrganizationPermissionCheck
+	}
+	type res struct {
+		want *domain.ObjectDetails
+		err  func(error) bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		res    res
+	}{
+		{
+			name: "invalid domain, error",
+			fields: fields{
+				eventstore: expectEventstore(),
+			},
+			args: args{
+				ctx: context.Background(),
+			},
+			res: res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			name: "domain already exists, precondition error",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(), &org.NewAggregate("org1").Aggregate,
+								"org"),
+						),
+					),
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+					),
+				),
+			},
+			args: args{
+				ctx:    context.Background(),
+				orgID:  "org1",
+				domain: "domain.ch",
+			},
+			res: res{
+				err: zerrors.IsErrorAlreadyExists,
+			},
+		},
+		{
+			name: "domain add, ok",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(), &org.NewAggregate("org1").Aggregate,
+								"org"),
+						),
+					),
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+					),
+					expectFilter(
+						eventFromEventPusher(
+							org.NewDomainPolicyAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								true,
+								true,
+								true,
+							),
+						),
+					),
+					expectPush(
+						org.NewDomainAddedEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"domain.ch",
+						),
+					),
+				),
+			},
+			args: args{
+				ctx:    context.Background(),
+				orgID:  "org1",
+				domain: "domain.ch",
+			},
+			res: res{
+				want: &domain.ObjectDetails{
+					ResourceOwner: "org1",
+				},
+			},
+		},
+		{
+			name: "domain add (with permission check), ok",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(), &org.NewAggregate("org1").Aggregate,
+								"org"),
+						),
+					),
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+					),
+					expectFilter(
+						eventFromEventPusher(
+							org.NewDomainPolicyAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								true,
+								true,
+								true,
+							),
+						),
+					),
+					expectPush(
+						org.NewDomainAddedEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"domain.ch",
+						),
+					),
+				),
+			},
+			args: args{
+				ctx:             context.Background(),
+				orgID:           "org1",
+				domain:          "domain.ch",
+				permissionCheck: newMockOrganizationPermissionCheckAllowed(),
+			},
+			res: res{
+				want: &domain.ObjectDetails{
+					ResourceOwner: "org1",
+				},
+			},
+		},
+		{
+			name: "no permission, error",
+			fields: fields{
+				eventstore: expectEventstore(),
+			},
+			args: args{
+				ctx:             context.Background(),
+				orgID:           "org1",
+				domain:          "domain.ch",
+				permissionCheck: newMockOrganizationPermissionCheckNotAllowed(),
+			},
+			res: res{
+				err: zerrors.IsPermissionDenied,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &Commands{
+				eventstore: tt.fields.eventstore(t),
+			}
+			got, err := r.AddOrgDomain(tt.args.ctx, tt.args.orgID, tt.args.domain, tt.args.claimedUserIDs, tt.args.permissionCheck)
+			if tt.res.err == nil {
+				assert.NoError(t, err)
+			}
+			if tt.res.err != nil && !tt.res.err(err) {
+				t.Errorf("got wrong err: %v ", err)
+			}
+			if tt.res.err == nil {
+				assertObjectDetails(t, tt.res.want, got)
+			}
+		})
+	}
+}
+
+func TestCommandSide_GenerateOrgDomainValidation(t *testing.T) {
+	type fields struct {
+		eventstore      func(*testing.T) *eventstore.Eventstore
+		secretGenerator crypto.Generator
+	}
+	type args struct {
+		ctx             context.Context
+		domain          *domain.OrgDomain
+		permissionCheck OrganizationPermissionCheck
+	}
+	type res struct {
+		wantToken string
+		wantURL   string
+		err       func(error) bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		res    res
+	}{
+		{
+			name: "invalid domain, error",
+			fields: fields{
+				eventstore: expectEventstore(),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+				},
+			},
+			res: res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			name: "missing aggregateid, error",
+			fields: fields{
+				eventstore: expectEventstore(),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					Domain: "domain.ch",
+				},
+			},
+			res: res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			name: "invalid validation type, error",
+			fields: fields{
+				eventstore: expectEventstore(),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain: "domain.ch",
+				},
+			},
+			res: res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			name: "domain not exists, precondition error",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+					),
+				),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain:         "domain.ch",
+					ValidationType: domain.OrgDomainValidationTypeDNS,
+				},
+			},
+			res: res{
+				err: zerrors.IsNotFound,
+			},
+		},
+		{
+			name: "domain already verified, precondition error",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainVerifiedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+					),
+				),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain:         "domain.ch",
+					ValidationType: domain.OrgDomainValidationTypeDNS,
+				},
+			},
+			res: res{
+				err: zerrors.IsPreconditionFailed,
+			},
+		},
+		{
+			name: "add dns validation, ok",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+					),
+					expectPush(
+						org.NewDomainVerificationAddedEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"domain.ch",
+							domain.OrgDomainValidationTypeDNS,
+							&crypto.CryptoValue{
+								CryptoType: crypto.TypeEncryption,
+								Algorithm:  "enc",
+								KeyID:      "id",
+								Crypted:    []byte("a"),
+							},
+						),
+					),
+				),
+				secretGenerator: GetMockSecretGenerator(t),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain:         "domain.ch",
+					ValidationType: domain.OrgDomainValidationTypeDNS,
+				},
+			},
+			res: res{
+				wantToken: "a",
+				wantURL:   "_zitadel-challenge.domain.ch",
+			},
+		},
+		{
+			name: "add http validation, ok",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+					),
+					expectPush(
+						org.NewDomainVerificationAddedEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"domain.ch",
+							domain.OrgDomainValidationTypeHTTP,
+							&crypto.CryptoValue{
+								CryptoType: crypto.TypeEncryption,
+								Algorithm:  "enc",
+								KeyID:      "id",
+								Crypted:    []byte("a"),
+							},
+						),
+					),
+				),
+				secretGenerator: GetMockSecretGenerator(t),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain:         "domain.ch",
+					ValidationType: domain.OrgDomainValidationTypeHTTP,
+				},
+			},
+			res: res{
+				wantToken: "a",
+				wantURL:   "https://domain.ch/.well-known/zitadel-challenge/a.txt",
+			},
+		},
+		{
+			name: "add validation (with permission check), ok",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+					),
+					expectPush(
+						org.NewDomainVerificationAddedEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"domain.ch",
+							domain.OrgDomainValidationTypeHTTP,
+							&crypto.CryptoValue{
+								CryptoType: crypto.TypeEncryption,
+								Algorithm:  "enc",
+								KeyID:      "id",
+								Crypted:    []byte("a"),
+							},
+						),
+					),
+				),
+				secretGenerator: GetMockSecretGenerator(t),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain:         "domain.ch",
+					ValidationType: domain.OrgDomainValidationTypeHTTP,
+				},
+				permissionCheck: newMockOrganizationPermissionCheckAllowed(),
+			},
+			res: res{
+				wantToken: "a",
+				wantURL:   "https://domain.ch/.well-known/zitadel-challenge/a.txt",
+			},
+		},
+		{
+			name: "add validation (no permission), error",
+			fields: fields{
+				eventstore:      expectEventstore(),
+				secretGenerator: GetMockSecretGenerator(t),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain:         "domain.ch",
+					ValidationType: domain.OrgDomainValidationTypeHTTP,
+				},
+				permissionCheck: newMockOrganizationPermissionCheckNotAllowed(),
+			},
+			res: res{
+				err: zerrors.IsPermissionDenied,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &Commands{
+				eventstore:                  tt.fields.eventstore(t),
+				domainVerificationGenerator: tt.fields.secretGenerator,
+			}
+			token, url, err := r.GenerateOrgDomainValidation(tt.args.ctx, tt.args.domain, tt.args.permissionCheck)
+			if tt.res.err == nil {
+				assert.NoError(t, err)
+			}
+			if tt.res.err != nil && !tt.res.err(err) {
+				t.Errorf("got wrong err: %v ", err)
+			}
+			if tt.res.err == nil {
+				assert.Equal(t, tt.res.wantToken, token)
+				assert.Equal(t, tt.res.wantURL, url)
+			}
+		})
+	}
+}
+
+func TestCommandSide_ValidateOrgDomain(t *testing.T) {
+	type fields struct {
+		eventstore           func(*testing.T) *eventstore.Eventstore
+		idGenerator          id.Generator
+		secretGenerator      crypto.Generator
+		alg                  crypto.EncryptionAlgorithm
+		domainValidationFunc func(domain, token, verifier string, checkType http.CheckType) error
+		loginPaths           func(*testing.T) LoginPaths
+	}
+	type args struct {
+		ctx             context.Context
+		domain          *domain.OrgDomain
+		claimedUserIDs  []string
+		permissionCheck OrganizationPermissionCheck
+	}
+	type res struct {
+		want *domain.ObjectDetails
+		err  func(error) bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		res    res
+	}{
+		{
+			name: "invalid domain, error",
+			fields: fields{
+				eventstore: expectEventstore(),
+				loginPaths: expectLoginPathsNoCall,
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+				},
+			},
+			res: res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			name: "missing aggregateid, error",
+			fields: fields{
+				eventstore: expectEventstore(),
+				loginPaths: expectLoginPathsNoCall,
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					Domain: "domain.ch",
+				},
+			},
+			res: res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			name: "domain not exists, precondition error",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+					),
+				),
+				loginPaths: expectLoginPathsNoCall,
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain:         "domain.ch",
+					ValidationType: domain.OrgDomainValidationTypeDNS,
+				},
+			},
+			res: res{
+				err: zerrors.IsNotFound,
+			},
+		},
+		{
+			name: "domain already verified, precondition error",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainVerifiedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+					),
+				),
+				loginPaths: expectLoginPathsNoCall,
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain:         "domain.ch",
+					ValidationType: domain.OrgDomainValidationTypeDNS,
+				},
+			},
+			res: res{
+				err: zerrors.IsPreconditionFailed,
+			},
+		},
+		{
+			name: "no code existing, precondition error",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+					),
+				),
+				loginPaths: expectLoginPathsNoCall,
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain:         "domain.ch",
+					ValidationType: domain.OrgDomainValidationTypeDNS,
+				},
+			},
+			res: res{
+				err: zerrors.IsPreconditionFailed,
+			},
+		},
+		{
+			name: "invalid domain verification, precondition error",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainVerificationAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+								domain.OrgDomainValidationTypeDNS,
+								&crypto.CryptoValue{
+									CryptoType: crypto.TypeEncryption,
+									Algorithm:  "enc",
+									KeyID:      "id",
+									Crypted:    []byte("a"),
+								},
+							),
+						),
+					),
+					expectPush(
+						org.NewDomainVerificationFailedEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"domain.ch",
+						),
+					),
+				),
+				alg:                  crypto.CreateMockEncryptionAlg(gomock.NewController(t)),
+				domainValidationFunc: invalidDomainVerification,
+				loginPaths:           expectLoginPathsNoCall,
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain:         "domain.ch",
+					ValidationType: domain.OrgDomainValidationTypeDNS,
+				},
+			},
+			res: res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			name: "domain verification, ok",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainVerificationAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+								domain.OrgDomainValidationTypeDNS,
+								&crypto.CryptoValue{
+									CryptoType: crypto.TypeEncryption,
+									Algorithm:  "enc",
+									KeyID:      "id",
+									Crypted:    []byte("a"),
+								},
+							),
+						),
+					),
+					expectPush(
+						org.NewDomainVerifiedEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"domain.ch",
+						),
+					),
+				),
+				alg:                  crypto.CreateMockEncryptionAlg(gomock.NewController(t)),
+				domainValidationFunc: validDomainVerification,
+				loginPaths:           expectLoginPathsNoCall,
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain:         "domain.ch",
+					ValidationType: domain.OrgDomainValidationTypeDNS,
+				},
+			},
+			res: res{
+				want: &domain.ObjectDetails{
+					ResourceOwner: "org1",
+				},
+			},
+		},
+		{
+			name: "domain verification, claimed users not found, ok",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainVerificationAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+								domain.OrgDomainValidationTypeDNS,
+								&crypto.CryptoValue{
+									CryptoType: crypto.TypeEncryption,
+									Algorithm:  "enc",
+									KeyID:      "id",
+									Crypted:    []byte("a"),
+								},
+							),
+						),
+					),
+					expectFilter(),
+					expectPush(
+						org.NewDomainVerifiedEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"domain.ch",
+						),
+					),
+				),
+				alg:                  crypto.CreateMockEncryptionAlg(gomock.NewController(t)),
+				domainValidationFunc: validDomainVerification,
+				loginPaths:           expectLoginPathsNoCall,
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain:         "domain.ch",
+					ValidationType: domain.OrgDomainValidationTypeDNS,
+				},
+				claimedUserIDs: []string{"user1"},
+			},
+			res: res{
+				want: &domain.ObjectDetails{
+					ResourceOwner: "org1",
+				},
+			},
+		},
+		{
+			name: "domain verification, claimed users, ok",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainVerificationAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+								domain.OrgDomainValidationTypeDNS,
+								&crypto.CryptoValue{
+									CryptoType: crypto.TypeEncryption,
+									Algorithm:  "enc",
+									KeyID:      "id",
+									Crypted:    []byte("a"),
+								},
+							),
+						),
+					),
+					expectFilter(
+						eventFromEventPusher(
+							user.NewHumanAddedEvent(context.Background(),
+								&user.NewAggregate("user1", "org2").Aggregate,
+								"username@domain.ch",
+								"firstname",
+								"lastname",
+								"nickname",
+								"displayname",
+								language.German,
+								domain.GenderUnspecified,
+								"email",
+								true,
+							),
+						),
+					),
+					expectFilter(
+						eventFromEventPusher(
+							org.NewDomainPolicyAddedEvent(context.Background(),
+								&org.NewAggregate("org2").Aggregate,
+								false, false, false))),
+					expectFilterOrganizationSettings("org2", false, false),
+					expectPush(
+						org.NewDomainVerifiedEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"domain.ch",
+						),
+						user.NewDomainClaimedEvent(http.WithRequestedHost(context.Background(), "zitadel.ch"),
+							&user.NewAggregate("user1", "org2").Aggregate,
+							"tempid@temporary.zitadel.ch",
+							"username@domain.ch",
+							false,
+							"",
+						),
+					),
+				),
+				alg:                  crypto.CreateMockEncryptionAlg(gomock.NewController(t)),
+				domainValidationFunc: validDomainVerification,
+				idGenerator:          id_mock.NewIDGeneratorExpectIDs(t, "tempid"),
+				loginPaths:           expectLoginPathsDefaultDomainClaimedURLTemplate(""),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain:         "domain.ch",
+					ValidationType: domain.OrgDomainValidationTypeDNS,
+				},
+				claimedUserIDs: []string{"user1"},
+			},
+			res: res{
+				want: &domain.ObjectDetails{
+					ResourceOwner: "org1",
+				},
+			},
+		},
+		{
+			name: "domain verification, claimed users, orgScopedUsername, ok",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainVerificationAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+								domain.OrgDomainValidationTypeDNS,
+								&crypto.CryptoValue{
+									CryptoType: crypto.TypeEncryption,
+									Algorithm:  "enc",
+									KeyID:      "id",
+									Crypted:    []byte("a"),
+								},
+							),
+						),
+					),
+					expectFilter(
+						eventFromEventPusher(
+							user.NewHumanAddedEvent(context.Background(),
+								&user.NewAggregate("user1", "org2").Aggregate,
+								"username@domain.ch",
+								"firstname",
+								"lastname",
+								"nickname",
+								"displayname",
+								language.German,
+								domain.GenderUnspecified,
+								"email",
+								true,
+							),
+						),
+					),
+					expectFilter(
+						eventFromEventPusher(
+							org.NewDomainPolicyAddedEvent(context.Background(),
+								&org.NewAggregate("org2").Aggregate,
+								false, false, false))),
+					expectFilterOrganizationSettings("org2", true, true),
+					expectPush(
+						org.NewDomainVerifiedEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"domain.ch",
+						),
+						user.NewDomainClaimedEvent(http.WithRequestedHost(context.Background(), "zitadel.ch"),
+							&user.NewAggregate("user1", "org2").Aggregate,
+							"tempid@temporary.zitadel.ch",
+							"username@domain.ch",
+							true,
+							"",
+						),
+					),
+				),
+				alg:                  crypto.CreateMockEncryptionAlg(gomock.NewController(t)),
+				domainValidationFunc: validDomainVerification,
+				idGenerator:          id_mock.NewIDGeneratorExpectIDs(t, "tempid"),
+				loginPaths:           expectLoginPathsDefaultDomainClaimedURLTemplate(""),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain:         "domain.ch",
+					ValidationType: domain.OrgDomainValidationTypeDNS,
+				},
+				claimedUserIDs: []string{"user1"},
+			},
+			res: res{
+				want: &domain.ObjectDetails{
+					ResourceOwner: "org1",
+				},
+			},
+		},
+		{
+			name: "domain verification (with permission check), ok",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainVerificationAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+								domain.OrgDomainValidationTypeDNS,
+								&crypto.CryptoValue{
+									CryptoType: crypto.TypeEncryption,
+									Algorithm:  "enc",
+									KeyID:      "id",
+									Crypted:    []byte("a"),
+								},
+							),
+						),
+					),
+					expectPush(
+						org.NewDomainVerifiedEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"domain.ch",
+						),
+					),
+				),
+				alg:                  crypto.CreateMockEncryptionAlg(gomock.NewController(t)),
+				domainValidationFunc: validDomainVerification,
+				loginPaths:           expectLoginPathsNoCall,
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain:         "domain.ch",
+					ValidationType: domain.OrgDomainValidationTypeDNS,
+				},
+				permissionCheck: newMockOrganizationPermissionCheckAllowed(),
+			},
+			res: res{
+				want: &domain.ObjectDetails{
+					ResourceOwner: "org1",
+				},
+			},
+		},
+		{
+			name: "domain verification (no permission), error",
+			fields: fields{
+				eventstore:           expectEventstore(),
+				alg:                  crypto.CreateMockEncryptionAlg(gomock.NewController(t)),
+				domainValidationFunc: validDomainVerification,
+				loginPaths:           expectLoginPathsNoCall,
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain:         "domain.ch",
+					ValidationType: domain.OrgDomainValidationTypeDNS,
+				},
+				permissionCheck: newMockOrganizationPermissionCheckNotAllowed(),
+			},
+			res: res{
+				err: zerrors.IsPermissionDenied,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &Commands{
+				eventstore:                  tt.fields.eventstore(t),
+				domainVerificationGenerator: tt.fields.secretGenerator,
+				domainVerificationAlg:       tt.fields.alg,
+				domainVerificationValidator: tt.fields.domainValidationFunc,
+				idGenerator:                 tt.fields.idGenerator,
+				loginPaths:                  tt.fields.loginPaths(t),
+			}
+			got, err := r.ValidateOrgDomain(http.WithRequestedHost(tt.args.ctx, "zitadel.ch"), tt.args.domain, tt.args.claimedUserIDs, tt.args.permissionCheck)
+			if tt.res.err == nil {
+				assert.NoError(t, err)
+			}
+			if tt.res.err != nil && !tt.res.err(err) {
+				t.Errorf("got wrong err: %v ", err)
+			}
+			if tt.res.err == nil {
+				assertObjectDetails(t, tt.res.want, got)
+			}
+		})
+	}
+}
+
+func TestCommandSide_SetPrimaryDomain(t *testing.T) {
+	type fields struct {
+		eventstore *eventstore.Eventstore
+	}
+	type args struct {
+		ctx    context.Context
+		domain *domain.OrgDomain
+	}
+	type res struct {
+		want *domain.ObjectDetails
+		err  func(error) bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		res    res
+	}{
+		{
+			name: "invalid domain, error",
+			fields: fields{
+				eventstore: eventstoreExpect(
+					t,
+				),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+				},
+			},
+			res: res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			name: "missing aggregateid, error",
+			fields: fields{
+				eventstore: eventstoreExpect(
+					t,
+				),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					Domain: "domain.ch",
+				},
+			},
+			res: res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			name: "domain not exists, precondition error",
+			fields: fields{
+				eventstore: eventstoreExpect(
+					t,
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+					),
+				),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain:         "domain.ch",
+					ValidationType: domain.OrgDomainValidationTypeDNS,
+				},
+			},
+			res: res{
+				err: zerrors.IsNotFound,
+			},
+		},
+		{
+			name: "domain not verified, precondition error",
+			fields: fields{
+				eventstore: eventstoreExpect(
+					t,
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+					),
+				),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain: "domain.ch",
+				},
+			},
+			res: res{
+				err: zerrors.IsPreconditionFailed,
+			},
+		},
+		{
+			name: "set primary, ok",
+			fields: fields{
+				eventstore: eventstoreExpect(
+					t,
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainVerifiedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+					),
+					expectPush(
+						org.NewDomainPrimarySetEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"domain.ch",
+						),
+					),
+				),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain: "domain.ch",
+				},
+			},
+			res: res{
+				want: &domain.ObjectDetails{
+					ResourceOwner: "org1",
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &Commands{
+				eventstore: tt.fields.eventstore,
+			}
+			got, err := r.SetPrimaryOrgDomain(tt.args.ctx, tt.args.domain)
+			if tt.res.err == nil {
+				assert.NoError(t, err)
+			}
+			if tt.res.err != nil && !tt.res.err(err) {
+				t.Errorf("got wrong err: %v ", err)
+			}
+			if tt.res.err == nil {
+				assertObjectDetails(t, tt.res.want, got)
+			}
+		})
+	}
+}
+
+func TestCommandSide_RemoveOrgDomain(t *testing.T) {
+	type fields struct {
+		eventstore func(*testing.T) *eventstore.Eventstore
+	}
+	type args struct {
+		ctx             context.Context
+		domain          *domain.OrgDomain
+		permissionCheck OrganizationPermissionCheck
+	}
+	type res struct {
+		want *domain.ObjectDetails
+		err  func(error) bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		res    res
+	}{
+		{
+			name: "invalid domain, error",
+			fields: fields{
+				eventstore: expectEventstore(),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+				},
+			},
+			res: res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			name: "missing aggregateid, error",
+			fields: fields{
+				eventstore: expectEventstore(),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					Domain: "domain.ch",
+				},
+			},
+			res: res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			name: "domain not exists, precondition error",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+					),
+				),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain:         "domain.ch",
+					ValidationType: domain.OrgDomainValidationTypeDNS,
+				},
+			},
+			res: res{
+				err: zerrors.IsNotFound,
+			},
+		},
+		{
+			name: "remove verified domain, ok",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainVerifiedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainPrimarySetEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+					),
+				),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain: "domain.ch",
+				},
+			},
+			res: res{
+				err: zerrors.IsPreconditionFailed,
+			},
+		},
+		{
+			name: "remove domain, ok",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+					),
+					expectPush(
+						org.NewDomainRemovedEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"domain.ch", false,
+						),
+					),
+				),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain: "domain.ch",
+				},
+			},
+			res: res{
+				want: &domain.ObjectDetails{
+					ResourceOwner: "org1",
+				},
+			},
+		},
+		{
+			name: "remove verified domain, ok",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainVerifiedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+					),
+					expectPush(
+						org.NewDomainRemovedEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"domain.ch", true,
+						),
+					),
+				),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain: "domain.ch",
+				},
+			},
+			res: res{
+				want: &domain.ObjectDetails{
+					ResourceOwner: "org1",
+				},
+			},
+		},
+		{
+			name: "remove verified domain (with permission check), ok",
+			fields: fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							org.NewOrgAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"name",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainAddedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+						eventFromEventPusher(
+							org.NewDomainVerifiedEvent(context.Background(),
+								&org.NewAggregate("org1").Aggregate,
+								"domain.ch",
+							),
+						),
+					),
+					expectPush(
+						org.NewDomainRemovedEvent(context.Background(),
+							&org.NewAggregate("org1").Aggregate,
+							"domain.ch", true,
+						),
+					),
+				),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain: "domain.ch",
+				},
+				permissionCheck: newMockOrganizationPermissionCheckAllowed(),
+			},
+			res: res{
+				want: &domain.ObjectDetails{
+					ResourceOwner: "org1",
+				},
+			},
+		},
+		{
+			name: "remove verified domain (no permission), error",
+			fields: fields{
+				eventstore: expectEventstore(),
+			},
+			args: args{
+				ctx: context.Background(),
+				domain: &domain.OrgDomain{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "org1",
+					},
+					Domain: "domain.ch",
+				},
+				permissionCheck: newMockOrganizationPermissionCheckNotAllowed(),
+			},
+			res: res{
+				err: zerrors.IsPermissionDenied,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &Commands{
+				eventstore: tt.fields.eventstore(t),
+			}
+			got, err := r.RemoveOrgDomain(tt.args.ctx, tt.args.domain, tt.args.permissionCheck)
+			if tt.res.err == nil {
+				assert.NoError(t, err)
+			}
+			if tt.res.err != nil && !tt.res.err(err) {
+				t.Errorf("got wrong err: %v ", err)
+			}
+			if tt.res.err == nil {
+				assertObjectDetails(t, tt.res.want, got)
+			}
+		})
+	}
+}
+
+func invalidDomainVerification(domain, token, verifier string, checkType http.CheckType) error {
+	return zerrors.ThrowInvalidArgument(nil, "HTTP-GH422", "Errors.Internal")
+}
+
+func validDomainVerification(domain, token, verifier string, checkType http.CheckType) error {
+	return nil
+}

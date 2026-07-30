@@ -1,0 +1,340 @@
+import { SelectionModel } from '@angular/cdk/collections';
+import { AfterViewInit, Component, Input, OnInit, ViewChild } from '@angular/core';
+import { MatDialog } from '@angular/material/dialog';
+import { MatInput } from '@angular/material/input';
+import { MatTable } from '@angular/material/table';
+import { Router } from '@angular/router';
+import { tap } from 'rxjs/operators';
+import { RpcError } from 'grpc-web';
+import { enterAnimations } from 'src/app/animations';
+import { UserGrant as AuthUserGrant } from 'src/app/proto/generated/zitadel/auth_pb';
+import {
+  Type,
+  UserGrant as MgmtUserGrant,
+  UserGrant,
+  UserGrantQuery,
+  UserGrantState,
+} from 'src/app/proto/generated/zitadel/user_pb';
+import { GrpcAuthService } from 'src/app/services/grpc-auth.service';
+import { ManagementService } from 'src/app/services/mgmt.service';
+import { ToastService } from 'src/app/services/toast.service';
+
+import { ActionKeysType } from '../action-keys/action-keys.component';
+import { PageEvent, PaginatorComponent } from '../paginator/paginator.component';
+import {
+  UserGrantRoleDialogComponent,
+  UserGrantRoleDialogData,
+  UserGrantRoleDialogResult,
+} from '../user-grant-role-dialog/user-grant-role-dialog.component';
+import { WarnDialogComponent } from '../warn-dialog/warn-dialog.component';
+import { UserGrantContext, UserGrantsDataSource } from './user-grants-datasource';
+import { Org } from 'src/app/proto/generated/zitadel/org_pb';
+import { QueryClient } from '@tanstack/angular-query-experimental';
+import { NewOrganizationService } from '../../services/new-organization.service';
+import { AuthorizationService } from '../../services/authorization.service';
+
+export enum UserGrantListSearchKey {
+  DISPLAY_NAME,
+  ORG_NAME,
+  PROJECT_NAME,
+  ROLE_KEY,
+}
+
+type UserGrantAsObject = AuthUserGrant.AsObject | MgmtUserGrant.AsObject;
+
+@Component({
+  selector: 'cnsl-user-grants',
+  templateUrl: './user-grants.component.html',
+  styleUrls: ['./user-grants.component.scss'],
+  animations: [enterAnimations],
+  standalone: false,
+})
+export class UserGrantsComponent implements OnInit, AfterViewInit {
+  public userGrantListSearchKey: UserGrantListSearchKey | undefined = undefined;
+
+  public INITIAL_PAGE_SIZE: number = 50;
+  @Input() context: UserGrantContext = UserGrantContext.NONE;
+  @Input() refreshOnPreviousRoutes: string[] = [];
+
+  public dataSource: UserGrantsDataSource = new UserGrantsDataSource(this.authService, this.mgmtService);
+  public selection: SelectionModel<UserGrantAsObject> = new SelectionModel<UserGrantAsObject>(true, []);
+  @ViewChild(PaginatorComponent) public paginator?: PaginatorComponent;
+  @ViewChild(MatTable) public table?: MatTable<UserGrantAsObject>;
+
+  @Input() disableWrite: boolean = false;
+  @Input() disableDelete: boolean = false;
+
+  @Input() userId: string = '';
+  @Input() projectId: string = '';
+  @Input() grantId: string = '';
+  @ViewChild('input') public filter!: MatInput;
+
+  public routerLink: any = undefined;
+
+  public UserGrantContext = UserGrantContext;
+  public Type = Type;
+  public ActionKeysType = ActionKeysType;
+  public UserGrantState = UserGrantState;
+  @Input() public type: Type | undefined = undefined;
+
+  public filterOpen: boolean = false;
+  public myOrgs: Array<Org.AsObject> = [];
+  constructor(
+    private readonly authService: GrpcAuthService,
+    private readonly mgmtService: ManagementService,
+    private readonly authorizationService: AuthorizationService,
+    private readonly toast: ToastService,
+    private readonly dialog: MatDialog,
+    private readonly queryClient: QueryClient,
+    protected readonly router: Router,
+    private readonly newOrganizationService: NewOrganizationService,
+  ) {}
+
+  @Input() public displayedColumns: string[] = [
+    'select',
+    'user',
+    'org',
+    'projectId',
+    'type',
+    'creationDate',
+    'changeDate',
+    'state',
+    'roleNamesList',
+    'actions',
+  ];
+
+  ngOnInit(): void {
+    switch (this.context) {
+      case UserGrantContext.OWNED_PROJECT:
+        if (this.projectId) {
+          this.routerLink = ['/grant-create', 'project', this.projectId];
+        }
+        break;
+      case UserGrantContext.GRANTED_PROJECT:
+        if (this.grantId) {
+          this.routerLink = ['/grant-create', 'project', this.projectId, 'grant', this.grantId];
+        }
+        break;
+      case UserGrantContext.USER:
+        if (this.userId) {
+          this.routerLink = ['/grant-create', 'user', this.userId];
+        }
+        break;
+      case UserGrantContext.AUTHUSER:
+        if (this.grantId) {
+          this.routerLink = ['/grant-create', 'user', this.userId];
+        }
+        break;
+      case UserGrantContext.NONE:
+        this.routerLink = ['/grant-create'];
+    }
+
+    this.loadGrantsPage(this.type);
+    this.authService.listMyProjectOrgs(undefined, 0).then((orgs) => {
+      this.myOrgs = orgs.resultList;
+    });
+  }
+
+  public ngAfterViewInit(): void {
+    this.paginator?.page.pipe(tap(() => this.loadGrantsPage(this.type))).subscribe();
+  }
+
+  public setType(type: Type | undefined): void {
+    this.type = type;
+    this.loadGrantsPage(type);
+  }
+
+  public getType(grant: UserGrantAsObject): string {
+    if (grant.projectGrantId) {
+      return 'Project Grant';
+    } else if (grant.projectId) {
+      return 'Project';
+    } else {
+      return '';
+    }
+  }
+
+  private loadGrantsPage(type: Type | undefined, searchQueries?: UserGrantQuery[]): void {
+    let queries: UserGrantQuery[] = [];
+
+    this.dataSource.loadGrants(
+      this.context,
+      this.paginator?.pageIndex ?? 0,
+      this.paginator?.pageSize ?? this.INITIAL_PAGE_SIZE,
+      {
+        projectId: this.projectId,
+        grantId: this.grantId,
+        userId: this.userId,
+      },
+      searchQueries ? [...searchQueries, ...queries] : queries,
+    );
+  }
+
+  public isAllSelected(): boolean {
+    const numSelected = this.selection.selected.length;
+    const numRows = this.dataSource.grantsSubject.value.length;
+    return numSelected === numRows;
+  }
+
+  public masterToggle(): void {
+    this.isAllSelected()
+      ? this.selection.clear()
+      : this.dataSource.grantsSubject.value.forEach((row) => this.selection.select(row));
+  }
+
+  public openEditDialog(grant: UserGrantAsObject): void {
+    const dialogRef = this.dialog.open<UserGrantRoleDialogComponent, UserGrantRoleDialogData, UserGrantRoleDialogResult>(
+      UserGrantRoleDialogComponent,
+      {
+        data: {
+          projectId: grant.projectId,
+          grantId: grant?.projectGrantId,
+          selectedRoleKeysList: grant.roleKeysList,
+          i18nTitle: 'GRANTS.EDIT.TITLE',
+        },
+        width: '600px',
+      },
+    );
+
+    dialogRef.afterClosed().subscribe((resp) => {
+      if (!resp || !resp.roles) {
+        return;
+      }
+      this.mgmtService
+        .updateUserGrant('id' in grant ? grant.id : grant.grantId, grant.userId, resp.roles)
+        .then(() => {
+          this.toast.showInfo('GRANTS.TOAST.UPDATED', true);
+          grant.roleKeysList = resp.roles;
+        })
+        .catch((error) => {
+          // Errors.UserGrant.NotChanged
+          if (error instanceof RpcError && error.message.includes('COMMAND-Rs8fy')) {
+            return;
+          }
+          this.toast.showError(error);
+        });
+    });
+  }
+
+  public deleteGrant(event: PointerEvent, grant: UserGrantAsObject): void {
+    event.stopPropagation();
+
+    const dialogRef = this.dialog.open(WarnDialogComponent, {
+      data: {
+        confirmKey: 'ACTIONS.DELETE',
+        cancelKey: 'ACTIONS.CANCEL',
+        titleKey: 'GRANTS.DIALOG.DELETE_TITLE',
+        descriptionKey: 'GRANTS.DIALOG.DELETE_DESCRIPTION',
+      },
+      width: '400px',
+    });
+
+    dialogRef.afterClosed().subscribe((resp) => {
+      if (!resp) {
+        return;
+      }
+      this.authorizationService
+        .deleteAuthorization('id' in grant ? grant.id : grant.grantId)
+        .then(() => {
+          this.toast.showInfo('GRANTS.TOAST.REMOVED', true);
+          const data = this.dataSource.grantsSubject.getValue();
+
+          const index = data.findIndex((i) => {
+            if ('id' in i && 'id' in grant) {
+              return i.id === grant.id;
+            }
+            if ('grantId' in i && 'grantId' in grant) {
+              return i.grantId === grant.grantId;
+            }
+            return false;
+          });
+          if (index > -1) {
+            data.splice(index, 1);
+            this.dataSource.grantsSubject.next(data);
+          }
+        })
+        .catch((error: RpcError) => {
+          this.toast.showError(error);
+        });
+    });
+  }
+
+  public deleteGrantSelection(): void {
+    const dialogRef = this.dialog.open(WarnDialogComponent, {
+      data: {
+        confirmKey: 'ACTIONS.DELETE',
+        cancelKey: 'ACTIONS.CANCEL',
+        titleKey: 'GRANTS.DIALOG.BULK_DELETE_TITLE',
+        descriptionKey: 'GRANTS.DIALOG.BULK_DELETE_DESCRIPTION',
+      },
+      width: '400px',
+    });
+
+    dialogRef.afterClosed().subscribe((resp) => {
+      if (resp) {
+        this.mgmtService
+          .bulkRemoveUserGrant(this.selection.selected.map((grant) => (grant as MgmtUserGrant.AsObject).id))
+          .then(() => {
+            this.toast.showInfo('GRANTS.TOAST.BULKREMOVED', true);
+            const data = this.dataSource.grantsSubject.getValue();
+            this.selection.selected.forEach((item) => {
+              const index = data.findIndex((i) => (i as MgmtUserGrant.AsObject).id === (item as MgmtUserGrant.AsObject).id);
+              if (index > -1) {
+                data.splice(index, 1);
+                this.dataSource.grantsSubject.next(data);
+              }
+            });
+            this.selection.clear();
+          })
+          .catch((error) => {
+            this.toast.showError(error);
+          });
+      }
+    });
+  }
+
+  public changePage(event?: PageEvent): void {
+    this.dataSource.loadGrants(
+      this.context,
+      event?.pageIndex ?? this.paginator?.pageIndex ?? 0,
+      event?.pageSize ?? this.paginator?.pageSize ?? this.INITIAL_PAGE_SIZE,
+      {
+        projectId: this.projectId,
+        grantId: this.grantId,
+        userId: this.userId,
+      },
+    );
+  }
+
+  public applySearchQuery(searchQueries?: UserGrantQuery[]): void {
+    this.selection.clear();
+    this.loadGrantsPage(this.type, searchQueries);
+  }
+
+  public setFilter(key: UserGrantListSearchKey): void {
+    setTimeout(() => {
+      if (this.filter) {
+        (this.filter as any).nativeElement.focus();
+      }
+    }, 100);
+
+    if (this.userGrantListSearchKey !== key) {
+      this.userGrantListSearchKey = key;
+    } else {
+      this.userGrantListSearchKey = undefined;
+      this.loadGrantsPage(this.type);
+    }
+  }
+
+  public async showUser(grant: UserGrant.AsObject) {
+    const org = await this.queryClient.fetchQuery(
+      this.newOrganizationService.organizationByIdQueryOptions(grant.grantedOrgId),
+    );
+    if (org) {
+      await this.authService.getActiveOrg(grant.grantedOrgId);
+      await this.router.navigate(['/users', grant.userId]);
+    } else {
+      this.toast.showInfo('GRANTS.TOAST.CANTSHOWINFO', true);
+    }
+  }
+}

@@ -1,0 +1,107 @@
+package initialise
+
+import (
+	"context"
+	"database/sql"
+	"database/sql/driver"
+	"errors"
+	"testing"
+)
+
+func Test_verifyUser(t *testing.T) {
+	err := ReadStmts()
+	if err != nil {
+		t.Errorf("unable to read stmts: %v", err)
+		t.FailNow()
+	}
+
+	type args struct {
+		db       db
+		username string
+		password string
+	}
+	tests := []struct {
+		name      string
+		args      args
+		targetErr error
+	}{
+		{
+			name: "doesn't exists, create fails",
+			args: args{
+				db: prepareDB(t,
+					expectQuery("SELECT current_user", nil, []string{"current_user"}, [][]driver.Value{
+						{"postgres"},
+					}),
+					expectExec("-- replace zitadel-user with the name of the user\nCREATE USER \"zitadel-user\"", sql.ErrTxDone),
+				),
+				username: "zitadel-user",
+				password: "",
+			},
+			targetErr: sql.ErrTxDone,
+		},
+		{
+			name: "correct without password",
+			args: args{
+				db: prepareDB(t,
+					expectQuery("SELECT current_user", nil, []string{"current_user"}, [][]driver.Value{
+						{"postgres"},
+					}),
+					expectExec("-- replace zitadel-user with the name of the user\nCREATE USER \"zitadel-user\"", nil),
+				),
+				username: "zitadel-user",
+				password: "",
+			},
+			targetErr: nil,
+		},
+		{
+			name: "correct with password",
+			args: args{
+				db: prepareDB(t,
+					expectQuery("SELECT current_user", nil, []string{"current_user"}, [][]driver.Value{
+						{"postgres"},
+					}),
+					expectExec("-- replace zitadel-user with the name of the user\nCREATE USER \"zitadel-user\" WITH PASSWORD 'password'", nil),
+				),
+				username: "zitadel-user",
+				password: "password",
+			},
+			targetErr: nil,
+		},
+		{
+			name: "already exists",
+			args: args{
+				db: prepareDB(t,
+					expectQuery("SELECT current_user", nil, []string{"current_user"}, [][]driver.Value{
+						{"postgres"},
+					}),
+					expectExec("-- replace zitadel-user with the name of the user\nCREATE USER \"zitadel-user\" WITH PASSWORD 'password'", nil),
+				),
+				username: "zitadel-user",
+				password: "",
+			},
+			targetErr: nil,
+		},
+		{
+			name: "same user, skip create",
+			args: args{
+				db: prepareDB(t,
+					expectQuery("SELECT current_user", nil, []string{"current_user"}, [][]driver.Value{
+						{"zitadel-user"},
+					}),
+				),
+				username: "zitadel-user",
+			},
+			targetErr: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := VerifyUser(tt.args.username, tt.args.password)(context.Background(), tt.args.db.db); !errors.Is(err, tt.targetErr) {
+				t.Errorf("VerifyUser() error = %v, want: %v", err, tt.targetErr)
+			}
+			if err := tt.args.db.mock.ExpectationsWereMet(); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+}

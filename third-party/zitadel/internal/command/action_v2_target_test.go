@@ -1,0 +1,770 @@
+package command
+
+import (
+	"context"
+	"net"
+	"testing"
+	"time"
+
+	"github.com/muhlemmer/gu"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/zitadel/zitadel/internal/crypto"
+	"github.com/zitadel/zitadel/internal/denylist"
+	"github.com/zitadel/zitadel/internal/eventstore"
+	"github.com/zitadel/zitadel/internal/eventstore/v1/models"
+	target_domain "github.com/zitadel/zitadel/internal/execution/target"
+	"github.com/zitadel/zitadel/internal/id"
+	"github.com/zitadel/zitadel/internal/id/mock"
+	internal_net "github.com/zitadel/zitadel/internal/net"
+	"github.com/zitadel/zitadel/internal/repository/target"
+	"github.com/zitadel/zitadel/internal/zerrors"
+)
+
+func TestCommands_AddTarget(t *testing.T) {
+	localhostAddrChecker := denylist.NewHostChecker("localhost")
+
+	type fields struct {
+		eventstore                  func(t *testing.T) *eventstore.Eventstore
+		idGenerator                 id.Generator
+		newEncryptedCodeWithDefault encryptedCodeWithDefaultFunc
+		defaultSecretGenerators     *SecretGenerators
+		denyList                    []denylist.AddressChecker
+		lookupFunc                  internal_net.IPLookupFunc
+	}
+	type args struct {
+		ctx           context.Context
+		add           *AddTarget
+		resourceOwner string
+	}
+	type res struct {
+		id  string
+		err func(error) bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		res    res
+	}{
+		{
+			"no resourceowner, error",
+			fields{
+				eventstore: expectEventstore(),
+			},
+			args{
+				ctx:           context.Background(),
+				add:           &AddTarget{},
+				resourceOwner: "",
+			},
+			res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			"no name, error",
+			fields{
+				eventstore: expectEventstore(),
+			},
+			args{
+				ctx:           context.Background(),
+				add:           &AddTarget{},
+				resourceOwner: "instance",
+			},
+			res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			"no timeout, error",
+			fields{
+				eventstore: expectEventstore(),
+			},
+			args{
+				ctx: context.Background(),
+				add: &AddTarget{
+					Name: "name",
+				},
+				resourceOwner: "instance",
+			},
+			res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			"no Endpoint, error",
+			fields{
+				eventstore: expectEventstore(),
+			},
+			args{
+				ctx: context.Background(),
+				add: &AddTarget{
+					Name:     "name",
+					Timeout:  time.Second,
+					Endpoint: "",
+				},
+				resourceOwner: "instance",
+			},
+			res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			"no parsable Endpoint, error",
+			fields{
+				eventstore: expectEventstore(),
+			},
+			args{
+				ctx: context.Background(),
+				add: &AddTarget{
+					Name:     "name",
+					Timeout:  time.Second,
+					Endpoint: "://",
+				},
+				resourceOwner: "instance",
+			},
+			res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			"ip not allowed, error",
+			fields{
+				eventstore: expectEventstore(),
+				denyList:   []denylist.AddressChecker{localhostAddrChecker},
+				lookupFunc: func(_ string) ([]net.IP, error) {
+					return []net.IP{[]byte("127.0.0.1")}, nil
+				},
+			},
+			args{
+				ctx: context.Background(),
+				add: &AddTarget{
+					Name:     "name",
+					Timeout:  time.Second,
+					Endpoint: "http://localhost",
+				},
+				resourceOwner: "instance",
+			},
+			res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			"unique constraint failed, error",
+			fields{
+				eventstore: expectEventstore(
+					expectFilter(),
+					expectPushFailed(
+						zerrors.ThrowPreconditionFailed(nil, "id", "name already exists"),
+						target.NewAddedEvent(context.Background(),
+							target.NewAggregate("id1", "instance"),
+							"name",
+							target_domain.TargetTypeWebhook,
+							"https://example.com",
+							time.Second,
+							false,
+							&crypto.CryptoValue{
+								CryptoType: crypto.TypeEncryption,
+								Algorithm:  "enc",
+								KeyID:      "id",
+								Crypted:    []byte("12345678"),
+							},
+							target_domain.PayloadTypeJSON,
+						),
+					),
+				),
+				idGenerator:                 mock.ExpectID(t, "id1"),
+				newEncryptedCodeWithDefault: mockEncryptedCodeWithDefault("12345678", time.Hour),
+				defaultSecretGenerators:     &SecretGenerators{},
+				denyList:                    []denylist.AddressChecker{localhostAddrChecker},
+				lookupFunc: func(_ string) ([]net.IP, error) {
+					return []net.IP{[]byte("192.168.1.1")}, nil
+				},
+			},
+			args{
+				ctx: context.Background(),
+				add: &AddTarget{
+					Name:        "name",
+					Endpoint:    "https://example.com",
+					Timeout:     time.Second,
+					TargetType:  target_domain.TargetTypeWebhook,
+					PayloadType: target_domain.PayloadTypeJSON,
+				},
+				resourceOwner: "instance",
+			},
+			res{
+				err: zerrors.IsPreconditionFailed,
+			},
+		},
+		{
+			"already existing",
+			fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							targetAddEvent("target", "instance"),
+						),
+					),
+				),
+				idGenerator: mock.ExpectID(t, "id1"),
+				denyList:    []denylist.AddressChecker{localhostAddrChecker},
+				lookupFunc: func(_ string) ([]net.IP, error) {
+					return []net.IP{[]byte("192.168.1.1")}, nil
+				},
+			},
+			args{
+				ctx: context.Background(),
+				add: &AddTarget{
+					Name:       "name",
+					TargetType: target_domain.TargetTypeWebhook,
+					Timeout:    time.Second,
+					Endpoint:   "https://example.com",
+				},
+				resourceOwner: "instance",
+			},
+			res{
+				err: zerrors.IsErrorAlreadyExists,
+			},
+		},
+		{
+			"push ok",
+			fields{
+				eventstore: expectEventstore(
+					expectFilter(),
+					expectPush(
+						targetAddEvent("id1", "instance"),
+					),
+				),
+				idGenerator:                 mock.ExpectID(t, "id1"),
+				newEncryptedCodeWithDefault: mockEncryptedCodeWithDefault("12345678", time.Hour),
+				defaultSecretGenerators:     &SecretGenerators{},
+				denyList:                    []denylist.AddressChecker{localhostAddrChecker},
+				lookupFunc: func(_ string) ([]net.IP, error) {
+					return []net.IP{[]byte("192.168.1.1")}, nil
+				},
+			},
+			args{
+				ctx: context.Background(),
+				add: &AddTarget{
+					Name:        "name",
+					TargetType:  target_domain.TargetTypeWebhook,
+					Timeout:     time.Second,
+					Endpoint:    "https://example.com",
+					PayloadType: target_domain.PayloadTypeJSON,
+				},
+				resourceOwner: "instance",
+			},
+			res{
+				id: "id1",
+			},
+		},
+		{
+			"push full ok",
+			fields{
+				eventstore: expectEventstore(
+					expectFilter(),
+					expectPush(
+						func() eventstore.Command {
+							event := targetAddEvent("id1", "instance")
+							event.InterruptOnError = true
+							return event
+						}(),
+					),
+				),
+				idGenerator:                 mock.ExpectID(t, "id1"),
+				newEncryptedCodeWithDefault: mockEncryptedCodeWithDefault("12345678", time.Hour),
+				defaultSecretGenerators:     &SecretGenerators{},
+				denyList:                    []denylist.AddressChecker{localhostAddrChecker},
+				lookupFunc: func(_ string) ([]net.IP, error) {
+					return []net.IP{[]byte("192.168.1.1")}, nil
+				},
+			},
+			args{
+				ctx: context.Background(),
+				add: &AddTarget{
+					Name:             "name",
+					TargetType:       target_domain.TargetTypeWebhook,
+					Endpoint:         "https://example.com",
+					Timeout:          time.Second,
+					InterruptOnError: true,
+					PayloadType:      target_domain.PayloadTypeJSON,
+				},
+				resourceOwner: "instance",
+			},
+			res{
+				id: "id1",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Commands{
+				eventstore:                  tt.fields.eventstore(t),
+				idGenerator:                 tt.fields.idGenerator,
+				newEncryptedCodeWithDefault: tt.fields.newEncryptedCodeWithDefault,
+				defaultSecretGenerators:     tt.fields.defaultSecretGenerators,
+				denyList:                    tt.fields.denyList,
+			}
+			_, err := c.AddTarget(tt.args.ctx, tt.args.add, tt.args.resourceOwner)
+			if tt.res.err == nil {
+				assert.NoError(t, err)
+			}
+			if tt.res.err != nil && !tt.res.err(err) {
+				t.Errorf("got wrong err: %v ", err)
+			}
+			if tt.res.err == nil {
+				assert.Equal(t, tt.res.id, tt.args.add.AggregateID)
+			}
+		})
+	}
+}
+
+func TestCommands_ChangeTarget(t *testing.T) {
+	localhostAddrChecker := denylist.NewHostChecker("localhost")
+
+	type fields struct {
+		eventstore                  func(t *testing.T) *eventstore.Eventstore
+		newEncryptedCodeWithDefault encryptedCodeWithDefaultFunc
+		defaultSecretGenerators     *SecretGenerators
+		denyList                    []denylist.AddressChecker
+		lookupFunc                  internal_net.IPLookupFunc
+	}
+	type args struct {
+		ctx           context.Context
+		change        *ChangeTarget
+		resourceOwner string
+	}
+	type res struct {
+		err func(error) bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		res    res
+	}{
+		{
+			"resourceowner missing, error",
+			fields{
+				eventstore: expectEventstore(),
+			},
+			args{
+				ctx:           context.Background(),
+				change:        &ChangeTarget{},
+				resourceOwner: "",
+			},
+			res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			"id missing, error",
+			fields{
+				eventstore: expectEventstore(),
+			},
+			args{
+				ctx:           context.Background(),
+				change:        &ChangeTarget{},
+				resourceOwner: "instance",
+			},
+			res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			"name empty, error",
+			fields{
+				eventstore: expectEventstore(),
+			},
+			args{
+				ctx: context.Background(),
+				change: &ChangeTarget{
+					Name: gu.Ptr(""),
+				},
+				resourceOwner: "instance",
+			},
+			res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			"timeout empty, error",
+			fields{
+				eventstore: expectEventstore(),
+			},
+			args{
+				ctx: context.Background(),
+				change: &ChangeTarget{
+					Timeout: gu.Ptr(time.Duration(0)),
+				},
+				resourceOwner: "instance",
+			},
+			res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			"Endpoint empty, error",
+			fields{
+				eventstore: expectEventstore(),
+			},
+			args{
+				ctx: context.Background(),
+				change: &ChangeTarget{
+					Endpoint: gu.Ptr(""),
+				},
+				resourceOwner: "instance",
+			},
+			res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			"Endpoint not parsable, error",
+			fields{
+				eventstore: expectEventstore(),
+			},
+			args{
+				ctx: context.Background(),
+				change: &ChangeTarget{
+					Endpoint: gu.Ptr("://"),
+				},
+				resourceOwner: "instance",
+			},
+			res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			"ip not allowed, error",
+			fields{
+				eventstore: expectEventstore(),
+				denyList:   []denylist.AddressChecker{localhostAddrChecker},
+				lookupFunc: func(_ string) ([]net.IP, error) {
+					return []net.IP{[]byte("127.0.0.1")}, nil
+				},
+			},
+			args{
+				ctx: context.Background(),
+				change: &ChangeTarget{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "id1",
+					},
+					Endpoint: gu.Ptr("http://localhost"),
+				},
+				resourceOwner: "instance",
+			},
+			res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			"not found, error",
+			fields{
+				eventstore: expectEventstore(
+					expectFilter(),
+				),
+				denyList: []denylist.AddressChecker{localhostAddrChecker},
+				lookupFunc: func(_ string) ([]net.IP, error) {
+					return []net.IP{[]byte("192.168.1.1")}, nil
+				},
+			},
+			args{
+				ctx: context.Background(),
+				change: &ChangeTarget{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "id1",
+					},
+					Name: gu.Ptr("name"),
+				},
+				resourceOwner: "instance",
+			},
+			res{
+				err: zerrors.IsNotFound,
+			},
+		},
+		{
+			"no changes",
+			fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							targetAddEvent("target", "instance"),
+						),
+					),
+				),
+				denyList: []denylist.AddressChecker{localhostAddrChecker},
+				lookupFunc: func(_ string) ([]net.IP, error) {
+					return []net.IP{[]byte("192.168.1.1")}, nil
+				},
+			},
+			args{
+				ctx: context.Background(),
+				change: &ChangeTarget{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "id1",
+					},
+					TargetType: gu.Ptr(target_domain.TargetTypeWebhook),
+				},
+				resourceOwner: "instance",
+			},
+			res{},
+		},
+		{
+			"unique constraint failed, error",
+			fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							targetAddEvent("target", "instance"),
+						),
+					),
+					expectPushFailed(
+						zerrors.ThrowPreconditionFailed(nil, "id", "name already exists"),
+						target.NewChangedEvent(context.Background(),
+							target.NewAggregate("id1", "instance"),
+							[]target.Changes{
+								target.ChangeName("name", "name2"),
+							},
+						),
+					),
+				),
+				denyList: []denylist.AddressChecker{localhostAddrChecker},
+				lookupFunc: func(_ string) ([]net.IP, error) {
+					return []net.IP{[]byte("192.168.1.1")}, nil
+				},
+			},
+			args{
+				ctx: context.Background(),
+				change: &ChangeTarget{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "id1",
+					},
+					Name: gu.Ptr("name2"),
+				},
+				resourceOwner: "instance",
+			},
+			res{
+				err: zerrors.IsPreconditionFailed,
+			},
+		},
+		{
+			"push ok",
+			fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							targetAddEvent("id1", "instance"),
+						),
+					),
+					expectPush(
+						target.NewChangedEvent(context.Background(),
+							target.NewAggregate("id1", "instance"),
+							[]target.Changes{
+								target.ChangeName("name", "name2"),
+							},
+						),
+					),
+				),
+				denyList: []denylist.AddressChecker{localhostAddrChecker},
+				lookupFunc: func(_ string) ([]net.IP, error) {
+					return []net.IP{[]byte("192.168.1.1")}, nil
+				},
+			},
+			args{
+				ctx: context.Background(),
+				change: &ChangeTarget{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "id1",
+					},
+					Name: gu.Ptr("name2"),
+				},
+				resourceOwner: "instance",
+			},
+			res{},
+		},
+		{
+			"push full ok",
+			fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							targetAddEvent("id1", "instance"),
+						),
+					),
+					expectPush(
+						target.NewChangedEvent(context.Background(),
+							target.NewAggregate("id1", "instance"),
+							[]target.Changes{
+								target.ChangeName("name", "name2"),
+								target.ChangeEndpoint("https://example2.com"),
+								target.ChangeTargetType(target_domain.TargetTypeCall),
+								target.ChangeTimeout(10 * time.Second),
+								target.ChangeInterruptOnError(true),
+								target.ChangeSigningKey(&crypto.CryptoValue{
+									CryptoType: crypto.TypeEncryption,
+									Algorithm:  "enc",
+									KeyID:      "id",
+									Crypted:    []byte("12345678"),
+								}),
+								target.ChangePayloadType(target_domain.PayloadTypeJWE),
+							},
+						),
+					),
+				),
+				newEncryptedCodeWithDefault: mockEncryptedCodeWithDefault("12345678", time.Hour),
+				defaultSecretGenerators:     &SecretGenerators{},
+				denyList:                    []denylist.AddressChecker{localhostAddrChecker},
+				lookupFunc: func(_ string) ([]net.IP, error) {
+					return []net.IP{[]byte("192.168.1.1")}, nil
+				},
+			},
+			args{
+				ctx: context.Background(),
+				change: &ChangeTarget{
+					ObjectRoot: models.ObjectRoot{
+						AggregateID: "id1",
+					},
+					Name:                 gu.Ptr("name2"),
+					Endpoint:             gu.Ptr("https://example2.com"),
+					TargetType:           gu.Ptr(target_domain.TargetTypeCall),
+					Timeout:              gu.Ptr(10 * time.Second),
+					InterruptOnError:     gu.Ptr(true),
+					ExpirationSigningKey: true,
+					PayloadType:          target_domain.PayloadTypeJWE,
+				},
+				resourceOwner: "instance",
+			},
+			res{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Commands{
+				eventstore:                  tt.fields.eventstore(t),
+				newEncryptedCodeWithDefault: tt.fields.newEncryptedCodeWithDefault,
+				defaultSecretGenerators:     tt.fields.defaultSecretGenerators,
+				denyList:                    tt.fields.denyList,
+				ipLookupFunction:            tt.fields.lookupFunc,
+			}
+			_, err := c.ChangeTarget(tt.args.ctx, tt.args.change, tt.args.resourceOwner)
+			if tt.res.err == nil {
+				assert.NoError(t, err)
+			}
+			if tt.res.err != nil && !tt.res.err(err) {
+				t.Errorf("got wrong err: %v ", err)
+			}
+		})
+	}
+}
+
+func TestCommands_DeleteTarget(t *testing.T) {
+	type fields struct {
+		eventstore func(t *testing.T) *eventstore.Eventstore
+	}
+	type args struct {
+		ctx           context.Context
+		id            string
+		resourceOwner string
+	}
+	type res struct {
+		err func(error) bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		res    res
+	}{
+		{
+			"id missing, error",
+			fields{
+				eventstore: expectEventstore(),
+			},
+			args{
+				ctx:           context.Background(),
+				id:            "",
+				resourceOwner: "instance",
+			},
+			res{
+				err: zerrors.IsErrorInvalidArgument,
+			},
+		},
+		{
+			"not found, error",
+			fields{
+				eventstore: expectEventstore(
+					expectFilter(),
+				),
+			},
+			args{
+				ctx:           context.Background(),
+				id:            "id1",
+				resourceOwner: "instance",
+			},
+			res{},
+		},
+		{
+			"remove ok",
+			fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							targetAddEvent("id1", "instance"),
+						),
+					),
+					expectPush(
+						target.NewRemovedEvent(context.Background(),
+							target.NewAggregate("id1", "instance"),
+							"name",
+						),
+					),
+				),
+			},
+			args{
+				ctx:           context.Background(),
+				id:            "id1",
+				resourceOwner: "instance",
+			},
+			res{},
+		},
+		{
+			"already removed",
+			fields{
+				eventstore: expectEventstore(
+					expectFilter(
+						eventFromEventPusher(
+							targetAddEvent("id1", "instance"),
+						),
+						eventFromEventPusher(
+							target.NewRemovedEvent(context.Background(),
+								target.NewAggregate("id1", "instance"),
+								"name",
+							),
+						),
+					),
+				),
+			},
+			args{
+				ctx:           context.Background(),
+				id:            "id1",
+				resourceOwner: "instance",
+			},
+			res{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Commands{
+				eventstore: tt.fields.eventstore(t),
+			}
+			_, err := c.DeleteTarget(tt.args.ctx, tt.args.id, tt.args.resourceOwner)
+			if tt.res.err == nil {
+				assert.NoError(t, err)
+			}
+			if tt.res.err != nil && !tt.res.err(err) {
+				t.Errorf("got wrong err: %v ", err)
+			}
+		})
+	}
+}

@@ -1,0 +1,185 @@
+package gerrors
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"strings"
+
+	"connectrpc.com/connect"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/zitadel/sloggcp"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/protoadapt"
+	"google.golang.org/protobuf/types/known/structpb"
+
+	"github.com/zitadel/zitadel/backend/v3/instrumentation/logging"
+	commandErrors "github.com/zitadel/zitadel/internal/command/errors"
+	"github.com/zitadel/zitadel/internal/zerrors"
+	"github.com/zitadel/zitadel/pkg/grpc/error/v2"
+	"github.com/zitadel/zitadel/pkg/grpc/message"
+)
+
+func ZITADELToGRPCError(ctx context.Context, err error) error {
+	if err == nil {
+		return nil
+	}
+	if grpcStatus, ok := status.FromError(err); ok {
+		// Native gRPC status errors are already transport-safe and may carry details.
+		logging.Log(ctx, grpcStatusLevel(grpcStatus.Code()), grpcStatus.Message(), "err", err, "code", grpcStatus.Code())
+		return err
+	}
+
+	code, key, id, lvl := extractError(err)
+	msg := key
+	msg += " (" + id + ")"
+	logging.Log(ctx, lvl, msg, "err", err, "code", code)
+
+	errorInfo := getErrorInfo(ctx, id, key, err)
+
+	s, err := status.New(code, msg).WithDetails(errorInfo)
+	if err != nil {
+		logging.WithError(ctx, err).Debug("unable to add error detail")
+		return status.New(code, msg).Err()
+	}
+
+	return s.Err()
+}
+
+func ZITADELToConnectError(ctx context.Context, err error) error {
+	if err == nil {
+		return nil
+	}
+	connectError := new(connect.Error)
+	if errors.As(err, &connectError) {
+		// Connect error may be returned by other middlewares,
+		// so we assume it's a client error and log as warning.
+		logging.Warn(ctx, connectError.Message(), "err", connectError.Unwrap(), "code", connectError.Code())
+		return err
+	}
+	code, key, id, lvl := extractError(err)
+	msg := key
+	msg += " (" + id + ")"
+	logging.Log(ctx, lvl, msg, "err", err)
+
+	errorInfo := getErrorInfo(ctx, id, key, err)
+
+	cErr := connect.NewError(connect.Code(code), errors.New(msg))
+	if detail, detailErr := connect.NewErrorDetail(errorInfo.(proto.Message)); detailErr == nil {
+		cErr.AddDetail(detail)
+	}
+	return cErr
+}
+
+func ExtractZITADELError(err error) (code codes.Code, msg, id string) {
+	if err == nil {
+		return codes.OK, "", ""
+	}
+	code, msg, id, _ = extractError(err)
+	return code, msg, id
+}
+
+func extractError(err error) (c codes.Code, msg, id string, lvl slog.Level) {
+	connErr := new(pgconn.ConnectError)
+	if ok := errors.As(err, &connErr); ok {
+		return codes.Internal, "db connection error", "", slog.LevelError
+	}
+	if grpcStatus, ok := status.FromError(err); ok {
+		return grpcStatus.Code(), grpcStatus.Message(), "", grpcStatusLevel(grpcStatus.Code())
+	}
+	zitadelErr, ok := zerrors.AsZitadelError(err)
+	if !ok {
+		return codes.Unknown, err.Error(), "", slog.LevelError
+	}
+	msg, id = zitadelErr.GetMessage(), zitadelErr.GetID()
+
+	switch zitadelErr.Kind {
+	case zerrors.KindAlreadyExists:
+		c, lvl = codes.AlreadyExists, slog.LevelWarn
+	case zerrors.KindDeadlineExceeded:
+		c, lvl = codes.DeadlineExceeded, slog.LevelError
+	case zerrors.KindInternal:
+		c, lvl = codes.Internal, slog.LevelError
+	case zerrors.KindInvalidArgument:
+		c, lvl = codes.InvalidArgument, slog.LevelWarn
+	case zerrors.KindNotFound:
+		c, lvl = codes.NotFound, slog.LevelWarn
+	case zerrors.KindPermissionDenied:
+		c, lvl = codes.PermissionDenied, slog.LevelWarn
+	case zerrors.KindPreconditionFailed:
+		c, lvl = codes.FailedPrecondition, slog.LevelWarn
+	case zerrors.KindUnauthenticated:
+		c, lvl = codes.Unauthenticated, slog.LevelWarn
+	case zerrors.KindUnavailable:
+		c, lvl = codes.Unavailable, slog.LevelError
+	case zerrors.KindUnimplemented:
+		c, lvl = codes.Unimplemented, slog.LevelInfo
+	case zerrors.KindResourceExhausted:
+		c, lvl = codes.ResourceExhausted, slog.LevelError
+	case zerrors.KindDataLoss:
+		c, lvl = codes.DataLoss, slog.LevelError
+	case zerrors.KindCanceled:
+		c, lvl = codes.Canceled, slog.LevelWarn
+	case zerrors.KindAborted:
+		c, lvl = codes.Aborted, slog.LevelError
+	case zerrors.KindOutOfRange:
+		c, lvl = codes.OutOfRange, slog.LevelWarn
+	case zerrors.KindUnknown:
+		c, lvl = codes.Unknown, slog.LevelError
+	default:
+		c, lvl = codes.Unknown, slog.LevelError
+	}
+	if id == zerrors.IDRecover {
+		lvl = sloggcp.LevelAlert
+	}
+	return c, msg, id, lvl
+}
+
+func grpcStatusLevel(code codes.Code) slog.Level {
+	switch code { //nolint:exhaustive
+	case codes.AlreadyExists,
+		codes.Canceled,
+		codes.FailedPrecondition,
+		codes.InvalidArgument,
+		codes.NotFound,
+		codes.OutOfRange,
+		codes.PermissionDenied,
+		codes.Unauthenticated:
+		return slog.LevelWarn
+	case codes.Unimplemented:
+		return slog.LevelInfo
+	default:
+		return slog.LevelError
+	}
+}
+
+func getErrorInfo(ctx context.Context, id, key string, err error) protoadapt.MessageV1 {
+	var wpe *commandErrors.WrongPasswordError
+	var zerr *zerrors.ZitadelError
+	if err != nil && errors.As(err, &wpe) {
+		return &message.CredentialsCheckError{Id: id, Message: key, FailedAttempts: wpe.FailedAttempts}
+	}
+	// Let's check the error is a zitadel error and does contain a slug, which should be the case for almost any error
+	// in the future, but not yet. In case it's not, we'll fall back to the old error details to prevent a breaking change.
+	if err != nil && errors.As(err, &zerr) && strings.Contains(zerr.GetID(), ".") {
+		if zerr.Details == nil {
+			return &errorpb.ErrorDetail{Slug: id, Message: key}
+		}
+		errDetails, err := zerr.GetDetails().MarshalJSON()
+		if err != nil {
+			logging.WithError(ctx, err).Error("unable to marshal error details")
+			return &errorpb.ErrorDetail{Slug: id, Message: key}
+		}
+
+		details := new(structpb.Struct)
+		err = details.UnmarshalJSON(errDetails)
+		if err != nil {
+			logging.WithError(ctx, err).Error("unable to unmarshal error details")
+			return &errorpb.ErrorDetail{Slug: id, Message: key}
+		}
+		return &errorpb.ErrorDetail{Slug: id, Message: key, Details: details}
+	}
+	return &message.ErrorDetail{Id: id, Message: key}
+}

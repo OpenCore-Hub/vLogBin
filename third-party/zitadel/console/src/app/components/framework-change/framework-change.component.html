@@ -1,0 +1,25 @@
+<div class="framework-change-wrapper">
+  <div class="framework-card-wrapper">
+    @if (framework | async; as framework) {
+      <div class="framework-card card">
+        <div>
+          @if (framework.imgSrcDark) {
+            <img class="dark-only" [src]="framework.imgSrcDark" />
+          }
+          @if (framework.imgSrcLight) {
+            <img class="light-only" [src]="framework.imgSrcLight" />
+          }
+        </div>
+        <span>{{ framework.title }}</span>
+      </div>
+    } @else {
+      <div class="framework-card card">
+        <span>{{ 'QUICKSTART.SELECT_FRAMEWORK' | translate }}</span>
+      </div>
+    }
+
+    <button (click)="openDialog()" mat-stroked-button>
+      {{ 'ACTIONS.CHANGE' | translate }}
+    </button>
+  </div>
+</div>

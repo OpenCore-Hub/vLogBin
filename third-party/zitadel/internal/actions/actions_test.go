@@ -1,0 +1,109 @@
+package actions
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/dop251/goja"
+
+	"github.com/zitadel/zitadel/internal/logstore"
+	"github.com/zitadel/zitadel/internal/logstore/record"
+)
+
+func TestRun(t *testing.T) {
+	SetLogstoreService(logstore.New[*record.ExecutionLog](nil, nil))
+	type args struct {
+		timeout time.Duration
+		api     apiFields
+		ctx     contextFields
+		script  string
+		name    string
+		opts    []Option
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr func(error) bool
+	}{
+		{
+			name: "simple script",
+			args: args{
+				api: nil,
+				script: `
+function testFunc() {
+	for (i = 0; i < 10; i++) {}
+}`,
+				name: "testFunc",
+				opts: []Option{},
+			},
+			wantErr: func(err error) bool { return err == nil },
+		},
+		{
+			name: "throw error",
+			args: args{
+				api:    nil,
+				script: "function testFunc() {throw 'some error'}",
+				name:   "testFunc",
+				opts:   []Option{},
+			},
+			wantErr: func(err error) bool {
+				gojaErr := new(goja.Exception)
+				if errors.As(err, &gojaErr) {
+					return gojaErr.Value().String() == "some error"
+				}
+				return false
+			},
+		},
+		{
+			name: "require file is disabled",
+			args: args{
+				api: nil,
+				script: `
+require('./some-file.js');
+function testFunc() {}`,
+				name: "testFunc",
+				opts: []Option{},
+			},
+			wantErr: func(err error) bool {
+				gojaErr := new(goja.Exception)
+				if errors.As(err, &gojaErr) {
+					return strings.Contains(gojaErr.Value().String(), ErrFileLoad.Error())
+				}
+				return false
+			},
+		},
+		{
+			name: "require custom module still possible",
+			args: args{
+				api: nil,
+				script: `
+require('zitadel/http');
+function testFunc() {}`,
+				name: "testFunc",
+				opts: []Option{
+					// We need to pass the option to allow loading the module via require('zitadel/http') in the script.
+					// Otherwise, the loader will assume it's a file and fail.
+					// No client is needed here, because the module is not used.
+					WithHTTP(context.Background(), nil),
+				},
+			},
+			wantErr: func(err error) bool { return err == nil },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.args.timeout == 0 {
+				tt.args.timeout = 10 * time.Second
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), tt.args.timeout)
+			if err := Run(ctx, tt.args.ctx, tt.args.api, tt.args.script, tt.args.name, tt.args.opts...); !tt.wantErr(err) {
+				t.Errorf("Run() unexpected error = (%[1]T) %[1]v", err)
+			}
+			cancel()
+		})
+	}
+}

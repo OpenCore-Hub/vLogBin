@@ -1,0 +1,36 @@
+<span class="title" mat-dialog-title>{{ 'USER.MACHINE.ADDED.TITLE' | translate }}</span>
+<div mat-dialog-content>
+  <cnsl-info-section class="desc" [type]="InfoSectionType.WARN">{{
+    'USER.MACHINE.ADDED.DESCRIPTION' | translate
+  }}</cnsl-info-section>
+  @if (keyResponse) {
+    <div class="row">
+      <p class="left cnsl-secondary-text">{{ 'USER.MACHINE.ID' | translate }}</p>
+      <p class="right">{{ $any(keyResponse)?.id }}</p>
+      <p class="right">{{ $any(keyResponse)?.keyId }}</p>
+    </div>
+    <div class="row">
+      <p class="left cnsl-secondary-text">{{ 'USER.MACHINE.CREATIONDATE' | translate }}</p>
+      @if (keyResponse.details && keyResponse.details.creationDate) {
+        <p class="right">
+          {{ keyResponse.details.creationDate | timestampToDate | localizedDate: 'EEE dd. MMM yyyy, HH:mm' }}
+        </p>
+      }
+    </div>
+    @if (expirationDate) {
+      <div class="row">
+        <p class="left cnsl-secondary-text">{{ 'USER.MACHINE.EXPIRATIONDATE' | translate }}</p>
+        <p class="right">
+          {{ expirationDate | localizedDate: 'EEE dd. MMM yyyy, HH:mm' }}
+        </p>
+      </div>
+    }
+    <button class="download-button" mat-stroked-button color="primary" (click)="saveFile()">Download</button>
+  }
+</div>
+<div mat-dialog-actions class="action">
+  <span class="fill-space"></span>
+  <button color="primary" mat-raised-button class="ok-button" (click)="closeDialog()">
+    {{ 'ACTIONS.CLOSE' | translate }}
+  </button>
+</div>

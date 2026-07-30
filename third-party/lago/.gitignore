@@ -1,0 +1,12 @@
+*.code-workspace
+.DS_Store
+.env
+.env.development
+.rsa_private.pem
+.vscode
+.zed
+/extra/ssl/certbot
+/extra/ssl/dhparam.pem
+/extra/ssl/nginx*
+/traefik/certs/*
+/deploy/letsencrypt

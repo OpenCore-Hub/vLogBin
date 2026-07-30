@@ -1,0 +1,81 @@
+@if (type !== ActionKeysType.ORGSWITCHER && (isHandset$ | async) === false) {
+  <div class="action-keys-wrapper" [ngClass]="{ 'without-margin': withoutMargin, 'no-contrast-mode': doNotUseContrast }">
+    @switch (type) {
+      @case (ActionKeysType.CLEAR) {
+        <div class="action-keys-row">
+          <div class="action-key esc">
+            <div class="key-overlay"></div>
+            <span>ESC</span>
+          </div>
+        </div>
+      }
+      @case (ActionKeysType.ADD) {
+        <div class="action-keys-row" data-e2e="action-key-add">
+          <div class="action-key">
+            <div class="key-overlay"></div>
+            <span>N</span>
+          </div>
+        </div>
+      }
+      @case (ActionKeysType.DELETE) {
+        <div class="action-keys-row">
+          <div class="action-key">
+            <div class="key-overlay"></div>
+            @if (isMacLike || isIOS) {
+              <span>⌘</span>
+            } @else {
+              <span>crtl</span>
+            }
+          </div>
+          +
+          <div class="action-key">
+            <div class="key-overlay"></div>
+            <span>BS</span>
+          </div>
+        </div>
+      }
+      @case (ActionKeysType.DEACTIVATE) {
+        <div class="action-keys-row">
+          <div class="action-key">
+            <div class="key-overlay"></div>
+            @if (isMacLike || isIOS) {
+              <span>⌘</span>
+            } @else {
+              <span>crtl</span>
+            }
+          </div>
+          +
+          <div class="action-key">
+            <div class="key-overlay"></div>
+            <span>↓</span>
+          </div>
+        </div>
+      }
+      @case (ActionKeysType.REACTIVATE) {
+        <div class="action-keys-row">
+          <div class="action-key">
+            <div class="key-overlay"></div>
+            @if (isMacLike || isIOS) {
+              <span>⌘</span>
+            } @else {
+              <span>crtl</span>
+            }
+          </div>
+          +
+          <div class="action-key">
+            <div class="key-overlay"></div>
+            <span>↑</span>
+          </div>
+        </div>
+      }
+      @case (ActionKeysType.FILTER) {
+        <div class="action-keys-row">
+          <div class="action-key">
+            <div class="key-overlay"></div>
+            <span>F</span>
+          </div>
+        </div>
+      }
+    }
+  </div>
+}

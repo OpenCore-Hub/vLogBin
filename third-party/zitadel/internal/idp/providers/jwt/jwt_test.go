@@ -1,0 +1,238 @@
+package jwt
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
+	"github.com/zitadel/zitadel/internal/crypto"
+	"github.com/zitadel/zitadel/internal/idp"
+)
+
+func TestProvider_BeginAuth(t *testing.T) {
+	type fields struct {
+		name          string
+		issuer        string
+		jwtEndpoint   string
+		keysEndpoint  string
+		headerName    string
+		audience      string
+		encryptionAlg func(t *testing.T) crypto.EncryptionAlgorithm
+	}
+	type args struct {
+		state  string
+		params []idp.Parameter
+	}
+	type want struct {
+		session idp.Session
+		err     func(error) bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		want   want
+	}{
+		{
+			name: "missing state, error",
+			fields: fields{
+				issuer:       "https://jwt.com",
+				jwtEndpoint:  "https://auth.com/jwt",
+				keysEndpoint: "https://jwt.com/keys",
+				headerName:   "jwt-header",
+				audience:     "audience",
+				encryptionAlg: func(t *testing.T) crypto.EncryptionAlgorithm {
+					return crypto.CreateMockEncryptionAlg(gomock.NewController(t))
+				},
+			},
+			args: args{
+				state:  "",
+				params: nil,
+			},
+			want: want{
+				err: func(err error) bool {
+					return errors.Is(err, ErrMissingState)
+				},
+			},
+		},
+		{
+			name: "missing userAgentID, fallback to state",
+			fields: fields{
+				issuer:       "https://jwt.com",
+				jwtEndpoint:  "https://auth.com/jwt",
+				keysEndpoint: "https://jwt.com/keys",
+				headerName:   "jwt-header",
+				audience:     "audience",
+				encryptionAlg: func(t *testing.T) crypto.EncryptionAlgorithm {
+					return crypto.CreateMockEncryptionAlg(gomock.NewController(t))
+				},
+			},
+			args: args{
+				state:  "testState",
+				params: nil,
+			},
+			want: want{
+				session: &Session{AuthURL: "https://auth.com/jwt?authRequestID=testState&userAgentID=dGVzdFN0YXRl"},
+			},
+		},
+		{
+			name: "successful auth",
+			fields: fields{
+				issuer:       "https://jwt.com",
+				jwtEndpoint:  "https://auth.com/jwt",
+				keysEndpoint: "https://jwt.com/keys",
+				headerName:   "jwt-header",
+				audience:     "audience",
+				encryptionAlg: func(t *testing.T) crypto.EncryptionAlgorithm {
+					return crypto.CreateMockEncryptionAlg(gomock.NewController(t))
+				},
+			},
+			args: args{
+				state: "testState",
+				params: []idp.Parameter{
+					idp.UserAgentID("agent"),
+				},
+			},
+			want: want{
+				session: &Session{AuthURL: "https://auth.com/jwt?authRequestID=testState&userAgentID=YWdlbnQ"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := assert.New(t)
+
+			provider, err := New(
+				tt.fields.name,
+				tt.fields.issuer,
+				tt.fields.jwtEndpoint,
+				tt.fields.keysEndpoint,
+				tt.fields.headerName,
+				tt.fields.audience,
+				tt.fields.encryptionAlg(t),
+				http.DefaultClient,
+			)
+			require.NoError(t, err)
+
+			ctx := context.Background()
+			session, err := provider.BeginAuth(ctx, tt.args.state, tt.args.params...)
+			if tt.want.err != nil && !tt.want.err(err) {
+				a.Fail("invalid error", err)
+			}
+			if tt.want.err == nil {
+				a.NoError(err)
+				wantAuth, wantErr := tt.want.session.GetAuth(ctx)
+				gotAuth, gotErr := session.GetAuth(ctx)
+				a.Equal(wantAuth, gotAuth)
+				a.ErrorIs(gotErr, wantErr)
+			}
+		})
+	}
+}
+
+func TestProvider_Options(t *testing.T) {
+	type fields struct {
+		name          string
+		issuer        string
+		jwtEndpoint   string
+		keysEndpoint  string
+		headerName    string
+		audience      string
+		encryptionAlg func(t *testing.T) crypto.EncryptionAlgorithm
+		opts          []ProviderOpts
+	}
+	type want struct {
+		name            string
+		linkingAllowed  bool
+		creationAllowed bool
+		autoCreation    bool
+		autoUpdate      bool
+		pkce            bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   want
+	}{
+		{
+			name: "default",
+			fields: fields{
+				name:         "jwt",
+				issuer:       "https://jwt.com",
+				jwtEndpoint:  "https://auth.com/jwt",
+				keysEndpoint: "https://jwt.com/keys",
+				headerName:   "jwt-header",
+				audience:     "audience",
+				encryptionAlg: func(t *testing.T) crypto.EncryptionAlgorithm {
+					return crypto.CreateMockEncryptionAlg(gomock.NewController(t))
+				},
+				opts: nil,
+			},
+			want: want{
+				name:            "jwt",
+				linkingAllowed:  false,
+				creationAllowed: false,
+				autoCreation:    false,
+				autoUpdate:      false,
+				pkce:            false,
+			},
+		},
+		{
+			name: "all true",
+			fields: fields{
+				name:         "jwt",
+				issuer:       "https://jwt.com",
+				jwtEndpoint:  "https://auth.com/jwt",
+				keysEndpoint: "https://jwt.com/keys",
+				headerName:   "jwt-header",
+				audience:     "audience",
+				encryptionAlg: func(t *testing.T) crypto.EncryptionAlgorithm {
+					return crypto.CreateMockEncryptionAlg(gomock.NewController(t))
+				},
+				opts: []ProviderOpts{
+					WithLinkingAllowed(),
+					WithCreationAllowed(),
+					WithAutoCreation(),
+					WithAutoUpdate(),
+				},
+			},
+			want: want{
+				name:            "jwt",
+				linkingAllowed:  true,
+				creationAllowed: true,
+				autoCreation:    true,
+				autoUpdate:      true,
+				pkce:            true,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := assert.New(t)
+
+			provider, err := New(
+				tt.fields.name,
+				tt.fields.issuer,
+				tt.fields.jwtEndpoint,
+				tt.fields.keysEndpoint,
+				tt.fields.headerName,
+				tt.fields.audience,
+				tt.fields.encryptionAlg(t),
+				http.DefaultClient,
+				tt.fields.opts...,
+			)
+			require.NoError(t, err)
+
+			a.Equal(tt.want.name, provider.Name())
+			a.Equal(tt.want.linkingAllowed, provider.IsLinkingAllowed())
+			a.Equal(tt.want.creationAllowed, provider.IsCreationAllowed())
+			a.Equal(tt.want.autoCreation, provider.IsAutoCreation())
+			a.Equal(tt.want.autoUpdate, provider.IsAutoUpdate())
+		})
+	}
+}

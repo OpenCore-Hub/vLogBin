@@ -1,0 +1,16 @@
+<div class="app-type-radio-button-wrapper">
+  @for (type of types; track type) {
+    <input class="app" type="radio" (change)="emitChange()" [value]="type" [(ngModel)]="selected" [id]="type.prefix" />
+    <label class="cnsl-type-radio-button" [for]="type.prefix">
+      <div class="cnsl-type-radio-header" [ngStyle]="{ background: type.background }">
+        <span>{{ type.prefix }}</span>
+      </div>
+      <p>{{ type.titleI18nKey | translate }}</p>
+      <p class="type-desc cnsl-secondary-text">{{ type.descI18nKey | translate }}</p>
+      <span class="fill-space"></span>
+      @if (type.protocol) {
+        <span class="cnsl-type-protocol state">{{ type.protocol }}</span>
+      }
+    </label>
+  }
+</div>

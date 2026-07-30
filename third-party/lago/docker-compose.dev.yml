@@ -1,0 +1,597 @@
+name: lago_dev
+configs:
+  redis-sentinel-conf:
+    file: ./extra/redis/sentinel.dev.conf
+volumes:
+  front_node_modules_dev:
+  front_dist_dev:
+  postgres_data_dev:
+  redis_data_dev:
+  redis_replica_data_dev:
+  redpanda_data_dev:
+  clickhouse_data_dev:
+  meilisearch_data_dev:
+
+services:
+  traefik:
+    image: traefik:v3
+    container_name: lago_traefik_dev
+    restart: unless-stopped
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml
+      - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml
+      - ./traefik/certs:/etc/certs
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.lago.dev`)"
+      - "traefik.http.routers.traefik.entrypoints=web,websecure"
+      - "traefik.http.routers.traefik.tls=true"
+      - "traefik.http.services.traefik.loadbalancer.server.port=8080"
+
+  db:
+    image: "getlago/postgres-partman:15.0-alpine"
+    container_name: lago_db_dev
+    restart: unless-stopped
+    command: -c config_file=/etc/postgresql.conf
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lago}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      PGDATA: /data/postgres
+      POSTGRES_MULTIPLE_DATABASES: lago,lago_test
+    volumes:
+      - ./scripts/postgresql.conf:/etc/postgresql.conf
+      - ./scripts/pg-init-scripts:/docker-entrypoint-initdb.d
+      - postgres_data_dev:/data/postgres
+    ports:
+      - 5432:5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lago}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: lago_redis_dev
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - >
+          redis-server --enable-debug-command local
+          $${REDIS_PASSWORD:+--requirepass "$$REDIS_PASSWORD"}
+    env_file:
+      - path: ./.env.development.default
+      - path: ./.env.development
+        required: false
+    volumes:
+      - redis_data_dev:/data
+    ports:
+      - 6379:6379
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli $${REDIS_PASSWORD:+-a \"$$REDIS_PASSWORD\"} ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  front:
+    image: front_dev
+    pull_policy: never
+    container_name: lago_front_dev
+    stdin_open: true
+    restart: unless-stopped
+    depends_on:
+      - api
+    build:
+      context: ./front
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./front:/app:cached
+      - front_node_modules_dev:/app/node_modules
+      - front_dist_dev:/app/dist
+    environment:
+      - NODE_ENV=development
+      - API_URL=https://api.lago.dev
+      - APP_DOMAIN=https://app.lago.dev
+      - CODEGEN_API=http://api:3000/graphql
+      - LAGO_DISABLE_SIGNUP=${LAGO_DISABLE_SIGNUP:-}
+      - LAGO_DISABLE_PDF_GENERATION=${LAGO_DISABLE_PDF_GENERATION:-false}
+      - NANGO_SECRET_KEY=${NANGO_SECRET_KEY:-}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=Host(`app.lago.dev`)"
+      - "traefik.http.routers.app.entrypoints=web,websecure"
+      - "traefik.http.routers.app.tls=true"
+      - "traefik.http.services.app.loadbalancer.server.port=8080"
+
+  webhook:
+    image: ghcr.io/tarampampam/webhook-tester:2
+    container_name: lago_webhook_dev
+    restart: unless-stopped
+    environment:
+      - HTTP_PORT=80
+      - AUTO_CREATE_SESSIONS=true
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.webhook.rule=Host(`webhook.lago.dev`)"
+      - "traefik.http.routers.webhook.entrypoints=web,websecure"
+      - "traefik.http.routers.webhook.tls=true"
+      - "traefik.http.services.webhook.loadbalancer.server.port=80"
+
+  migrate:
+    container_name: lago-migrate_dev
+    image: api_dev
+    pull_policy: never
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    command: ["./scripts/migrate.dev.sh"]
+    build:
+      context: ./api
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./api:/app:delegated
+    env_file:
+      - path: ./.env.development.default
+      - path: ./.env.development
+        required: false
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-lago}:${POSTGRES_PASSWORD:-changeme}@db:5432/${POSTGRES_DB:-lago}
+
+  api:
+    image: api_dev
+    pull_policy: never
+    container_name: lago_api_dev
+    restart: unless-stopped
+    command: ["./scripts/start.dev.sh"]
+    healthcheck:
+      test: curl -f http://localhost:3000/health || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    volumes:
+      - ./api:/app:cached
+    env_file:
+      - path: ./.env.development.default
+      - path: ./.env.development
+        required: false
+    stdin_open: true
+    tty: true
+    environment:
+      - DATABASE_TEST_URL=postgresql://${POSTGRES_USER:-lago}:${POSTGRES_PASSWORD:-changeme}@db:5432/lago_test
+      - GOOGLE_AUTH_CLIENT_ID=${GOOGLE_AUTH_CLIENT_ID:-}
+      - GOOGLE_AUTH_CLIENT_SECRET=${GOOGLE_AUTH_CLIENT_SECRET:-}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api_http.rule=Host(`api.lago.dev`)"
+      - "traefik.http.routers.api_http.entrypoints=web"
+      - "traefik.http.routers.api_http.service=api_http"
+      - "traefik.http.services.api_http.loadbalancer.server.port=3000"
+      - "traefik.http.routers.api.rule=Host(`api.lago.dev`)"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.service=api"
+      - "traefik.http.routers.api.tls=true"
+      - "traefik.http.services.api.loadbalancer.server.port=3000"
+
+  api-worker: &api_worker
+    image: api_dev
+    pull_policy: never
+    container_name: lago_api_worker
+    restart: unless-stopped
+    command: bash -c "bundle install && ./scripts/start.worker.sh"
+    depends_on:
+      api:
+        condition: service_started
+    volumes:
+      - ./api:/app:cached
+    env_file:
+      - path: ./.env.development.default
+      - path: ./.env.development
+        required: false
+    stdin_open: true
+    tty: true
+
+  api-events-worker:
+    <<: *api_worker
+    container_name: lago_api_events_worker_dev
+    command: |
+      bash -c '
+        if [[ -n "$${SIDEKIQ_CONCURRENCY_EVENTS}" ]]; then
+          export SIDEKIQ_CONCURRENCY=$${SIDEKIQ_CONCURRENCY_EVENTS}
+        fi
+        bundle install && ./scripts/start.events.worker.sh
+      '
+
+  api-pdfs-worker:
+    <<: *api_worker
+    container_name: lago_api_pdfs_worker_dev
+    command: |
+      bash -c '
+        if [[ -n "$${SIDEKIQ_CONCURRENCY_PDFS}" ]]; then
+          export SIDEKIQ_CONCURRENCY=$${SIDEKIQ_CONCURRENCY_PDFS}
+        fi
+        bundle install && ./scripts/start.pdfs.worker.sh
+      '
+
+  api-billing-worker:
+    <<: *api_worker
+    container_name: lago_api_billing_worker_dev
+    command: |
+      bash -c '
+        if [[ -n "$${SIDEKIQ_CONCURRENCY_BILLING}" ]]; then
+          export SIDEKIQ_CONCURRENCY=$${SIDEKIQ_CONCURRENCY_BILLING}
+        fi
+        bundle install && ./scripts/start.billing.worker.sh
+      '
+
+  api-clock-worker:
+    <<: *api_worker
+    container_name: lago_api_clock_worker_dev
+    command: |
+      bash -c '
+        if [[ -n "$${SIDEKIQ_CONCURRENCY_CLOCK}" ]]; then
+          export SIDEKIQ_CONCURRENCY=$${SIDEKIQ_CONCURRENCY_CLOCK}
+        fi
+        bundle install && ./scripts/start.clock.worker.sh
+      '
+
+  api-webhook-worker:
+    <<: *api_worker
+    container_name: lago_api_webhook_worker_dev
+    command: |
+      bash -c '
+        if [[ -n "$${SIDEKIQ_CONCURRENCY_WEBHOOK}" ]]; then
+          export SIDEKIQ_CONCURRENCY=$${SIDEKIQ_CONCURRENCY_WEBHOOK}
+        fi
+        bundle install && ./scripts/start.webhook.worker.sh
+      '
+
+  api-analytics-worker:
+    <<: *api_worker
+    container_name: lago_api_analytics_worker_dev
+    command: |
+      bash -c '
+        if [[ -n "$${SIDEKIQ_CONCURRENCY_ANALYTICS}" ]]; then
+          export SIDEKIQ_CONCURRENCY=$${SIDEKIQ_CONCURRENCY_ANALYTICS}
+        fi
+        bundle install && ./scripts/start.analytics.worker.sh
+      '
+
+  api-ai-agent-worker:
+    <<: *api_worker
+    container_name: lago_api_ai_agent_worker_dev
+    command: |
+      bash -c '
+        if [[ -n "$${SIDEKIQ_CONCURRENCY_AI_AGENT}" ]]; then
+          export SIDEKIQ_CONCURRENCY=$${SIDEKIQ_CONCURRENCY_AI_AGENT}
+        fi
+        bundle install && ./scripts/start.ai_agent.worker.sh
+      '
+
+  api-clock:
+    image: api_dev
+    pull_policy: never
+    container_name: lago_api_clock_dev
+    restart: unless-stopped
+    command: bash -c "bundle install && ./scripts/start.clock.sh"
+    depends_on:
+      api:
+        condition: service_started
+    volumes:
+      - ./api:/app:cached
+    env_file:
+      - path: ./.env.development.default
+      - path: ./.env.development
+        required: false
+
+  api-events-consumer:
+    <<: *api_worker
+    container_name: lago_api_events_consumer_dev
+    command: bash -c "bundle install && ./scripts/start.events.consumer.sh"
+
+  events-processor:
+    image: events-processor_dev
+    pull_policy: never
+    container_name: lago_events-processor
+    restart: unless-stopped
+    build:
+      context: ./events-processor
+      dockerfile: Dockerfile.dev
+    depends_on:
+      db:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - path: ./.env.development.default
+      - path: ./.env.development
+        required: false
+    volumes:
+      - ./events-processor:/app:cached
+
+  pdf:
+    image: getlago/lago-gotenberg:8
+    container_name: lago_pdf_dev
+    restart: unless-stopped
+    command:
+      - "gotenberg"
+      - "--log-level=debug"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pdf.rule=Host(`pdf.lago.dev`)"
+      - "traefik.http.routers.pdf.entrypoints=web,websecure"
+      - "traefik.http.routers.pdf.tls=true"
+      - "traefik.http.services.pdf.loadbalancer.server.port=3000"
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: lago_mailhog_dev
+    restart: unless-stopped
+    platform: linux/amd64
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mail.rule=Host(`mail.lago.dev`)"
+      - "traefik.http.routers.mail.entrypoints=websecure"
+      - "traefik.http.routers.mail.tls=true"
+      - "traefik.http.services.mail.loadbalancer.server.port=8025"
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v25.2.10
+    container_name: lago_redpanda_dev
+    restart: unless-stopped
+    hostname: redpanda
+    command:
+      - redpanda start
+      - --smp 1
+      - --overprovisioned
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+    volumes:
+      - redpanda_data_dev:/var/lib/redpanda/data
+    ports:
+      - 9092:9092
+      - 19092:19092
+    healthcheck:
+      test: ["CMD", "curl", "http://localhost:9644/v1/status/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redpandacreatetopics:
+    image: docker.redpanda.com/redpandadata/redpanda:v25.2.10
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    # https://github.com/redpanda-data/redpanda/issues/6651
+    entrypoint: create-topics
+    command:
+      - events-raw
+      - events_enriched
+      - events_charged_in_advance
+      - events_enriched_expanded
+      - events_dead_letter
+      - activity_logs
+      - api_logs
+      - security_logs
+    volumes:
+      - ./scripts/create-topics.sh:/usr/local/bin/create-topics
+    environment:
+      - RPK_BROKERS=redpanda:9092
+
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:v3.2.2
+    container_name: lago_redpanda_console_dev
+    entrypoint: /bin/sh
+    command: -c 'echo "$$CONSOLE_CONFIG_FILE" > /tmp/config.yml; /app/console'
+    environment:
+      CONFIG_FILEPATH: /tmp/config.yml
+      CONSOLE_CONFIG_FILE: |
+        kafka:
+          brokers: ["redpanda:9092"]
+        kafkaConnect:
+          enabled: true
+          clusters:
+            - name: lago-kafka-connect
+              url: http://redpanda-kafka-connect:8083
+    depends_on:
+      - redpanda
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.console.rule=Host(`console.lago.dev`)"
+      - "traefik.http.routers.console.entrypoints=websecure"
+      - "traefik.http.routers.console.tls=true"
+      - "traefik.http.services.console.loadbalancer.server.port=8080"
+
+  redpanda-kafka-connect:
+    image: docker.redpanda.com/redpandadata/connectors:latest
+    hostname: redpanda-kafka-connect
+    volumes:
+      - ./extra/kafka-connect:/opt/kafka/connect-plugins
+    ports:
+      - 8083:8083
+    environment:
+      CONNECT_CONFIGURATION: |
+        key.converter=org.apache.kafka.connect.converters.ByteArrayConverter
+        value.converter=org.apache.kafka.connect.converters.ByteArrayConverter
+        group.id=redpanda-kafka-connect-group
+        offset.storage.topic=_connectors_offsets
+        config.storage.topic=_connectors_configs
+        status.storage.topic=_connectors_status
+        config.storage.replication.factor=-1
+        offset.storage.replication.factor=-1
+        status.storage.replication.factor=-1
+      CONNECT_BOOTSTRAP_SERVERS: redpanda:9092
+      CONNECT_GC_LOG_ENABLED: "true"
+      CONNECT_HEAP_OPTS: -Xms1G -Xmx1G
+      CONNECT_METRICS_ENABLEd: "false"
+      CONNECT_PLUGIN_PATH: "/opt/kafka/connect-plugins"
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.2-alpine
+    container_name: lago_clickhouse_dev
+    restart: unless-stopped
+    hostname: clickhouse
+    user: "101:101"
+    depends_on:
+      db:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redpandacreatetopics:
+        condition: service_completed_successfully
+    volumes:
+      - clickhouse_data_dev:/var/lib/clickhouse
+      - ./extra/clickhouse/config.d/config.xml:/etc/clickhouse-server/config.d/config.xml
+      - ./extra/clickhouse/users.d/users.xml:/etc/clickhouse-server/users.d/users.xml
+    ports:
+      - 9000:9000
+      # - 8123:8123
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "clickhouse-client",
+          "--password",
+          "default",
+          "--query",
+          "SELECT 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.49
+    container_name: lago_meilisearch_dev
+    restart: unless-stopped
+    hostname: meilisearch
+    env_file:
+      - path: ./.env.development.default
+      - path: ./.env.development
+        required: false
+    environment:
+      - MEILI_ENV=development
+      - MEILI_MASTER_KEY=${LAGO_MEILISEARCH_API_KEY:-masterKeyChangeMe}
+      - MEILI_NO_ANALYTICS=true
+    volumes:
+      - meilisearch_data_dev:/meili_data
+    ports:
+      - 7700:7700
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:7700/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.meilisearch.rule=Host(`meilisearch.lago.dev`)"
+      - "traefik.http.routers.meilisearch.entrypoints=web,websecure"
+      - "traefik.http.routers.meilisearch.tls=true"
+      - "traefik.http.services.meilisearch.loadbalancer.server.port=7700"
+
+  pghero:
+    image: ankane/pghero:latest
+    container_name: lago_pghero_dev
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-lago}:${POSTGRES_PASSWORD:-changeme}@db:5432/${POSTGRES_DB:-lago}
+    env_file:
+      - path: ./.env.development.default
+      - path: ./.env.development
+        required: false
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: wget -O /dev/null http://0.0.0.0:8080/health || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pghero.rule=Host(`pghero.lago.dev`)"
+      - "traefik.http.routers.pghero.entrypoints=web,websecure"
+      - "traefik.http.routers.pghero.tls=true"
+      - "traefik.http.services.pghero.loadbalancer.server.port=8080"
+
+  redis-replica:
+    command: ["sh", "-c", "redis-server --replicaof redis 6379 $${REDIS_PASSWORD:+--requirepass \"$$REDIS_PASSWORD\" --masterauth \"$$REDIS_PASSWORD\"}"]
+    container_name: lago_redis_replica_dev
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - path: ./.env.development.default
+      - path: ./.env.development
+        required: false
+    healthcheck:
+      interval: 10s
+      retries: 3
+      test: ["CMD-SHELL", "redis-cli $${REDIS_PASSWORD:+-a \"$$REDIS_PASSWORD\"} ping"]
+      timeout: 3s
+    image: redis:7-alpine
+    profiles:
+      - redis-sentinel
+    restart: unless-stopped
+    volumes:
+      - redis_replica_data_dev:/data
+
+  redis-sentinel-1: &redis-sentinel
+  # Sentinel requires write to the configuration file so we cannot use volume for it, we need to copy it to the container and then run sentinel with the copied file.
+    command: >-
+      sh -c 'cp /tmp/sentinel.conf /etc/sentinel.conf &&
+      if [ -n "$$REDIS_PASSWORD" ]; then echo "sentinel auth-pass master $$REDIS_PASSWORD" >> /etc/sentinel.conf; fi &&
+      redis-sentinel /etc/sentinel.conf'
+    configs:
+      - source: redis-sentinel-conf
+        target: /tmp/sentinel.conf
+    container_name: lago_redis_sentinel_1_dev
+    depends_on:
+      redis:
+        condition: service_healthy
+      redis-replica:
+        condition: service_healthy
+    env_file:
+      - path: ./.env.development.default
+      - path: ./.env.development
+        required: false
+    healthcheck:
+      interval: 10s
+      retries: 3
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      timeout: 3s
+    image: redis:7-alpine
+    profiles:
+      - redis-sentinel
+    restart: unless-stopped
+
+  redis-sentinel-2:
+    <<: *redis-sentinel
+    container_name: lago_redis_sentinel_2_dev
+
+  redis-sentinel-3:
+    <<: *redis-sentinel
+    container_name: lago_redis_sentinel_3_dev

@@ -1,0 +1,14 @@
+# buf.gen.yaml
+version: v1
+managed:
+  enabled: true
+plugins:
+  - plugin: js
+    out: src/app/proto/generated
+    opt: import_style=commonjs,binary
+  - plugin: grpc-web
+    out: src/app/proto/generated
+    opt: import_style=typescript,mode=grpcweb
+  - plugin: openapiv2
+    out: src/app/proto/generated
+    opt: allow_delete_body

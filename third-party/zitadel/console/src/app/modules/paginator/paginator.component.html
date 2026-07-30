@@ -1,0 +1,47 @@
+<div class="paginator-wrapper">
+  <div class="col">
+    <p class="length">
+      <span>{{ length }} </span>{{ 'PAGINATOR.COUNT' | translate }}
+    </p>
+    @if (timestamp) {
+      <p class="ts cnsl-secondary-text" data-e2e="timestamp">
+        {{ timestamp | timestampToDate | localizedDate: 'EEEE dd. MMM yyyy, HH:mm' }}
+      </p>
+    }
+  </div>
+  <span class="fill-space"></span>
+  @if (!hidePagination) {
+    <span class="pos cnsl-secondary-text">{{ startIndex }} - {{ endIndex }} </span>
+  }
+  @if (!hidePagination) {
+    <div class="row">
+      <cnsl-form-field class="size">
+        <mat-select class="paginator-select" [value]="pageSize" (selectionChange)="updatePageSize($event.value)">
+          @for (sizeOption of pageSizeOptions; track sizeOption) {
+            <mat-option [value]="sizeOption">
+              {{ sizeOption }}
+            </mat-option>
+          }
+        </mat-select>
+      </cnsl-form-field>
+      @if (previousPossible) {
+        <button (click)="previous()" [disabled]="!previousPossible" mat-stroked-button>
+          {{ 'PAGINATOR.PREVIOUS' | translate }}
+        </button>
+      }
+      @if (nextPossible) {
+        <button (click)="next()" [disabled]="!nextPossible" mat-stroked-button>
+          {{ 'PAGINATOR.NEXT' | translate }}
+        </button>
+      }
+    </div>
+  }
+
+  @if (showMoreButton) {
+    <div class="row">
+      <button (click)="moreRequested.emit()" mat-stroked-button [disabled]="disableShowMore">
+        {{ 'PAGINATOR.MORE' | translate }}
+      </button>
+    </div>
+  }
+</div>

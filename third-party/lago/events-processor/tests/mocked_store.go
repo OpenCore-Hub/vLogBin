@@ -1,0 +1,41 @@
+package tests
+
+import (
+	"testing"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"gorm.io/driver/postgres"
+
+	"github.com/getlago/lago/events-processor/config/database"
+)
+
+type MockedStore struct {
+	DB      *database.DB
+	SQLMock sqlmock.Sqlmock
+}
+
+func SetupMockStore(t *testing.T) (*MockedStore, func()) {
+	mockDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock database: %v", err)
+	}
+
+	dialector := postgres.New(postgres.Config{
+		Conn:       mockDB,
+		DriverName: "postgres",
+	})
+
+	db, err := database.OpenConnection(dialector)
+	if err != nil {
+		t.Fatalf("Failed to open gorm connection: %v", err)
+	}
+
+	mockedStore := &MockedStore{
+		DB:      db,
+		SQLMock: mock,
+	}
+
+	return mockedStore, func() {
+		mockDB.Close()
+	}
+}

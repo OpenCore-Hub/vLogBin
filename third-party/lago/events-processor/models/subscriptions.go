@@ -1,0 +1,87 @@
+package models
+
+import (
+	"sync"
+	"time"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
+
+	"github.com/getlago/lago/events-processor/utils"
+)
+
+type Subscription struct {
+	ID             string         `gorm:"primaryKey;->" json:"id"`
+	OrganizationID *string        `gorm:"->" json:"organization_id"`
+	ExternalID     string         `gorm:"->" json:"external_id"`
+	PlanID         string         `gorm:"->" json:"plan_id"`
+	CreatedAt      utils.NullTime `gorm:"->" json:"created_at"`
+	UpdatedAt      utils.NullTime `gorm:"->" json:"updated_at"`
+	StartedAt      utils.NullTime `gorm:"->" json:"started_at"`
+	TerminatedAt   utils.NullTime `gorm:"->" json:"terminated_at"`
+}
+
+var subscriptionSchema, _ = schema.Parse(&Subscription{}, &sync.Map{}, schema.NamingStrategy{})
+
+func (store *ApiStore) FetchSubscription(organizationID string, externalID string, timestamp time.Time) utils.Result[*Subscription] {
+	var sub Subscription
+
+	var conditions = `
+		subscriptions.organization_id = ?
+		AND subscriptions.external_id = ?
+		AND date_trunc('millisecond', subscriptions.started_at::timestamp) <= ?::timestamp
+		AND (subscriptions.terminated_at IS NULL OR date_trunc('millisecond', subscriptions.terminated_at::timestamp) >= ?)
+	`
+	result := store.db.Connection.
+		Table("subscriptions").
+		Select(subscriptionSchema.DBNames).
+		Unscoped().
+		Where(conditions, organizationID, externalID, timestamp, timestamp).
+		Order("terminated_at DESC NULLS FIRST, started_at DESC").
+		Limit(1).
+		Find(&sub)
+
+	if result.Error != nil {
+		return failedSubscriptionResult(result.Error)
+	}
+	if sub.ID == "" {
+		return failedSubscriptionResult(gorm.ErrRecordNotFound)
+	}
+
+	return utils.SuccessResult(&sub)
+}
+
+// We want to get terminated subscriptions to permit grace period events backfill
+// So we select all non terminated subscriptions and subs terminated less that one month ago
+func GetAllSubscriptions(db *gorm.DB) utils.Result[[]Subscription] {
+	oneMonthAgo := time.Now().AddDate(0, -1, 0)
+
+	config := StreamQueryConfig{
+		TableName: "subscriptions",
+		SelectFields: []string{
+			"id",
+			"organization_id",
+			"external_id",
+			"plan_id",
+			"created_at",
+			"updated_at",
+			"started_at",
+			"terminated_at",
+		},
+		WhereCondition: "terminated_at IS NULL OR terminated_at >= ?",
+		WhereArgs:      []any{oneMonthAgo},
+		LogInterval:    50000,
+	}
+
+	return GetAllWithStreaming[Subscription](db, config)
+}
+
+func failedSubscriptionResult(err error) utils.Result[*Subscription] {
+	result := utils.FailedResult[*Subscription](err)
+
+	if err.Error() == gorm.ErrRecordNotFound.Error() {
+		result = result.NonCapturable().NonRetryable()
+	}
+
+	return result
+}

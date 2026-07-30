@@ -1,0 +1,105 @@
+package models
+
+import (
+	"gorm.io/gorm"
+
+	"github.com/getlago/lago/events-processor/utils"
+)
+
+type AggregationType int
+
+const (
+	AggregationTypeCount = iota
+	AggregationTypeSum
+	AggregationTypeMax
+	AggregationTypeUniqueCount
+	_
+	AggregationTypeWeightedSum
+	AggregationTypeLatest
+	AggregationTypeCustom
+)
+
+func (t AggregationType) String() string {
+	aggType := ""
+
+	switch t {
+	case AggregationTypeCount:
+		aggType = "count"
+	case AggregationTypeSum:
+		aggType = "sum"
+	case AggregationTypeMax:
+		aggType = "max"
+	case AggregationTypeUniqueCount:
+		aggType = "unique_count"
+	case AggregationTypeWeightedSum:
+		aggType = "weighted_sum"
+	case AggregationTypeLatest:
+		aggType = "latest"
+	case AggregationTypeCustom:
+		aggType = "custom"
+	}
+
+	return aggType
+
+}
+
+type BillableMetric struct {
+	ID              string          `gorm:"primaryKey;->" json:"id"`
+	OrganizationID  string          `gorm:"->" json:"organization_id"`
+	Code            string          `gorm:"->" json:"code"`
+	AggregationType AggregationType `gorm:"->" json:"aggregation_type"`
+	Recurring       bool            `gorm:"->" json:"recurring"`
+	FieldName       string          `gorm:"->" json:"field_name"`
+	Expression      string          `gorm:"->" json:"expression"`
+	CreatedAt       utils.NullTime  `gorm:"->" json:"created_at"`
+	UpdatedAt       utils.NullTime  `gorm:"->" json:"updated_at"`
+	DeletedAt       utils.NullTime  `gorm:"index;->" json:"deleted_at"`
+}
+
+func (store *ApiStore) FetchBillableMetric(organizationID string, code string) utils.Result[*BillableMetric] {
+	var bm BillableMetric
+	result := store.db.Connection.First(
+		&bm,
+		"organization_id = ? AND code = ? AND deleted_at IS NULL",
+		organizationID,
+		code,
+	)
+
+	if result.Error != nil {
+		return failedBillabmeMetricResult(result.Error)
+	}
+
+	return utils.SuccessResult(&bm)
+}
+
+func failedBillabmeMetricResult(err error) utils.Result[*BillableMetric] {
+	result := utils.FailedResult[*BillableMetric](err)
+
+	if err.Error() == gorm.ErrRecordNotFound.Error() {
+		result = result.NonCapturable().NonRetryable()
+	}
+
+	return result
+}
+
+func GetAllBillableMetrics(db *gorm.DB) utils.Result[[]BillableMetric] {
+	config := StreamQueryConfig{
+		TableName: "billable_metrics",
+		SelectFields: []string{
+			"id",
+			"organization_id",
+			"code",
+			"aggregation_type",
+			"recurring",
+			"field_name",
+			"expression",
+			"created_at",
+			"updated_at",
+		},
+		WhereCondition: "deleted_at IS NULL",
+		WhereArgs:      []any{},
+		LogInterval:    50000,
+	}
+
+	return GetAllWithStreaming[BillableMetric](db, config)
+}
