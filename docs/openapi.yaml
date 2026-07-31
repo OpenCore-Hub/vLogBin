@@ -1,0 +1,581 @@
+openapi: 3.1.0
+info:
+  title: vLogBin Platform API
+  version: "1.0"
+  description: |
+    Multi-Provider identity and billing infrastructure platform.
+    
+    ## Authentication
+    
+    All API requests require a Bearer token (API key) in the `Authorization` header.
+    Operator endpoints use OIDC JWT tokens (ZITADEL Hosted Auth).
+    
+    ## API Versioning
+    
+    Breaking API versions run in parallel for at least 12 months.
+    Deprecated endpoints return `Sunset`, `Deprecation`, and `Link` headers.
+    Webhook payloads include `X-Webhook-Schema-Version: 1.0`.
+    
+    ## Rate Limiting
+    
+    Four-level rate limiting: Provider, Environment, Credential, Endpoint.
+    Rate limit headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`.
+    
+    ## Error Format
+    
+    All errors follow RFC 7807 Problem Details:
+    ```json
+    {
+      "error": {
+        "code": "not_found",
+        "message": "resource not found",
+        "request_id": "uuid"
+      }
+    }
+    ```
+  contact:
+    name: vLogBin Platform
+    url: https://github.com/OpenCore-Hub/vLogBin
+  license:
+    name: AGPL-3.0
+    url: https://www.gnu.org/licenses/agpl-3.0.html
+
+servers:
+  - url: https://api.vlogbin.com/v1
+    description: Production
+  - url: https://api.staging.vlogbin.com/v1
+    description: Staging
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: Provider API key or OIDC JWT token
+  
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code
+            message:
+              type: string
+              description: Human-readable error message
+            request_id:
+              type: string
+              format: uuid
+              description: Request correlation ID
+    
+    Provider:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [test, live]
+        home_region:
+          type: string
+        cell_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+    
+    CustomerAccount:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        type:
+          type: string
+          enum: [individual, business]
+    
+    Subscription:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        customer_external_id:
+          type: string
+        plan_code:
+          type: string
+        status:
+          type: string
+          enum: [active, terminated]
+    
+    UsageEvent:
+      type: object
+      required: [transaction_id, customer_external_id, metric_code, timestamp, properties]
+      properties:
+        transaction_id:
+          type: string
+        customer_external_id:
+          type: string
+        metric_code:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        properties:
+          type: object
+    
+    QuotaReservation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        quota_key:
+          type: string
+        amount:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [reserved, committed, released, expired]
+        reservation_id:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+    
+    SupportSession:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        access_type:
+          type: string
+          enum: [standard, emergency]
+        status:
+          type: string
+          enum: [requested, active, expired, revoked, denied]
+        reason:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+    
+    TeamMember:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        display_name:
+          type: string
+        role:
+          type: string
+          enum: [admin, billing_admin, developer, support_agent]
+        status:
+          type: string
+          enum: [active, suspended, removed]
+    
+    SCIMUser:
+      type: object
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+        id:
+          type: string
+          format: uuid
+        externalId:
+          type: string
+        userName:
+          type: string
+        displayName:
+          type: string
+        active:
+          type: boolean
+        emails:
+          type: array
+          items:
+            type: object
+            properties:
+              value:
+                type: string
+              primary:
+                type: boolean
+    
+    CustomDomain:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        domain:
+          type: string
+        status:
+          type: string
+          enum: [pending, verified, revoked]
+        verification_token:
+          type: string
+    
+    MigrationJob:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        source_system:
+          type: string
+        status:
+          type: string
+          enum: [draft, validating, validated, importing, completed, failed, rolled_back]
+        total_records:
+          type: integer
+        processed_records:
+          type: integer
+        cutover_locked:
+          type: boolean
+    
+    DataExport:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [requested, processing, completed, failed]
+        export_type:
+          type: string
+          enum: [full, audit_only, billing_only]
+        data_hash:
+          type: string
+        record_count:
+          type: integer
+    
+    Cell:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        region_id:
+          type: string
+          format: uuid
+        cell_type:
+          type: string
+          enum: [shared, dedicated]
+        status:
+          type: string
+          enum: [active, draining, inactive]
+    
+    MeteredPricingRule:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        metric_code:
+          type: string
+        pricing_model:
+          type: string
+          enum: [per_unit, tiered, volume, stairstep]
+        base_price_cents:
+          type: integer
+          format: int64
+        minimum_spend_cents:
+          type: integer
+          format: int64
+        enabled:
+          type: boolean
+    
+    BudgetAlert:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        budget_cents:
+          type: integer
+          format: int64
+        threshold_pct:
+          type: number
+        current_spend_cents:
+          type: integer
+          format: int64
+        alert_status:
+          type: string
+          enum: [ok, warning, exceeded]
+
+  parameters:
+    RequestId:
+      name: X-Request-ID
+      in: header
+      schema:
+        type: string
+        format: uuid
+
+tags:
+  - name: Providers
+    description: Provider lifecycle management
+  - name: Customers
+    description: Customer account management
+  - name: Subscriptions
+    description: Subscription lifecycle
+  - name: Usage
+    description: Usage event ingestion
+  - name: Invoices
+    description: Invoice sync and management
+  - name: Quota
+    description: Hard quota ledger (reserve/commit/release)
+  - name: Support
+    description: JIT support access
+  - name: Team
+    description: Delegated administration
+  - name: Events
+    description: Enterprise event streams
+  - name: Migration
+    description: Standard migration tools
+  - name: Custom Domains
+    description: Custom auth domain management
+  - name: SCIM
+    description: SCIM 2.0 user provisioning
+  - name: Analytics
+    description: Independent analytic plane
+  - name: Metered Billing
+    description: Metered pricing and budget alerts
+  - name: Cells
+    description: Cell registry and failover
+  - name: Data Export
+    description: Data export and deletion proof
+  - name: API Version
+    description: API version info
+
+paths:
+  /api-version:
+    get:
+      tags: [API Version]
+      summary: Get API version info
+      security: []
+      responses:
+        '200':
+          description: API version information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  current_version:
+                    type: string
+                  supported_versions:
+                    type: array
+                    items:
+                      type: string
+                  compatibility_policy:
+                    type: string
+                  webhook_schema_version:
+                    type: string
+                  deprecated_endpoints:
+                    type: array
+                    items:
+                      type: object
+
+  /customers:
+    get:
+      tags: [Customers]
+      summary: List customers
+      responses:
+        '200':
+          description: List of customers
+    post:
+      tags: [Customers]
+      summary: Create a customer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerAccount'
+      responses:
+        '201':
+          description: Customer created
+
+  /subscriptions:
+    post:
+      tags: [Subscriptions]
+      summary: Create a subscription
+      responses:
+        '201':
+          description: Subscription created
+        '409':
+          description: Cutover locked or cell draining
+
+  /usage/ingest:
+    post:
+      tags: [Usage]
+      summary: Ingest a usage event
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsageEvent'
+      responses:
+        '201':
+          description: Usage event ingested
+        '409':
+          description: Cutover locked or cell draining
+
+  /quota/reserve:
+    post:
+      tags: [Quota]
+      summary: Reserve quota
+      responses:
+        '201':
+          description: Quota reserved
+        '422':
+          description: Quota exceeded
+
+  /support-sessions:
+    post:
+      tags: [Support]
+      summary: Request JIT support access
+      responses:
+        '201':
+          description: Support session requested
+
+  /team-members:
+    get:
+      tags: [Team]
+      summary: List team members
+      responses:
+        '200':
+          description: List of team members
+    post:
+      tags: [Team]
+      summary: Invite a team member
+      responses:
+        '201':
+          description: Team member invited
+
+  /events:
+    get:
+      tags: [Events]
+      summary: Stream events (cursor-based pagination)
+      parameters:
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: aggregate_type
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Event stream page
+
+  /migrations:
+    post:
+      tags: [Migration]
+      summary: Create a migration job
+      responses:
+        '201':
+          description: Migration job created
+
+  /custom-domains:
+    post:
+      tags: [Custom Domains]
+      summary: Register a custom domain
+      responses:
+        '201':
+          description: Domain registered
+        '409':
+          description: Domain already taken
+
+  /scim/v2/Users:
+    get:
+      tags: [SCIM]
+      summary: List SCIM users
+      responses:
+        '200':
+          description: SCIM list response
+    post:
+      tags: [SCIM]
+      summary: Create a SCIM user
+      responses:
+        '201':
+          description: SCIM user created
+
+  /analytics/dashboard:
+    get:
+      tags: [Analytics]
+      summary: Get provider analytics dashboard
+      responses:
+        '200':
+          description: Combined analytics dashboard
+
+  /metered-pricing-rules:
+    put:
+      tags: [Metered Billing]
+      summary: Set a metered pricing rule
+      responses:
+        '200':
+          description: Pricing rule set
+
+  /budget-alerts:
+    post:
+      tags: [Metered Billing]
+      summary: Create a budget alert
+      responses:
+        '201':
+          description: Budget alert created
+
+  /data-exports:
+    post:
+      tags: [Data Export]
+      summary: Request a data export
+      responses:
+        '201':
+          description: Data export completed
+
+  /data-deletion:
+    post:
+      tags: [Data Export]
+      summary: Request data deletion with proof
+      responses:
+        '200':
+          description: Deletion proof generated

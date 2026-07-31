@@ -1,0 +1,465 @@
+asyncapi: 2.6.0
+info:
+  title: vLogBin Platform Event Contract
+  version: "1.0"
+  description: |
+    AsyncAPI contract for platform events delivered via webhooks and
+    the enterprise event stream API.
+    
+    ## Event Compatibility
+    
+    - Same major version only allows additive changes
+    - Breaking changes require a new schema version with 12-month parallel
+    - Webhook payloads include `X-Webhook-Schema-Version: 1.0` header
+    - Event consumers must handle unknown event types gracefully (forward compatibility)
+    
+    ## Delivery Semantics
+    
+    - At-least-once delivery (consumers must be idempotent)
+    - HMAC-SHA256 signature in `X-Webhook-Signature` header
+    - Timestamp in `X-Webhook-Timestamp` header (replay protection)
+    - Event type in `X-Webhook-Event-Type` header
+    - Schema version in `X-Webhook-Schema-Version` header
+    
+    ## Event Ordering
+    
+    Events are ordered by (created_at, id) within a provider environment.
+    The event stream API supports cursor-based forward pagination.
+  contact:
+    name: vLogBin Platform
+    url: https://github.com/OpenCore-Hub/vLogBin
+  license:
+    name: AGPL-3.0
+    url: https://www.gnu.org/licenses/agpl-3.0.html
+
+servers:
+  production:
+    url: https://api.vlogbin.com/v1/events
+    protocol: https
+    description: Enterprise Event Stream API (cursor-based)
+
+defaultContentType: application/json
+
+channels:
+  provider.events:
+    address: /v1/events
+    description: Provider event stream
+    parameters:
+      provider_id:
+        description: Provider UUID
+        schema:
+          type: string
+          format: uuid
+    bindings:
+      http:
+        type: request
+        method: GET
+        query:
+          cursor:
+            type: string
+            format: uuid
+            description: Last event ID processed by consumer
+          limit:
+            type: integer
+            default: 100
+            maximum: 1000
+          type:
+            type: string
+            description: Filter by event type
+          aggregate_type:
+            type: string
+            description: Filter by aggregate type
+
+messages:
+  provider.created:
+    name: provider.created
+    title: Provider Created
+    summary: A new provider was created
+    contentType: application/json
+    payload:
+      type: object
+      required: [id, name, kind, home_region, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [test, live]
+        home_region:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+  customer.created:
+    name: customer.created
+    title: Customer Created
+    summary: A new customer account was created
+    contentType: application/json
+    payload:
+      type: object
+      required: [id, external_id, name, type, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [individual, business]
+        created_at:
+          type: string
+          format: date-time
+
+  subscription.created:
+    name: subscription.created
+    title: Subscription Created
+    summary: A new subscription was created
+    contentType: application/json
+    payload:
+      type: object
+      required: [id, external_id, customer_external_id, plan_code, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        customer_external_id:
+          type: string
+        plan_code:
+          type: string
+        status:
+          type: string
+          enum: [active, terminated]
+        created_at:
+          type: string
+          format: date-time
+
+  usage.ingested:
+    name: usage.ingested
+    title: Usage Ingested
+    summary: A usage event was ingested
+    contentType: application/json
+    payload:
+      type: object
+      required: [id, transaction_id, customer_external_id, metric_code, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        transaction_id:
+          type: string
+        customer_external_id:
+          type: string
+        metric_code:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+  invoice.synced:
+    name: invoice.synced
+    title: Invoice Synced
+    summary: An invoice was synced from Lago
+    contentType: application/json
+    payload:
+      type: object
+      required: [id, external_id, status, amount_cents, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        status:
+          type: string
+        amount_cents:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+
+  quota.reserved:
+    name: quota.reserved
+    title: Quota Reserved
+    summary: A hard quota reservation was created
+    contentType: application/json
+    payload:
+      type: object
+      required: [reservation_id, quota_key, amount, subscription_id]
+      properties:
+        reservation_id:
+          type: string
+        quota_key:
+          type: string
+        amount:
+          type: integer
+          format: int64
+        subscription_id:
+          type: string
+          format: uuid
+
+  quota.committed:
+    name: quota.committed
+    title: Quota Committed
+    summary: A hard quota reservation was committed
+    contentType: application/json
+    payload:
+      type: object
+      required: [reservation_id, amount]
+      properties:
+        reservation_id:
+          type: string
+        amount:
+          type: integer
+          format: int64
+
+  quota.released:
+    name: quota.released
+    title: Quota Released
+    summary: A hard quota reservation was released
+    contentType: application/json
+    payload:
+      type: object
+      required: [reservation_id, amount]
+      properties:
+        reservation_id:
+          type: string
+        amount:
+          type: integer
+          format: int64
+
+  support.requested:
+    name: support.requested
+    title: Support Session Requested
+    summary: A JIT support session was requested
+    contentType: application/json
+    payload:
+      type: object
+      required: [session_id, access_type, requested_by, reason]
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        access_type:
+          type: string
+          enum: [standard, emergency]
+        requested_by:
+          type: string
+        reason:
+          type: string
+
+  support.approved:
+    name: support.approved
+    title: Support Session Approved
+    summary: A support session was approved and activated
+    contentType: application/json
+    payload:
+      type: object
+      required: [session_id, approved_by, access_type]
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        approved_by:
+          type: string
+        access_type:
+          type: string
+          enum: [standard, emergency]
+
+  support.revoked:
+    name: support.revoked
+    title: Support Session Revoked
+    summary: A support session was revoked
+    contentType: application/json
+    payload:
+      type: object
+      required: [session_id, revoked_by]
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        revoked_by:
+          type: string
+
+  team.member_invited:
+    name: team.member_invited
+    title: Team Member Invited
+    summary: A new team member was invited
+    contentType: application/json
+    payload:
+      type: object
+      required: [email, role]
+      properties:
+        email:
+          type: string
+        role:
+          type: string
+          enum: [admin, billing_admin, developer, support_agent]
+
+  team.member_role_changed:
+    name: team.member_role_changed
+    title: Team Member Role Changed
+    summary: A team member's role was changed
+    contentType: application/json
+    payload:
+      type: object
+      required: [email, old_role, new_role]
+      properties:
+        email:
+          type: string
+        old_role:
+          type: string
+        new_role:
+          type: string
+
+  custom_domain.registered:
+    name: custom_domain.registered
+    title: Custom Domain Registered
+    summary: A custom domain was registered for DNS verification
+    contentType: application/json
+    payload:
+      type: object
+      required: [domain]
+      properties:
+        domain:
+          type: string
+
+  custom_domain.verified:
+    name: custom_domain.verified
+    title: Custom Domain Verified
+    summary: A custom domain was verified via DNS
+    contentType: application/json
+    payload:
+      type: object
+      required: [domain]
+      properties:
+        domain:
+          type: string
+
+  migration.job_created:
+    name: migration.job_created
+    title: Migration Job Created
+    summary: A migration job was created
+    contentType: application/json
+    payload:
+      type: object
+      required: [source_system, dry_run]
+      properties:
+        source_system:
+          type: string
+        dry_run:
+          type: boolean
+
+  migration.validated:
+    name: migration.validated
+    title: Migration Validated
+    summary: A migration job was validated
+    contentType: application/json
+    payload:
+      type: object
+      required: [valid, invalid]
+      properties:
+        valid:
+          type: integer
+        invalid:
+          type: integer
+
+  migration.completed:
+    name: migration.completed
+    title: Migration Completed
+    summary: A migration job was completed
+    contentType: application/json
+    payload:
+      type: object
+      required: [processed, failed]
+      properties:
+        processed:
+          type: integer
+        failed:
+          type: integer
+
+  cell_migration.completed:
+    name: cell_migration.completed
+    title: Cell Migration Completed
+    summary: A planned cell migration was completed
+    contentType: application/json
+    payload:
+      type: object
+      required: [new_cell, record_count]
+      properties:
+        new_cell:
+          type: string
+          format: uuid
+        record_count:
+          type: integer
+
+  failover.completed:
+    name: failover.completed
+    title: Failover Completed
+    summary: A cell failover was completed
+    contentType: application/json
+    payload:
+      type: object
+      required: [replayed_usage, replayed_outbox]
+      properties:
+        replayed_usage:
+          type: integer
+        replayed_outbox:
+          type: integer
+
+  data_export.completed:
+    name: data_export.completed
+    title: Data Export Completed
+    summary: A data export was completed
+    contentType: application/json
+    payload:
+      type: object
+      required: [record_count, data_hash]
+      properties:
+        record_count:
+          type: integer
+        data_hash:
+          type: string
+
+  data_deletion.completed:
+    name: data_deletion.completed
+    title: Data Deletion Completed
+    summary: Data deletion was completed with proof
+    contentType: application/json
+    payload:
+      type: object
+      required: [record_count, data_hash, reason]
+      properties:
+        record_count:
+          type: integer
+        data_hash:
+          type: string
+        reason:
+          type: string
+
+  budget.alert_exceeded:
+    name: budget.alert_exceeded
+    title: Budget Alert Exceeded
+    summary: A budget alert threshold was exceeded
+    contentType: application/json
+    payload:
+      type: object
+      required: [budget_cents, current_spend_cents, threshold_pct]
+      properties:
+        budget_cents:
+          type: integer
+          format: int64
+        current_spend_cents:
+          type: integer
+          format: int64
+        threshold_pct:
+          type: number
