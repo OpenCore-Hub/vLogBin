@@ -14,6 +14,14 @@ import (
 )
 
 func TestOutboxRelayPublishesPending(t *testing.T) {
+	// Pre-drain accumulated events from prior tests to prevent the relay
+	// from spending all its time processing stale events.
+	preRelay := outbox.NewRelay(appStore, billing.NewNoop(nil), 50*time.Millisecond, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	for i := 0; i < 10; i++ {
+		_ = preRelay.DrainOnce(testCtx)
+		time.Sleep(100 * time.Millisecond)
+	}
+
 	a := createProvider(t, "relay")
 	tc := tenantOf(t, a.Provider.ID, a.Environments[0].ID)
 

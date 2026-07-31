@@ -22,6 +22,10 @@ func (s *Service) CreateSubscription(ctx context.Context, tc tenant.Ctx, externa
 	if catalogVersionID == uuid.Nil {
 		return nil, fmt.Errorf("%w: catalog_version_id is required", ErrValidation)
 	}
+	// Prevent new subscriptions during migration cutover (spec Section 17.1).
+	if err := s.CheckCutoverLock(ctx, tc); err != nil {
+		return nil, err
+	}
 	var out storegen.Subscription
 	err := s.store.WithTenant(ctx, tc, func(tx pgx.Tx, q *store.Queries) error {
 		customer, err := q.GetCustomerByExternalID(ctx, storegen.GetCustomerByExternalIDParams{

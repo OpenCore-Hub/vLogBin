@@ -234,3 +234,73 @@ func (q *Queries) MarkOutboxEventRetry(ctx context.Context, arg MarkOutboxEventR
 	_, err := q.db.Exec(ctx, markOutboxEventRetry, arg.ID, arg.NextAttemptAt)
 	return err
 }
+
+const streamOutboxEvents = `-- name: StreamOutboxEvents :many
+SELECT oe.id, oe.provider_id, oe.environment_id, oe.aggregate_type, oe.aggregate_id, oe.event_type, oe.payload, oe.payload_hash, oe.transaction_id, oe.status, oe.attempts, oe.created_at, oe.published_at, oe.next_attempt_at FROM outbox_events oe
+WHERE oe.provider_id = $1 AND oe.environment_id = $2
+    AND ($3::uuid = '00000000-0000-0000-0000-000000000000' OR (oe.created_at, oe.id) > (
+        SELECT oe2.created_at, oe2.id FROM outbox_events oe2 WHERE oe2.id = $3
+    ))
+    AND ($4::text = '' OR oe.event_type = $4)
+    AND ($5::text = '' OR oe.aggregate_type = $5)
+ORDER BY oe.created_at ASC, oe.id ASC
+LIMIT $6
+`
+
+type StreamOutboxEventsParams struct {
+	ProviderID    uuid.UUID `json:"provider_id"`
+	EnvironmentID uuid.UUID `json:"environment_id"`
+	Column3       uuid.UUID `json:"column_3"`
+	Column4       string    `json:"column_4"`
+	Column5       string    `json:"column_5"`
+	Limit         int32     `json:"limit"`
+}
+
+// Cursor-based forward pagination for the Enterprise Event Stream API.
+// The cursor is the last event ID the consumer processed. Uses tuple
+// comparison (created_at, id) to handle same-timestamp events within a
+// single transaction correctly. Optional filters by event_type and
+// aggregate_type allow consumers to subscribe to specific event categories.
+// Pass uuid.Nil (all-zeros) as the cursor to start from the beginning.
+// Pass empty strings for event_type/aggregate_type to skip filtering.
+func (q *Queries) StreamOutboxEvents(ctx context.Context, arg StreamOutboxEventsParams) ([]OutboxEvent, error) {
+	rows, err := q.db.Query(ctx, streamOutboxEvents,
+		arg.ProviderID,
+		arg.EnvironmentID,
+		arg.Column3,
+		arg.Column4,
+		arg.Column5,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OutboxEvent
+	for rows.Next() {
+		var i OutboxEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProviderID,
+			&i.EnvironmentID,
+			&i.AggregateType,
+			&i.AggregateID,
+			&i.EventType,
+			&i.Payload,
+			&i.PayloadHash,
+			&i.TransactionID,
+			&i.Status,
+			&i.Attempts,
+			&i.CreatedAt,
+			&i.PublishedAt,
+			&i.NextAttemptAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

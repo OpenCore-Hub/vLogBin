@@ -51,6 +51,15 @@ type Config struct {
 	// verification (ZITADEL_URL). When empty, operator auth falls back
 	// to the simple OPERATOR_TOKEN comparison.
 	ZITADELURL string
+	// ZITADELPAT is a Personal Access Token for the ZITADEL Management
+	// API (ZITADEL_PAT). Required for Hosted Auth project management.
+	ZITADELPAT string
+	// SupportSweepInterval controls how often the JIT support session
+	// expiry sweeper runs (SUPPORT_SWEEP_INTERVAL, default 30s).
+	SupportSweepInterval time.Duration
+	// QuotaSweepInterval controls how often the hard quota reservation
+	// expiry sweeper runs (QUOTA_SWEEP_INTERVAL, default 15s).
+	QuotaSweepInterval time.Duration
 }
 
 // RateLimitConfig holds per-level rate limit settings. All limits are
@@ -77,6 +86,8 @@ func Load() (Config, error) {
 		LagoAPIKey:           os.Getenv("LAGO_API_KEY"),
 		UsageLateWindow:      168 * time.Hour,
 		ReconciliationInterval: time.Hour,
+		SupportSweepInterval:  30 * time.Second,
+		QuotaSweepInterval:    15 * time.Second,
 		CORSAllowedOrigins:   []string{"*"},
 		LogLevel:             "info",
 		RateLimits: RateLimitConfig{
@@ -113,6 +124,16 @@ func Load() (Config, error) {
 			cfg.ReconciliationInterval = d
 		}
 	}
+	if v := os.Getenv("SUPPORT_SWEEP_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.SupportSweepInterval = d
+		}
+	}
+	if v := os.Getenv("QUOTA_SWEEP_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.QuotaSweepInterval = d
+		}
+	}
 	if v := os.Getenv("CORS_ALLOWED_ORIGINS"); v != "" {
 		cfg.CORSAllowedOrigins = splitComma(v)
 	}
@@ -121,6 +142,7 @@ func Load() (Config, error) {
 	}
 	cfg.PSPMasterKey = os.Getenv("PSP_MASTER_KEY")
 	cfg.ZITADELURL = os.Getenv("ZITADEL_URL")
+	cfg.ZITADELPAT = os.Getenv("ZITADEL_PAT")
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")
 	}

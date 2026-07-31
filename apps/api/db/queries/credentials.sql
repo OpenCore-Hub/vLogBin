@@ -33,5 +33,8 @@ SELECT * FROM credentials WHERE id = $1;
 -- name: RevokeCredential :one
 UPDATE credentials SET revoked_at = now() WHERE id = $1 RETURNING *;
 
+-- name: UpdateCredentialScopes :one
+UPDATE credentials SET scopes = $2 WHERE id = $1 AND revoked_at IS NULL RETURNING *;
+
 -- name: TouchCredentialLastUsed :exec
 UPDATE credentials SET last_used_at = now() WHERE id = $1;

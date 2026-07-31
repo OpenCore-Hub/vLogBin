@@ -13,10 +13,11 @@ import (
 	"time"
 
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/keys"
-	"github.com/go-chi/chi/v5"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store/storegen"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/tenant"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/zitadel"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -232,6 +233,18 @@ func (s *Server) operatorAuth(next http.Handler) http.Handler {
 
 // operatorClaimsKey is the context key for OIDC operator claims.
 type operatorClaimsKey struct{}
+
+// operatorIdentity extracts the operator identity from the request context.
+// In OIDC mode, this is the JWT subject (sub). In legacy mode (static token),
+// it falls back to "operator".
+func operatorIdentity(r *http.Request) string {
+	if claims, ok := r.Context().Value(operatorClaimsKey{}).(*zitadel.Claims); ok && claims != nil {
+		if claims.Sub != "" {
+			return claims.Sub
+		}
+	}
+	return "operator"
+}
 
 // apiKeyAuth authenticates provider routes: resolves the presented API key
 // to its credential row, checks revocation/expiry/CIDR, and derives the

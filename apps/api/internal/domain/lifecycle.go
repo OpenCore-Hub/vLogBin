@@ -36,7 +36,7 @@ const (
 )
 
 // AllScopes lists every scope assignable to a credential.
-var AllScopes = []string{ScopeRead, ScopeWrite, ScopeCredentialsManage, ScopeAuditRead}
+var AllScopes = []string{ScopeRead, ScopeWrite, ScopeCredentialsManage, ScopeAuditRead, ScopeSupportApprove, ScopeSCIMManage}
 
 // Commerce domains. Platform commerce and provider commerce are separate
 // account domains; providers never see platform-domain rows.
@@ -120,3 +120,148 @@ func ValidScope(s string) bool {
 	}
 	return false
 }
+
+// Support session access types.
+const (
+	SupportAccessStandard  = "standard"
+	SupportAccessEmergency = "emergency"
+)
+
+// Support session statuses.
+const (
+	SupportStatusRequested = "requested"
+	SupportStatusActive    = "active"
+	SupportStatusExpired   = "expired"
+	SupportStatusRevoked   = "revoked"
+	SupportStatusDenied    = "denied"
+)
+
+// SupportScopeApprove is the scope required for a provider to approve
+// or deny JIT support session requests on their environment.
+const ScopeSupportApprove = "support:approve"
+
+// MaxSupportSessionDuration is the maximum allowed duration for a JIT
+// support session (4 hours). Emergency sessions use a tighter default.
+const MaxSupportSessionDuration = 4 * 60 * 60 // seconds
+
+// ValidSupportAccessType reports whether s is a known access type.
+func ValidSupportAccessType(s string) bool {
+	return s == SupportAccessStandard || s == SupportAccessEmergency
+}
+
+// Quota reservation statuses.
+const (
+	QuotaReserved  = "reserved"
+	QuotaCommitted = "committed"
+	QuotaReleased  = "released"
+	QuotaExpired   = "expired"
+)
+
+// Quota period types.
+const (
+	QuotaPeriodDaily   = "daily"
+	QuotaPeriodMonthly = "monthly"
+	QuotaPeriodTotal   = "total"
+)
+
+// ValidQuotaPeriod reports whether s is a known quota period type.
+func ValidQuotaPeriod(s string) bool {
+	return s == QuotaPeriodDaily || s == QuotaPeriodMonthly || s == QuotaPeriodTotal
+}
+
+// Team member roles.
+const (
+	TeamRoleAdmin        = "admin"
+	TeamRoleBillingAdmin = "billing_admin"
+	TeamRoleDeveloper    = "developer"
+	TeamRoleSupportAgent = "support_agent"
+)
+
+// Team member statuses.
+const (
+	TeamStatusActive    = "active"
+	TeamStatusSuspended = "suspended"
+	TeamStatusRemoved   = "removed"
+)
+
+// RoleScopes returns the scope bundle for a team role.
+func RoleScopes(role string) []string {
+	switch role {
+	case TeamRoleAdmin:
+		return []string{ScopeRead, ScopeWrite, ScopeCredentialsManage, ScopeAuditRead, ScopeSupportApprove, ScopeSCIMManage}
+	case TeamRoleBillingAdmin:
+		return []string{ScopeRead, ScopeWrite, ScopeAuditRead}
+	case TeamRoleDeveloper:
+		return []string{ScopeRead, ScopeWrite}
+	case TeamRoleSupportAgent:
+		return []string{ScopeRead, ScopeAuditRead, ScopeSupportApprove}
+	default:
+		return nil
+	}
+}
+
+// ValidTeamRole reports whether s is a known team role.
+func ValidTeamRole(s string) bool {
+	return s == TeamRoleAdmin || s == TeamRoleBillingAdmin ||
+		s == TeamRoleDeveloper || s == TeamRoleSupportAgent
+}
+
+// Migration job statuses.
+const (
+	MigrationStatusDraft      = "draft"
+	MigrationStatusValidating = "validating"
+	MigrationStatusValidated  = "validated"
+	MigrationStatusImporting  = "importing"
+	MigrationStatusCompleted  = "completed"
+	MigrationStatusFailed     = "failed"
+	MigrationStatusRolledBack = "rolled_back"
+)
+
+// Migration record statuses.
+const (
+	MigrationRecordPending    = "pending"
+	MigrationRecordValid      = "valid"
+	MigrationRecordInvalid    = "invalid"
+	MigrationRecordImported   = "imported"
+	MigrationRecordFailed     = "failed"
+	MigrationRecordRolledBack = "rolled_back"
+)
+
+// Migration record types.
+const (
+	MigrationRecordCustomer     = "customer"
+	MigrationRecordSubscription = "subscription"
+)
+
+// ValidMigrationRecordType reports whether s is a known record type.
+func ValidMigrationRecordType(s string) bool {
+	return s == MigrationRecordCustomer || s == MigrationRecordSubscription
+}
+
+// Custom domain statuses.
+const (
+	CustomDomainPending  = "pending"
+	CustomDomainVerified = "verified"
+	CustomDomainRevoked  = "revoked"
+)
+
+// DNSVerificationPrefix is the TXT record prefix for domain ownership verification.
+const DNSVerificationPrefix = "_vlogbin-verify"
+
+// Notification channels.
+const (
+	NotificationChannelEmail = "email"
+	NotificationChannelSMS   = "sms"
+)
+
+// ValidNotificationChannel reports whether s is a known notification channel.
+func ValidNotificationChannel(s string) bool {
+	return s == NotificationChannelEmail || s == NotificationChannelSMS
+}
+
+// SCIM scope for managing user provisioning.
+const ScopeSCIMManage = "scim:manage"
+
+// WebhookSchemaVersion is the schema version included in webhook payloads
+// and headers (spec Section 7.2: "Webhook payload 包含 schema_version").
+const WebhookSchemaVersion = "1.0"

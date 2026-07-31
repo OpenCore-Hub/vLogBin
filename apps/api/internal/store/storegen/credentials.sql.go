@@ -215,3 +215,32 @@ func (q *Queries) TouchCredentialLastUsed(ctx context.Context, id uuid.UUID) err
 	_, err := q.db.Exec(ctx, touchCredentialLastUsed, id)
 	return err
 }
+
+const updateCredentialScopes = `-- name: UpdateCredentialScopes :one
+UPDATE credentials SET scopes = $2 WHERE id = $1 AND revoked_at IS NULL RETURNING id, provider_id, environment_id, name, key_prefix, key_hash, scopes, allowed_cidrs, expires_at, revoked_at, last_used_at, created_at
+`
+
+type UpdateCredentialScopesParams struct {
+	ID     uuid.UUID `json:"id"`
+	Scopes []string  `json:"scopes"`
+}
+
+func (q *Queries) UpdateCredentialScopes(ctx context.Context, arg UpdateCredentialScopesParams) (Credential, error) {
+	row := q.db.QueryRow(ctx, updateCredentialScopes, arg.ID, arg.Scopes)
+	var i Credential
+	err := row.Scan(
+		&i.ID,
+		&i.ProviderID,
+		&i.EnvironmentID,
+		&i.Name,
+		&i.KeyPrefix,
+		&i.KeyHash,
+		&i.Scopes,
+		&i.AllowedCidrs,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.LastUsedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}

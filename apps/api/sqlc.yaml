@@ -10,6 +10,17 @@ sql:
       - "db/migrations/0008_reconciliation.sql"
       - "db/migrations/0009_webhooks.sql"
       - "db/migrations/0010_psp_credentials.sql"
+      - "db/migrations/0011_provider_auth_configs.sql"
+      - "db/migrations/0012_support_sessions.sql"
+      - "db/migrations/0013_quota_ledger.sql"
+      - "db/migrations/0014_team_members.sql"
+      - "db/migrations/0015_migration_plane.sql"
+      - "db/migrations/0016_custom_domains.sql"
+      - "db/migrations/0017_notification_configs.sql"
+      - "db/migrations/0018_sla_tiers.sql"
+      - "db/migrations/0019_scim_users.sql"
+      - "db/migrations/0020_data_exports.sql"
+      - "db/migrations/0021_scim_groups.sql"
     queries: "db/queries"
     gen:
       go:

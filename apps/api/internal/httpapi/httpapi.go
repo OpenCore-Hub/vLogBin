@@ -71,10 +71,30 @@ func (s *Server) Router() chi.Router {
 	r.Use(bodyLimitMiddleware)
 	r.Use(requestIDMiddleware)
 	r.Use(s.requestLogMiddleware)
+	r.Use(DeprecationMiddleware)
 
 	// Health-check endpoints (no auth — Kubernetes probes).
 	r.Get("/health", s.health)
 	r.Get("/ready", s.ready)
+	// API version info (no auth — public compatibility policy).
+	r.Get("/v1/api-version", s.getAPIVersion)
+
+	// SCIM 2.0 endpoints (standard SCIM path, provider API key auth).
+	r.Route("/scim/v2", func(r chi.Router) {
+		r.Use(s.apiKeyAuth)
+		r.With(requireScope(domain.ScopeSCIMManage)).Post("/Users", s.scimCreateUser)
+		r.With(requireScope(domain.ScopeSCIMManage)).Get("/Users", s.scimListUsers)
+		r.With(requireScope(domain.ScopeSCIMManage)).Get("/Users/{id}", s.scimGetUser)
+		r.With(requireScope(domain.ScopeSCIMManage)).Put("/Users/{id}", s.scimUpdateUser)
+		r.With(requireScope(domain.ScopeSCIMManage)).Patch("/Users/{id}", s.scimPatchUser)
+		r.With(requireScope(domain.ScopeSCIMManage)).Delete("/Users/{id}", s.scimDeleteUser)
+		// SCIM Groups (spec Section 4.2).
+		r.With(requireScope(domain.ScopeSCIMManage)).Post("/Groups", s.scimCreateGroup)
+		r.With(requireScope(domain.ScopeSCIMManage)).Get("/Groups", s.scimListGroups)
+		r.With(requireScope(domain.ScopeSCIMManage)).Get("/Groups/{id}", s.scimGetGroup)
+		r.With(requireScope(domain.ScopeSCIMManage)).Patch("/Groups/{id}", s.scimPatchGroup)
+		r.With(requireScope(domain.ScopeSCIMManage)).Delete("/Groups/{id}", s.scimDeleteGroup)
+	})
 
 	r.Route("/v1", func(r chi.Router) {
 		r.Route("/operator", func(r chi.Router) {
@@ -101,6 +121,12 @@ func (s *Server) Router() chi.Router {
 			// Webhook monitoring (operator view, cross-environment).
 			r.Get("/providers/{id}/webhooks", s.operatorListWebhooks)
 			r.Get("/providers/{id}/webhook-deliveries", s.operatorListWebhookDeliveries)
+			// JIT Support Access (operator-managed).
+			r.Post("/providers/{id}/support-sessions", s.requestSupportSession)
+			r.Get("/providers/{id}/support-sessions", s.operatorListSupportSessions)
+			r.Post("/support-sessions/{sessionId}/first-approve", s.firstApproveEmergency)
+			r.Post("/support-sessions/{sessionId}/second-approve", s.secondApproveEmergency)
+			r.Post("/support-sessions/{sessionId}/revoke", s.operatorRevokeSupportSession)
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(s.apiKeyAuth)
@@ -110,8 +136,54 @@ func (s *Server) Router() chi.Router {
 			r.With(requireScope(domain.ScopeRead)).Get("/credentials", s.listCredentials)
 			r.With(requireScope(domain.ScopeCredentialsManage)).Post("/credentials", s.createCredential)
 			r.With(requireScope(domain.ScopeCredentialsManage)).Post("/credentials/{id}/revoke", s.revokeCredential)
+			// Delegated Administration (team member management).
+			r.With(requireScope(domain.ScopeCredentialsManage)).Post("/team-members", s.inviteTeamMember)
+			r.With(requireScope(domain.ScopeRead)).Get("/team-members", s.listTeamMembers)
+			r.With(requireScope(domain.ScopeRead)).Get("/team-members/{id}", s.getTeamMember)
+			r.With(requireScope(domain.ScopeCredentialsManage)).Patch("/team-members/{id}", s.updateTeamMemberRole)
+			r.With(requireScope(domain.ScopeCredentialsManage)).Post("/team-members/{id}/suspend", s.suspendTeamMember)
+			r.With(requireScope(domain.ScopeCredentialsManage)).Post("/team-members/{id}/reactivate", s.reactivateTeamMember)
+			r.With(requireScope(domain.ScopeCredentialsManage)).Delete("/team-members/{id}", s.removeTeamMember)
 			r.With(requireScope(domain.ScopeAuditRead)).Get("/audit-events", s.listAuditEvents)
 			r.With(requireScope(domain.ScopeRead)).Get("/outbox-events", s.listOutboxEvents)
+			// Enterprise Event Stream (cursor-based forward pagination).
+			r.With(requireScope(domain.ScopeRead)).Get("/events", s.streamEvents)
+			// Custom Auth Domains (DNS-verified branded auth).
+			r.With(requireScope(domain.ScopeWrite)).Post("/custom-domains", s.registerCustomDomain)
+			r.With(requireScope(domain.ScopeRead)).Get("/custom-domains", s.listCustomDomains)
+			r.With(requireScope(domain.ScopeRead)).Get("/custom-domains/{id}", s.getCustomDomain)
+			r.With(requireScope(domain.ScopeWrite)).Post("/custom-domains/{id}/verify", s.verifyCustomDomain)
+			r.With(requireScope(domain.ScopeWrite)).Post("/custom-domains/{id}/revoke", s.revokeCustomDomain)
+			r.With(requireScope(domain.ScopeWrite)).Delete("/custom-domains/{id}", s.deleteCustomDomain)
+			// Notification configs (bring your own email/SMS).
+			r.With(requireScope(domain.ScopeWrite)).Put("/notification-configs", s.setNotificationConfig)
+			r.With(requireScope(domain.ScopeRead)).Get("/notification-configs", s.listNotificationConfigs)
+			r.With(requireScope(domain.ScopeRead)).Get("/notification-configs/{channel}", s.getNotificationConfig)
+			r.With(requireScope(domain.ScopeWrite)).Delete("/notification-configs/{channel}", s.deleteNotificationConfig)
+			// SLA tiers (tiered SLA and reserved capacity).
+			r.With(requireScope(domain.ScopeWrite)).Post("/sla-tiers", s.createSLATier)
+			r.With(requireScope(domain.ScopeRead)).Get("/sla-tiers", s.listSLATiers)
+			r.With(requireScope(domain.ScopeRead)).Get("/sla-tiers/{id}", s.getSLATier)
+			r.With(requireScope(domain.ScopeWrite)).Patch("/sla-tiers/{id}", s.updateSLATier)
+			r.With(requireScope(domain.ScopeWrite)).Delete("/sla-tiers/{id}", s.deleteSLATier)
+			// Data export and deletion proof (Phase 3 offboarding).
+			r.With(requireScope(domain.ScopeRead)).Post("/data-exports", s.requestDataExport)
+			r.With(requireScope(domain.ScopeRead)).Get("/data-exports", s.listDataExports)
+			r.With(requireScope(domain.ScopeRead)).Get("/data-exports/{id}", s.getDataExport)
+			r.With(requireScope(domain.ScopeWrite)).Post("/data-deletion", s.requestDeletion)
+			r.With(requireScope(domain.ScopeRead)).Get("/deletion-proofs", s.listDeletionProofs)
+			r.With(requireScope(domain.ScopeRead)).Get("/deletion-proofs/{id}", s.getDeletionProof)
+			// Migration Plane (dry-run, resumable import, cutover lock, rollback).
+			r.With(requireScope(domain.ScopeWrite)).Post("/migrations", s.createMigrationJob)
+			r.With(requireScope(domain.ScopeRead)).Get("/migrations", s.listMigrationJobs)
+			r.With(requireScope(domain.ScopeRead)).Get("/migrations/{id}", s.getMigrationJob)
+			r.With(requireScope(domain.ScopeWrite)).Post("/migrations/{id}/records", s.addMigrationRecords)
+			r.With(requireScope(domain.ScopeRead)).Get("/migrations/{id}/records", s.listMigrationRecords)
+			r.With(requireScope(domain.ScopeRead)).Get("/migrations/{id}/invalid-records", s.listInvalidRecords)
+			r.With(requireScope(domain.ScopeWrite)).Post("/migrations/{id}/validate", s.validateMigrationJob)
+			r.With(requireScope(domain.ScopeWrite)).Post("/migrations/{id}/start", s.startMigration)
+			r.With(requireScope(domain.ScopeWrite)).Post("/migrations/{id}/complete", s.completeMigration)
+			r.With(requireScope(domain.ScopeWrite)).Post("/migrations/{id}/rollback", s.rollbackMigration)
 			// Catalog (write scope for mutations, read for gets).
 			r.With(requireScope(domain.ScopeWrite)).Post("/catalog/versions", s.createCatalogVersion)
 			r.With(requireScope(domain.ScopeRead)).Get("/catalog/versions", s.listCatalogVersions)
@@ -140,6 +212,16 @@ func (s *Server) Router() chi.Router {
 			r.With(requireScope(domain.ScopeRead)).Get("/subscriptions/{id}/entitlement-overrides", s.listEntitlementOverrides)
 			r.With(requireScope(domain.ScopeWrite)).Delete("/subscriptions/{id}/entitlement-overrides/{key}", s.deleteEntitlementOverride)
 			r.With(requireScope(domain.ScopeRead)).Get("/entitlements/{customerExternalId}", s.getEntitlementSnapshot)
+			// Hard Quota (reserve/commit/release persistent ledger).
+			r.With(requireScope(domain.ScopeWrite)).Put("/subscriptions/{id}/quota-limits/{key}", s.setQuotaLimit)
+			r.With(requireScope(domain.ScopeRead)).Get("/subscriptions/{id}/quota-limits/{key}", s.getQuotaLimit)
+			r.With(requireScope(domain.ScopeRead)).Get("/subscriptions/{id}/quota-limits", s.listQuotaLimits)
+			r.With(requireScope(domain.ScopeWrite)).Delete("/subscriptions/{id}/quota-limits/{key}", s.deleteQuotaLimit)
+			r.With(requireScope(domain.ScopeWrite)).Post("/subscriptions/{id}/quota/reserve", s.reserveQuota)
+			r.With(requireScope(domain.ScopeWrite)).Post("/subscriptions/{id}/quota/commit", s.commitQuota)
+			r.With(requireScope(domain.ScopeWrite)).Post("/subscriptions/{id}/quota/release", s.releaseQuota)
+			r.With(requireScope(domain.ScopeRead)).Get("/subscriptions/{id}/quota/usage", s.getQuotaUsage)
+			r.With(requireScope(domain.ScopeRead)).Get("/subscriptions/{id}/quota/reservations", s.listQuotaReservations)
 			// Capabilities (provider views own).
 			r.With(requireScope(domain.ScopeRead)).Get("/capabilities", s.listMyCapabilities)
 			// PSP credentials (provider-managed, encrypted at rest).
@@ -147,11 +229,21 @@ func (s *Server) Router() chi.Router {
 			r.With(requireScope(domain.ScopeRead)).Get("/psp-credentials", s.listPSPCredentials)
 			r.With(requireScope(domain.ScopeWrite)).Post("/psp-credentials/{id}/rotate", s.rotatePSPCredential)
 			r.With(requireScope(domain.ScopeWrite)).Delete("/psp-credentials/{id}", s.revokePSPCredential)
+			// Hosted Auth (ZITADEL OIDC project management).
+			r.With(requireScope(domain.ScopeWrite)).Post("/auth/zitadel/setup", s.setupHostedAuth)
+			r.With(requireScope(domain.ScopeRead)).Get("/auth/zitadel/config", s.getHostedAuthConfig)
+			r.With(requireScope(domain.ScopeWrite)).Delete("/auth/zitadel", s.disableHostedAuth)
 			// Webhooks (signed delivery to provider endpoints).
 			r.With(requireScope(domain.ScopeWrite)).Post("/webhooks", s.createWebhook)
 			r.With(requireScope(domain.ScopeRead)).Get("/webhooks", s.listWebhooks)
 			r.With(requireScope(domain.ScopeWrite)).Delete("/webhooks/{id}", s.deleteWebhook)
 			r.With(requireScope(domain.ScopeRead)).Get("/webhook-deliveries", s.listWebhookDeliveries)
+			// JIT Support Access (provider can approve/deny/revoke and view).
+			r.With(requireScope(domain.ScopeSupportApprove)).Post("/support-sessions/{id}/approve", s.providerApproveSupportSession)
+			r.With(requireScope(domain.ScopeSupportApprove)).Post("/support-sessions/{id}/deny", s.providerDenySupportSession)
+			r.With(requireScope(domain.ScopeSupportApprove)).Post("/support-sessions/{id}/revoke", s.providerRevokeSupportSession)
+			r.With(requireScope(domain.ScopeRead)).Get("/support-sessions", s.providerListSupportSessions)
+			r.With(requireScope(domain.ScopeRead)).Get("/support-sessions/active", s.providerListActiveSupportSessions)
 		})
 	})
 	return r
@@ -190,6 +282,12 @@ func (s *Server) serviceError(w http.ResponseWriter, r *http.Request, err error)
 		writeError(w, http.StatusConflict, "usage_conflict", err.Error(), reqID)
 	case errors.Is(err, service.ErrUsageAlreadyInvoiced):
 		writeError(w, http.StatusConflict, "usage_already_invoiced", err.Error(), reqID)
+	case errors.Is(err, service.ErrQuotaExceeded):
+		writeError(w, http.StatusUnprocessableEntity, "quota_exceeded", err.Error(), reqID)
+	case errors.Is(err, service.ErrCutoverLocked):
+		writeError(w, http.StatusConflict, "cutover_locked", err.Error(), reqID)
+	case errors.Is(err, service.ErrDomainTaken):
+		writeError(w, http.StatusConflict, "domain_taken", err.Error(), reqID)
 	case errors.Is(err, service.ErrValidation):
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), reqID)
 	case errors.Is(err, domain.ErrInvalidTransition):

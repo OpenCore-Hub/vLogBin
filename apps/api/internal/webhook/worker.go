@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/domain"
 	"time"
 
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
@@ -298,6 +300,7 @@ func (w *Worker) deliver(ctx context.Context, ep *storegen.WebhookEndpoint, ev *
 	req.Header.Set("X-Webhook-Signature", sig)
 	req.Header.Set("X-Webhook-Timestamp", timestamp)
 	req.Header.Set("X-Webhook-Event-Type", ev.EventType)
+	req.Header.Set("X-Webhook-Schema-Version", domain.WebhookSchemaVersion)
 
 	resp, err := w.httpClient.Do(req)
 	if err != nil {

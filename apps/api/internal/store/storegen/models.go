@@ -71,6 +71,19 @@ type Credential struct {
 	CreatedAt     time.Time  `json:"created_at"`
 }
 
+type CustomDomain struct {
+	ID                uuid.UUID  `json:"id"`
+	ProviderID        uuid.UUID  `json:"provider_id"`
+	EnvironmentID     uuid.UUID  `json:"environment_id"`
+	Domain            string     `json:"domain"`
+	VerificationToken string     `json:"verification_token"`
+	Status            string     `json:"status"`
+	VerifiedAt        *time.Time `json:"verified_at"`
+	RevokedAt         *time.Time `json:"revoked_at"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+}
+
 type CustomerAccount struct {
 	ID            uuid.UUID `json:"id"`
 	ProviderID    uuid.UUID `json:"provider_id"`
@@ -79,6 +92,31 @@ type CustomerAccount struct {
 	AccountType   string    `json:"account_type"`
 	DisplayName   string    `json:"display_name"`
 	CreatedAt     time.Time `json:"created_at"`
+}
+
+type DataExport struct {
+	ID            uuid.UUID   `json:"id"`
+	ProviderID    uuid.UUID   `json:"provider_id"`
+	EnvironmentID uuid.UUID   `json:"environment_id"`
+	Status        string      `json:"status"`
+	ExportType    string      `json:"export_type"`
+	DataHash      pgtype.Text `json:"data_hash"`
+	ExportData    []byte      `json:"export_data"`
+	RecordCount   int32       `json:"record_count"`
+	ErrorMessage  pgtype.Text `json:"error_message"`
+	CreatedAt     time.Time   `json:"created_at"`
+	CompletedAt   *time.Time  `json:"completed_at"`
+}
+
+type DeletionProof struct {
+	ID             uuid.UUID `json:"id"`
+	ProviderID     uuid.UUID `json:"provider_id"`
+	EnvironmentID  uuid.UUID `json:"environment_id"`
+	DataHash       string    `json:"data_hash"`
+	RecordCount    int32     `json:"record_count"`
+	DeletedAt      time.Time `json:"deleted_at"`
+	ProofSignature string    `json:"proof_signature"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type EntitlementGrant struct {
@@ -202,6 +240,51 @@ type Metric struct {
 	Billable         bool        `json:"billable"`
 }
 
+type MigrationJob struct {
+	ID               uuid.UUID   `json:"id"`
+	ProviderID       uuid.UUID   `json:"provider_id"`
+	EnvironmentID    uuid.UUID   `json:"environment_id"`
+	SourceSystem     string      `json:"source_system"`
+	Status           string      `json:"status"`
+	DryRun           bool        `json:"dry_run"`
+	TotalRecords     int32       `json:"total_records"`
+	ProcessedRecords int32       `json:"processed_records"`
+	FailedRecords    int32       `json:"failed_records"`
+	CutoverLocked    bool        `json:"cutover_locked"`
+	StartedAt        *time.Time  `json:"started_at"`
+	CompletedAt      *time.Time  `json:"completed_at"`
+	ErrorSummary     pgtype.Text `json:"error_summary"`
+	CreatedBy        string      `json:"created_by"`
+	CreatedAt        time.Time   `json:"created_at"`
+	UpdatedAt        time.Time   `json:"updated_at"`
+}
+
+type MigrationRecord struct {
+	ID             uuid.UUID     `json:"id"`
+	MigrationJobID uuid.UUID     `json:"migration_job_id"`
+	RecordType     string        `json:"record_type"`
+	ExternalID     string        `json:"external_id"`
+	Status         string        `json:"status"`
+	SourceData     []byte        `json:"source_data"`
+	TargetID       uuid.NullUUID `json:"target_id"`
+	ErrorMessage   pgtype.Text   `json:"error_message"`
+	CreatedAt      time.Time     `json:"created_at"`
+	UpdatedAt      time.Time     `json:"updated_at"`
+}
+
+type NotificationConfig struct {
+	ID            uuid.UUID `json:"id"`
+	ProviderID    uuid.UUID `json:"provider_id"`
+	EnvironmentID uuid.UUID `json:"environment_id"`
+	Channel       string    `json:"channel"`
+	ProviderType  string    `json:"provider_type"`
+	ConfigEnc     []byte    `json:"config_enc"`
+	FromAddress   string    `json:"from_address"`
+	Enabled       bool      `json:"enabled"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
 type OutboxEvent struct {
 	ID            uuid.UUID  `json:"id"`
 	ProviderID    uuid.UUID  `json:"provider_id"`
@@ -253,6 +336,19 @@ type Provider struct {
 	UpdatedAt      time.Time     `json:"updated_at"`
 }
 
+type ProviderAuthConfig struct {
+	ID                  uuid.UUID `json:"id"`
+	ProviderID          uuid.UUID `json:"provider_id"`
+	EnvironmentID       uuid.UUID `json:"environment_id"`
+	ZitadelProjectID    string    `json:"zitadel_project_id"`
+	ZitadelAppID        string    `json:"zitadel_app_id"`
+	ZitadelClientID     string    `json:"zitadel_client_id"`
+	ZitadelClientSecret string    `json:"zitadel_client_secret"`
+	Enabled             bool      `json:"enabled"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
+}
+
 type ProviderCapability struct {
 	ID         uuid.UUID  `json:"id"`
 	ProviderID uuid.UUID  `json:"provider_id"`
@@ -281,6 +377,33 @@ type PspCredential struct {
 	RevokedAt              *time.Time  `json:"revoked_at"`
 }
 
+type QuotaLimit struct {
+	ID             uuid.UUID `json:"id"`
+	ProviderID     uuid.UUID `json:"provider_id"`
+	EnvironmentID  uuid.UUID `json:"environment_id"`
+	SubscriptionID uuid.UUID `json:"subscription_id"`
+	QuotaKey       string    `json:"quota_key"`
+	LimitValue     int64     `json:"limit_value"`
+	PeriodType     string    `json:"period_type"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+type QuotaReservation struct {
+	ID             uuid.UUID  `json:"id"`
+	ProviderID     uuid.UUID  `json:"provider_id"`
+	EnvironmentID  uuid.UUID  `json:"environment_id"`
+	SubscriptionID uuid.UUID  `json:"subscription_id"`
+	QuotaKey       string     `json:"quota_key"`
+	Amount         int64      `json:"amount"`
+	Status         string     `json:"status"`
+	ReservationID  string     `json:"reservation_id"`
+	ExpiresAt      *time.Time `json:"expires_at"`
+	CreatedAt      time.Time  `json:"created_at"`
+	CommittedAt    *time.Time `json:"committed_at"`
+	ReleasedAt     *time.Time `json:"released_at"`
+}
+
 type ReconciliationResult struct {
 	ID            uuid.UUID `json:"id"`
 	CheckName     string    `json:"check_name"`
@@ -299,6 +422,49 @@ type Region struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+type ScimGroup struct {
+	ID            uuid.UUID `json:"id"`
+	ProviderID    uuid.UUID `json:"provider_id"`
+	EnvironmentID uuid.UUID `json:"environment_id"`
+	ExternalID    string    `json:"external_id"`
+	DisplayName   string    `json:"display_name"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+type ScimGroupMember struct {
+	ID        uuid.UUID `json:"id"`
+	GroupID   uuid.UUID `json:"group_id"`
+	UserID    uuid.UUID `json:"user_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type ScimUser struct {
+	ID            uuid.UUID     `json:"id"`
+	ProviderID    uuid.UUID     `json:"provider_id"`
+	EnvironmentID uuid.UUID     `json:"environment_id"`
+	ExternalID    string        `json:"external_id"`
+	DisplayName   string        `json:"display_name"`
+	Email         string        `json:"email"`
+	Active        bool          `json:"active"`
+	CustomerID    uuid.NullUUID `json:"customer_id"`
+	CreatedAt     time.Time     `json:"created_at"`
+	UpdatedAt     time.Time     `json:"updated_at"`
+}
+
+type SlaTier struct {
+	ID               uuid.UUID `json:"id"`
+	ProviderID       uuid.UUID `json:"provider_id"`
+	EnvironmentID    uuid.UUID `json:"environment_id"`
+	Code             string    `json:"code"`
+	Name             string    `json:"name"`
+	UptimeSla        float64   `json:"uptime_sla"`
+	PriorityLevel    int32     `json:"priority_level"`
+	ReservedCapacity []byte    `json:"reserved_capacity"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
 type Subscription struct {
 	ID                uuid.UUID  `json:"id"`
 	ProviderID        uuid.UUID  `json:"provider_id"`
@@ -310,6 +476,40 @@ type Subscription struct {
 	Status            string     `json:"status"`
 	StartedAt         time.Time  `json:"started_at"`
 	TerminatedAt      *time.Time `json:"terminated_at"`
+}
+
+type SupportSession struct {
+	ID              uuid.UUID   `json:"id"`
+	ProviderID      uuid.UUID   `json:"provider_id"`
+	EnvironmentID   uuid.UUID   `json:"environment_id"`
+	AccessType      string      `json:"access_type"`
+	Status          string      `json:"status"`
+	RequestedBy     string      `json:"requested_by"`
+	Reason          string      `json:"reason"`
+	RequestedScopes []string    `json:"requested_scopes"`
+	ApprovedBy      pgtype.Text `json:"approved_by"`
+	SecondApprover  pgtype.Text `json:"second_approver"`
+	GrantedAt       *time.Time  `json:"granted_at"`
+	ExpiresAt       time.Time   `json:"expires_at"`
+	RevokedAt       *time.Time  `json:"revoked_at"`
+	RevokedBy       pgtype.Text `json:"revoked_by"`
+	RevokeReason    pgtype.Text `json:"revoke_reason"`
+	CreatedAt       time.Time   `json:"created_at"`
+	UpdatedAt       time.Time   `json:"updated_at"`
+}
+
+type TeamMember struct {
+	ID            uuid.UUID     `json:"id"`
+	ProviderID    uuid.UUID     `json:"provider_id"`
+	EnvironmentID uuid.UUID     `json:"environment_id"`
+	Email         string        `json:"email"`
+	DisplayName   string        `json:"display_name"`
+	Role          string        `json:"role"`
+	Status        string        `json:"status"`
+	CredentialID  uuid.NullUUID `json:"credential_id"`
+	InvitedBy     string        `json:"invited_by"`
+	CreatedAt     time.Time     `json:"created_at"`
+	UpdatedAt     time.Time     `json:"updated_at"`
 }
 
 type UsageEvent struct {

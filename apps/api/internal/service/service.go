@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"time"
 
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/billing"
@@ -20,6 +21,7 @@ import (
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store/storegen"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/tenant"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/zitadel"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/webhook"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -36,6 +38,9 @@ var (
 	// usage that has already been included in a finalized invoice. The
 	// caller must issue a credit note instead (Testing #6 post-invoice).
 	ErrUsageAlreadyInvoiced = errors.New("usage already invoiced")
+	// ErrQuotaExceeded is returned when a hard quota reservation would
+	// exceed the configured limit (spec Section 11.2, Testing #20).
+	ErrQuotaExceeded = errors.New("quota exceeded")
 )
 
 type Service struct {
@@ -48,6 +53,11 @@ type Service struct {
 	// encryptor is used for PSP credential encryption. When nil, PSP
 	// credential creation returns an error.
 	encryptor *crypto.Encryptor
+	// zitadelMgmt is the ZITADEL Management API client for Hosted Auth
+	// project management. When nil, Hosted Auth setup is unavailable.
+	zitadelMgmt *zitadel.ManagementClient
+	// zitadelIssuer is the ZITADEL issuer URL (for OIDC discovery).
+	zitadelIssuer string
 	// usageLateWindow is how far back usage timestamps may lag (config
 	// USAGE_LATE_WINDOW_HOURS, default 168h).
 	usageLateWindow time.Duration
@@ -57,6 +67,10 @@ type Service struct {
 	// urlValidator validates webhook endpoint URLs for SSRF safety. Tests
 	// may override it to permit loopback (httptest servers).
 	urlValidator func(string) error
+	// dnsResolver resolves DNS TXT records for custom domain verification.
+	// Tests may override it to simulate DNS ownership proof without real
+	// DNS records. Production must keep the default net.LookupTXT.
+	dnsResolver func(ctx context.Context, name string) ([]string, error)
 }
 
 // Option customizes the service (billing core settings).
@@ -91,6 +105,13 @@ func WithURLValidator(fn func(string) error) Option {
 	return func(s *Service) { s.urlValidator = fn }
 }
 
+// WithDNSResolver overrides the DNS TXT resolver for custom domain
+// verification. Tests use this to simulate DNS ownership proof without
+// real DNS records. Production must keep the default net.LookupTXT.
+func WithDNSResolver(fn func(ctx context.Context, name string) ([]string, error)) Option {
+	return func(s *Service) { s.dnsResolver = fn }
+}
+
 func New(st *store.Store, platformBaseDomain string, opts ...Option) *Service {
 	s := &Service{
 		store:           st,
@@ -100,6 +121,9 @@ func New(st *store.Store, platformBaseDomain string, opts ...Option) *Service {
 		usageLateWindow: 168 * time.Hour,
 		usageFutureSkew: 5 * time.Minute,
 		urlValidator:    webhook.ValidateURL,
+		dnsResolver: func(ctx context.Context, name string) ([]string, error) {
+			return net.LookupTXT(name)
+		},
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -565,6 +589,53 @@ func mapErr(err error, whatFmt string, args ...any) error {
 		return fmt.Errorf("%w: %s", ErrConflict, fmt.Sprintf(whatFmt, args...))
 	}
 	return err
+}
+
+// checkTenantOwnership verifies that an entity belongs to the caller's
+// tenant. Returns ErrNotFound if the provider_id or environment_id does
+// not match. This eliminates the duplicated ownership-check pattern
+// across 10+ service methods.
+func checkTenantOwnership(providerID, environmentID uuid.UUID, tc tenant.Ctx, entity string, id any) error {
+	if providerID != tc.ProviderID || environmentID != tc.EnvironmentID {
+		return fmt.Errorf("%w: %s %v", ErrNotFound, entity, id)
+	}
+	return nil
+}
+
+// ExpirySweeper is a generic background sweeper that periodically calls
+// a sweep function to expire past-due resources. Used by support session
+// expiry and quota reservation expiry (eliminates duplicated sweeper structs).
+type ExpirySweeper struct {
+	name     string
+	sweep    func(context.Context) (int64, error)
+	interval time.Duration
+	log      *slog.Logger
+}
+
+// NewExpirySweeper creates a generic expiry sweeper.
+func NewExpirySweeper(name string, sweep func(context.Context) (int64, error), interval time.Duration, log *slog.Logger) *ExpirySweeper {
+	return &ExpirySweeper{name: name, sweep: sweep, interval: interval, log: log}
+}
+
+// Run blocks until ctx is cancelled, periodically calling the sweep function.
+func (sw *ExpirySweeper) Run(ctx context.Context) error {
+	ticker := time.NewTicker(sw.interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			n, err := sw.sweep(ctx)
+			if err != nil {
+				sw.log.Error(sw.name+" sweep failed", "error", err)
+				continue
+			}
+			if n > 0 {
+				sw.log.Info(sw.name+" expired", "count", n)
+			}
+		}
+	}
 }
 
 // RecordTenantOverrideAttempt audits a rejected attempt to override the

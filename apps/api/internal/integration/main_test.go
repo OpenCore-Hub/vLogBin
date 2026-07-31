@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/billing"
@@ -40,7 +41,22 @@ var (
 	appStore   *store.Store  // connects as platform_app (RLS enforced)
 	svc        *service.Service
 	httpServer *httptest.Server
+	// testDNSRecords stores TXT records for the test DNS resolver.
+	testDNSRecords = make(map[string]string)
+	testDNSMu      sync.RWMutex
 )
+
+// testDNSResolver simulates DNS TXT lookups for custom domain verification.
+// Tests add entries to testDNSRecords before calling the verify endpoint.
+// This is the same injection pattern as WithURLValidator for webhooks.
+func testDNSResolver(_ context.Context, name string) ([]string, error) {
+	testDNSMu.RLock()
+	defer testDNSMu.RUnlock()
+	if val, ok := testDNSRecords[name]; ok {
+		return []string{val}, nil
+	}
+	return nil, fmt.Errorf("no TXT records found for %s", name)
+}
 
 func TestMain(m *testing.M) {
 	ctr, err := tcpostgres.Run(testCtx, "postgres:16-alpine",
@@ -98,6 +114,7 @@ func TestMain(m *testing.M) {
 		service.WithBillingAdapter(billing.NewNoop(nil)),
 		service.WithURLValidator(webhook.ValidateURLAllowLoopback),
 		service.WithCryptoEncryptor(testEncryptor),
+		service.WithDNSResolver(testDNSResolver),
 	)
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	httpServer = httptest.NewServer(httpapi.NewServer(appStore, svc, operatorToken, logger).Router())

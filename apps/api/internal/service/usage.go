@@ -87,6 +87,10 @@ func (s *Service) IngestUsage(ctx context.Context, tc tenant.Ctx, in UsageIngest
 	if in.Timestamp.Before(now.Add(-s.usageLateWindow)) {
 		return nil, fmt.Errorf("%w: timestamp %s is older than the late window %s", ErrValidation, in.Timestamp.Format(time.RFC3339), s.usageLateWindow)
 	}
+	// Prevent new usage ingestion during migration cutover (spec Section 17.1).
+	if err := s.CheckCutoverLock(ctx, tc); err != nil {
+		return nil, err
+	}
 	hash, err := UsagePayloadHash(in.TransactionID, in.MetricCode, in.CustomerExternalID, in.Timestamp, in.Properties)
 	if err != nil {
 		return nil, err

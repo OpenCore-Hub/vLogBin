@@ -77,28 +77,39 @@ func main() {
 		log.Info("PSP credential encryption enabled")
 	}
 
+	// ZITADEL OIDC + Management API (optional — when ZITADEL_URL is set).
+	var zitadelMgmt *zitadel.ManagementClient
+	var oidcVerifier *zitadel.Verifier
+	if cfg.ZITADELURL != "" {
+		v, err := zitadel.NewVerifier(ctx, cfg.ZITADELURL)
+		if err != nil {
+			log.Error("ZITADEL OIDC verifier init failed", "error", err, "url", cfg.ZITADELURL)
+			os.Exit(1)
+		}
+		oidcVerifier = v
+		log.Info("ZITADEL OIDC verification enabled", "issuer", cfg.ZITADELURL)
+
+		if cfg.ZITADELPAT != "" {
+			zitadelMgmt = zitadel.NewManagementClient(cfg.ZITADELURL, cfg.ZITADELPAT)
+			log.Info("ZITADEL Management API enabled")
+		}
+	} else {
+		log.Info("ZITADEL OIDC not configured; using static OPERATOR_TOKEN")
+	}
+
 	svc := service.New(st, cfg.PlatformBaseDomain,
 		service.WithLogger(log),
 		service.WithBillingAdapter(adapter),
 		service.WithCryptoEncryptor(encryptor),
+		service.WithZITADELManagement(zitadelMgmt, cfg.ZITADELURL),
 		service.WithUsageLateWindow(cfg.UsageLateWindow),
 		service.WithUsageFutureSkew(5*time.Minute),
 	)
 	apiServer := httpapi.NewServer(st, svc, cfg.OperatorToken, log)
 	apiServer.SetCORSOrigins(cfg.CORSAllowedOrigins)
 	apiServer.SetRateLimits(cfg.RateLimits)
-
-	// ZITADEL OIDC verification (optional — when ZITADEL_URL is set).
-	if cfg.ZITADELURL != "" {
-		verifier, err := zitadel.NewVerifier(ctx, cfg.ZITADELURL)
-		if err != nil {
-			log.Error("ZITADEL OIDC verifier init failed", "error", err, "url", cfg.ZITADELURL)
-			os.Exit(1)
-		}
-		apiServer.SetOIDCVerifier(verifier)
-		log.Info("ZITADEL OIDC verification enabled", "issuer", cfg.ZITADELURL)
-	} else {
-		log.Info("ZITADEL OIDC not configured; using static OPERATOR_TOKEN")
+	if oidcVerifier != nil {
+		apiServer.SetOIDCVerifier(oidcVerifier)
 	}
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -135,6 +146,26 @@ func main() {
 		_ = wk.Run(webhookCtx)
 	}()
 
+	// JIT Support Access expiry sweeper: batch-expires past-due sessions.
+	supportCtx, stopSupport := context.WithCancel(ctx)
+	defer stopSupport()
+	supportDone := make(chan struct{})
+	go func() {
+		defer close(supportDone)
+		sweeper := service.NewSupportExpirySweeper(svc, cfg.SupportSweepInterval, log)
+		_ = sweeper.Run(supportCtx)
+	}()
+
+	// Hard Quota reservation expiry sweeper: reclaims past-due reservations.
+	quotaCtx, stopQuota := context.WithCancel(ctx)
+	defer stopQuota()
+	quotaDone := make(chan struct{})
+	go func() {
+		defer close(quotaDone)
+		sweeper := service.NewQuotaExpirySweeper(svc, cfg.QuotaSweepInterval, log)
+		_ = sweeper.Run(quotaCtx)
+	}()
+
 	go func() {
 		log.Info("platform API listening", "addr", cfg.HTTPAddr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -157,5 +188,9 @@ func main() {
 	<-reconDone
 	stopWebhook()
 	<-webhookDone
+	stopSupport()
+	<-supportDone
+	stopQuota()
+	<-quotaDone
 	log.Info("shutdown complete")
 }

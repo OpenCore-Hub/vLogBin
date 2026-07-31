@@ -37,7 +37,7 @@ func newTestWebhookWorker() *webhook.Worker {
 func drainWebhookUntilDelivered(t *testing.T, apiKey string) {
 	t.Helper()
 	worker := newTestWebhookWorker()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		if err := worker.DrainOnce(testCtx); err != nil {
 			t.Fatalf("webhook drain: %v", err)
@@ -48,6 +48,41 @@ func drainWebhookUntilDelivered(t *testing.T, apiKey string) {
 		}
 	}
 	t.Fatal("timed out waiting for webhook delivery")
+}
+
+// cleanupWebhookData deletes all outbox events and webhook deliveries
+// from prior tests using the superuser connection (bypasses RLS). This
+// prevents stale events from interfering with webhook test assertions.
+func cleanupWebhookData(t *testing.T) {
+	t.Helper()
+	_, err := superPool.Exec(testCtx, "DELETE FROM webhook_deliveries")
+	if err != nil {
+		t.Logf("cleanup webhook_deliveries: %v", err)
+	}
+	_, err = superPool.Exec(testCtx, "DELETE FROM outbox_events")
+	if err != nil {
+		t.Logf("cleanup outbox_events: %v", err)
+	}
+}
+
+// drainAllPendingOutbox processes all accumulated outbox events from prior
+// tests so the webhook worker queue is empty before a new webhook test
+// starts. Without this, old events (pointing to dead httptest servers)
+// dominate DrainOnce and cause timeouts.
+func drainAllPendingOutbox(t *testing.T) {
+	t.Helper()
+	relay := outbox.NewRelay(appStore, billing.NewNoop(nil), 50*time.Millisecond,
+		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker := newTestWebhookWorker()
+	// Run enough iterations to dead-letter all stale deliveries from
+	// prior tests. Each DrainOnce processes a batch; dead endpoints
+	// fail fast (connection refused) and get dead-lettered after 3
+	// attempts with short backoff.
+	for i := 0; i < 20; i++ {
+		_ = relay.DrainOnce(testCtx)
+		_ = worker.DrainOnce(testCtx)
+		time.Sleep(200 * time.Millisecond)
+	}
 }
 
 // capturedRequest holds the headers and body of a webhook received by a
@@ -79,6 +114,8 @@ func createWebhookViaAPI(t *testing.T, apiKey, targetURL string) (endpointID, se
 // ---------------------------------------------------------------------------
 
 func TestWebhookDelivery(t *testing.T) {
+	cleanupWebhookData(t)
+
 	_, apiKey := createProviderAPI(t, "wh-deliver-"+uuid.NewString()[:8])
 	versionID := createPublishedCatalog(t, apiKey)
 	custExt, _ := createCustomerAndSubscription(t, apiKey, versionID)
@@ -284,6 +321,7 @@ func latestDelivery(t *testing.T, apiKey string) map[string]any {
 // ---------------------------------------------------------------------------
 
 func TestWebhookDedup(t *testing.T) {
+	cleanupWebhookData(t)
 	_, apiKey := createProviderAPI(t, "wh-dedup-"+uuid.NewString()[:8])
 	versionID := createPublishedCatalog(t, apiKey)
 	custExt, _ := createCustomerAndSubscription(t, apiKey, versionID)
@@ -391,6 +429,7 @@ func TestWebhookCRUD(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestWebhookEventFilter(t *testing.T) {
+	cleanupWebhookData(t)
 	_, apiKey := createProviderAPI(t, "wh-filter-"+uuid.NewString()[:8])
 	versionID := createPublishedCatalog(t, apiKey)
 	custExt, _ := createCustomerAndSubscription(t, apiKey, versionID)
