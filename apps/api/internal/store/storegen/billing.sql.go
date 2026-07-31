@@ -38,6 +38,25 @@ func (q *Queries) CheckUsageInvoiced(ctx context.Context, arg CheckUsageInvoiced
 	return invoiced, err
 }
 
+const countUninvoicedUsage = `-- name: CountUninvoicedUsage :one
+SELECT count(*)::bigint FROM usage_events ue
+WHERE ue.provider_id = $1
+    AND NOT EXISTS (
+        SELECT 1 FROM invoice_lines il WHERE il.event_transaction_id = ue.transaction_id
+        AND il.provider_id = ue.provider_id AND il.environment_id = ue.environment_id
+    )
+`
+
+// Counts usage events that have not yet been included in an invoice.
+// Used by CompleteFailover to report replay counts (spec Section 14:
+// "切换后重放未确认 Usage").
+func (q *Queries) CountUninvoicedUsage(ctx context.Context, providerID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countUninvoicedUsage, providerID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const deleteEntitlementOverride = `-- name: DeleteEntitlementOverride :execrows
 DELETE FROM entitlement_overrides WHERE subscription_id = $1 AND key = $2
 `

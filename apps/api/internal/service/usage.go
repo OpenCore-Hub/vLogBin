@@ -91,6 +91,10 @@ func (s *Service) IngestUsage(ctx context.Context, tc tenant.Ctx, in UsageIngest
 	if err := s.CheckCutoverLock(ctx, tc); err != nil {
 		return nil, err
 	}
+	// Write fencing: block writes during cell failover/migration (spec Section 14).
+	if err := s.CheckCellDraining(ctx, tc); err != nil {
+		return nil, err
+	}
 	hash, err := UsagePayloadHash(in.TransactionID, in.MetricCode, in.CustomerExternalID, in.Timestamp, in.Properties)
 	if err != nil {
 		return nil, err

@@ -265,3 +265,68 @@ const ScopeSCIMManage = "scim:manage"
 // WebhookSchemaVersion is the schema version included in webhook payloads
 // and headers (spec Section 7.2: "Webhook payload 包含 schema_version").
 const WebhookSchemaVersion = "1.0"
+
+// Cell types.
+const (
+	CellTypeShared    = "shared"
+	CellTypeDedicated = "dedicated"
+)
+
+// Cell statuses.
+const (
+	CellStatusActive   = "active"
+	CellStatusDraining = "draining"
+	CellStatusInactive = "inactive"
+)
+
+// ValidCellType reports whether s is a known cell type.
+func ValidCellType(s string) bool {
+	return s == CellTypeShared || s == CellTypeDedicated
+}
+
+// ValidCellStatus reports whether s is a known cell status.
+func ValidCellStatus(s string) bool {
+	return s == CellStatusActive || s == CellStatusDraining || s == CellStatusInactive
+}
+
+// Cell failover statuses (spec Section 14: manual failover with fencing).
+const (
+	FailoverStatusInitiated = "initiated"
+	FailoverStatusFenced    = "fenced"
+	FailoverStatusSwitched  = "switched"
+	FailoverStatusReplaying = "replaying"
+	FailoverStatusCompleted = "completed"
+	FailoverStatusAborted   = "aborted"
+)
+
+// Cell migration statuses (spec Section 14, Phase 3: planned cell migration).
+const (
+	CellMigrationPlanned     = "planned"
+	CellMigrationPrechecking = "prechecking"
+	CellMigrationReady       = "ready"
+	CellMigrationMigrating   = "migrating"
+	CellMigrationCompleted   = "completed"
+	CellMigrationFailed      = "failed"
+	CellMigrationCancelled   = "cancelled"
+)
+
+// Metered pricing models (spec Section 18: metered billing).
+const (
+	PricingModelPerUnit  = "per_unit"
+	PricingModelTiered   = "tiered"
+	PricingModelVolume   = "volume"
+	PricingModelStairStep = "stairstep"
+)
+
+// ValidPricingModel reports whether s is a known pricing model.
+func ValidPricingModel(s string) bool {
+	return s == PricingModelPerUnit || s == PricingModelTiered ||
+		s == PricingModelVolume || s == PricingModelStairStep
+}
+
+// Budget alert statuses.
+const (
+	BudgetAlertOK       = "ok"
+	BudgetAlertWarning  = "warning"
+	BudgetAlertExceeded = "exceeded"
+)

@@ -21,6 +21,9 @@ sql:
       - "db/migrations/0019_scim_users.sql"
       - "db/migrations/0020_data_exports.sql"
       - "db/migrations/0021_scim_groups.sql"
+      - "db/migrations/0022_cell_failovers.sql"
+      - "db/migrations/0023_cell_migrations.sql"
+      - "db/migrations/0025_metered_billing.sql"
     queries: "db/queries"
     gen:
       go:

@@ -60,6 +60,10 @@ type Config struct {
 	// QuotaSweepInterval controls how often the hard quota reservation
 	// expiry sweeper runs (QUOTA_SWEEP_INTERVAL, default 15s).
 	QuotaSweepInterval time.Duration
+	// MigrationScheduleInterval controls how often the cell migration
+	// scheduler checks for ready migrations (MIGRATION_SCHEDULE_INTERVAL,
+	// default 5m).
+	MigrationScheduleInterval time.Duration
 }
 
 // RateLimitConfig holds per-level rate limit settings. All limits are
@@ -88,6 +92,7 @@ func Load() (Config, error) {
 		ReconciliationInterval: time.Hour,
 		SupportSweepInterval:  30 * time.Second,
 		QuotaSweepInterval:    15 * time.Second,
+		MigrationScheduleInterval: 5 * time.Minute,
 		CORSAllowedOrigins:   []string{"*"},
 		LogLevel:             "info",
 		RateLimits: RateLimitConfig{
@@ -132,6 +137,11 @@ func Load() (Config, error) {
 	if v := os.Getenv("QUOTA_SWEEP_INTERVAL"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.QuotaSweepInterval = d
+		}
+	}
+	if v := os.Getenv("MIGRATION_SCHEDULE_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.MigrationScheduleInterval = d
 		}
 	}
 	if v := os.Getenv("CORS_ALLOWED_ORIGINS"); v != "" {

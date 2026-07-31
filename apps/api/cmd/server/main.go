@@ -166,6 +166,16 @@ func main() {
 		_ = sweeper.Run(quotaCtx)
 	}()
 
+	// Cell migration scheduler: auto-prechecks scheduled migrations.
+	migSchedCtx, stopMigSched := context.WithCancel(ctx)
+	defer stopMigSched()
+	migSchedDone := make(chan struct{})
+	go func() {
+		defer close(migSchedDone)
+		scheduler := service.NewMigrationScheduler(svc, cfg.MigrationScheduleInterval, log)
+		_ = scheduler.Run(migSchedCtx)
+	}()
+
 	go func() {
 		log.Info("platform API listening", "addr", cfg.HTTPAddr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -192,5 +202,7 @@ func main() {
 	<-supportDone
 	stopQuota()
 	<-quotaDone
+	stopMigSched()
+	<-migSchedDone
 	log.Info("shutdown complete")
 }

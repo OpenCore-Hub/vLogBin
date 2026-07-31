@@ -121,6 +121,26 @@ func (s *Server) Router() chi.Router {
 			// Webhook monitoring (operator view, cross-environment).
 			r.Get("/providers/{id}/webhooks", s.operatorListWebhooks)
 			r.Get("/providers/{id}/webhook-deliveries", s.operatorListWebhookDeliveries)
+			// Cell management (operator-only).
+			r.Post("/cells", s.createCell)
+			r.Get("/cells/{id}", s.getCell)
+			r.Patch("/cells/{id}", s.updateCellStatus)
+			r.Post("/providers/{id}/cell", s.assignProviderCell)
+			// Hot Standby + Failover (spec Section 14).
+			r.Post("/failovers", s.initiateFailover)
+			r.Get("/failovers", s.listFailovers)
+			r.Get("/failovers/{id}", s.getFailover)
+			r.Post("/failovers/{id}/fence", s.fenceFailover)
+			r.Post("/failovers/{id}/switch", s.switchFailover)
+			r.Post("/failovers/{id}/complete", s.completeFailover)
+			r.Post("/failovers/{id}/abort", s.abortFailover)
+			// Cell Migration (planned, spec Section 14, Phase 3).
+			r.Post("/cell-migrations", s.createCellMigration)
+			r.Get("/cell-migrations", s.listCellMigrations)
+			r.Get("/cell-migrations/{id}", s.getCellMigration)
+			r.Post("/cell-migrations/{id}/precheck", s.precheckMigration)
+			r.Post("/cell-migrations/{id}/execute", s.executeMigration)
+			r.Post("/cell-migrations/{id}/cancel", s.cancelMigration)
 			// JIT Support Access (operator-managed).
 			r.Post("/providers/{id}/support-sessions", s.requestSupportSession)
 			r.Get("/providers/{id}/support-sessions", s.operatorListSupportSessions)
@@ -173,6 +193,25 @@ func (s *Server) Router() chi.Router {
 			r.With(requireScope(domain.ScopeWrite)).Post("/data-deletion", s.requestDeletion)
 			r.With(requireScope(domain.ScopeRead)).Get("/deletion-proofs", s.listDeletionProofs)
 			r.With(requireScope(domain.ScopeRead)).Get("/deletion-proofs/{id}", s.getDeletionProof)
+			// Cell info (provider can view their assigned cell).
+			r.With(requireScope(domain.ScopeRead)).Get("/cell", s.getProviderCell)
+			// Analytics (Phase 4: independent analytic plane, spec Section 18).
+			r.With(requireScope(domain.ScopeRead)).Get("/analytics/dashboard", s.getProviderDashboard)
+			r.With(requireScope(domain.ScopeRead)).Get("/analytics/revenue", s.getRevenueSummary)
+			r.With(requireScope(domain.ScopeRead)).Get("/analytics/mau", s.getMAUSummary)
+			r.With(requireScope(domain.ScopeRead)).Get("/analytics/conversion", s.getConversionSummary)
+			r.With(requireScope(domain.ScopeRead)).Get("/analytics/churn", s.getChurnSummary)
+			r.With(requireScope(domain.ScopeRead)).Get("/analytics/usage-breakdown", s.getUsageBreakdown)
+			r.With(requireScope(domain.ScopeRead)).Get("/analytics/anomalies", s.getUsageAnomalies)
+			// Metered Billing + FinOps (Phase 4, spec Section 18).
+			r.With(requireScope(domain.ScopeWrite)).Put("/metered-pricing-rules", s.setMeteredPricingRule)
+			r.With(requireScope(domain.ScopeRead)).Get("/metered-pricing-rules", s.listMeteredPricingRules)
+			r.With(requireScope(domain.ScopeRead)).Get("/metered-pricing-rules/{metric}", s.getMeteredPricingRule)
+			r.With(requireScope(domain.ScopeWrite)).Delete("/metered-pricing-rules/{metric}", s.deleteMeteredPricingRule)
+			r.With(requireScope(domain.ScopeWrite)).Post("/budget-alerts", s.createBudgetAlert)
+			r.With(requireScope(domain.ScopeRead)).Get("/budget-alerts", s.listBudgetAlerts)
+			r.With(requireScope(domain.ScopeRead)).Get("/budget-alerts/{id}", s.getBudgetAlert)
+			r.With(requireScope(domain.ScopeWrite)).Delete("/budget-alerts/{id}", s.deleteBudgetAlert)
 			// Migration Plane (dry-run, resumable import, cutover lock, rollback).
 			r.With(requireScope(domain.ScopeWrite)).Post("/migrations", s.createMigrationJob)
 			r.With(requireScope(domain.ScopeRead)).Get("/migrations", s.listMigrationJobs)
@@ -286,6 +325,8 @@ func (s *Server) serviceError(w http.ResponseWriter, r *http.Request, err error)
 		writeError(w, http.StatusUnprocessableEntity, "quota_exceeded", err.Error(), reqID)
 	case errors.Is(err, service.ErrCutoverLocked):
 		writeError(w, http.StatusConflict, "cutover_locked", err.Error(), reqID)
+	case errors.Is(err, service.ErrCellDraining):
+		writeError(w, http.StatusConflict, "cell_draining", err.Error(), reqID)
 	case errors.Is(err, service.ErrDomainTaken):
 		writeError(w, http.StatusConflict, "domain_taken", err.Error(), reqID)
 	case errors.Is(err, service.ErrValidation):

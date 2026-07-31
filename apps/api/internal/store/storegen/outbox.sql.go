@@ -67,6 +67,21 @@ func (q *Queries) ClaimDueOutboxEvents(ctx context.Context, limit int32) ([]Outb
 	return items, nil
 }
 
+const countUnconfirmedOutbox = `-- name: CountUnconfirmedOutbox :one
+SELECT COUNT(*) FROM outbox_events
+WHERE provider_id = $1 AND status IN ('pending', 'failed')
+`
+
+// Counts outbox events that are pending or failed (not yet delivered)
+// for a provider. Used by CompleteFailover to report replay counts
+// (spec Section 14: "切换后重放未确认 Outbox").
+func (q *Queries) CountUnconfirmedOutbox(ctx context.Context, providerID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countUnconfirmedOutbox, providerID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const insertOutboxEvent = `-- name: InsertOutboxEvent :one
 INSERT INTO outbox_events (provider_id, environment_id, aggregate_type, aggregate_id, event_type, payload, payload_hash, transaction_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)

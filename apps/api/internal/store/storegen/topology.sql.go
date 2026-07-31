@@ -11,6 +11,100 @@ import (
 	uuid "github.com/google/uuid"
 )
 
+const createCell = `-- name: CreateCell :one
+INSERT INTO cells (region_id, code, cell_type, status, capacity_limits)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, region_id, code, cell_type, status, capacity_limits, created_at
+`
+
+type CreateCellParams struct {
+	RegionID       uuid.UUID `json:"region_id"`
+	Code           string    `json:"code"`
+	CellType       string    `json:"cell_type"`
+	Status         string    `json:"status"`
+	CapacityLimits []byte    `json:"capacity_limits"`
+}
+
+func (q *Queries) CreateCell(ctx context.Context, arg CreateCellParams) (Cell, error) {
+	row := q.db.QueryRow(ctx, createCell,
+		arg.RegionID,
+		arg.Code,
+		arg.CellType,
+		arg.Status,
+		arg.CapacityLimits,
+	)
+	var i Cell
+	err := row.Scan(
+		&i.ID,
+		&i.RegionID,
+		&i.Code,
+		&i.CellType,
+		&i.Status,
+		&i.CapacityLimits,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getCellByCode = `-- name: GetCellByCode :one
+SELECT id, region_id, code, cell_type, status, capacity_limits, created_at FROM cells WHERE code = $1
+`
+
+func (q *Queries) GetCellByCode(ctx context.Context, code string) (Cell, error) {
+	row := q.db.QueryRow(ctx, getCellByCode, code)
+	var i Cell
+	err := row.Scan(
+		&i.ID,
+		&i.RegionID,
+		&i.Code,
+		&i.CellType,
+		&i.Status,
+		&i.CapacityLimits,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getCellByID = `-- name: GetCellByID :one
+SELECT id, region_id, code, cell_type, status, capacity_limits, created_at FROM cells WHERE id = $1
+`
+
+func (q *Queries) GetCellByID(ctx context.Context, id uuid.UUID) (Cell, error) {
+	row := q.db.QueryRow(ctx, getCellByID, id)
+	var i Cell
+	err := row.Scan(
+		&i.ID,
+		&i.RegionID,
+		&i.Code,
+		&i.CellType,
+		&i.Status,
+		&i.CapacityLimits,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getCellByProviderID = `-- name: GetCellByProviderID :one
+SELECT c.id, c.region_id, c.code, c.cell_type, c.status, c.capacity_limits, c.created_at FROM cells c
+JOIN providers p ON p.cell_id = c.id
+WHERE p.id = $1
+`
+
+func (q *Queries) GetCellByProviderID(ctx context.Context, id uuid.UUID) (Cell, error) {
+	row := q.db.QueryRow(ctx, getCellByProviderID, id)
+	var i Cell
+	err := row.Scan(
+		&i.ID,
+		&i.RegionID,
+		&i.Code,
+		&i.CellType,
+		&i.Status,
+		&i.CapacityLimits,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getRegionByCode = `-- name: GetRegionByCode :one
 SELECT id, code, jurisdiction, created_at FROM regions WHERE code = $1
 `
@@ -113,6 +207,40 @@ func (q *Queries) ListCells(ctx context.Context) ([]Cell, error) {
 	return items, nil
 }
 
+const listCellsByRegion = `-- name: ListCellsByRegion :many
+SELECT id, region_id, code, cell_type, status, capacity_limits, created_at FROM cells
+WHERE region_id = $1 AND status = 'active'
+ORDER BY code
+`
+
+func (q *Queries) ListCellsByRegion(ctx context.Context, regionID uuid.UUID) ([]Cell, error) {
+	rows, err := q.db.Query(ctx, listCellsByRegion, regionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Cell
+	for rows.Next() {
+		var i Cell
+		if err := rows.Scan(
+			&i.ID,
+			&i.RegionID,
+			&i.Code,
+			&i.CellType,
+			&i.Status,
+			&i.CapacityLimits,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCommerceAccounts = `-- name: ListCommerceAccounts :many
 SELECT id, domain, provider_id, environment_id, display_name, created_at FROM commerce_accounts ORDER BY created_at
 `
@@ -171,4 +299,29 @@ func (q *Queries) ListRegions(ctx context.Context) ([]Region, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateCellStatus = `-- name: UpdateCellStatus :one
+UPDATE cells SET status = $2 WHERE id = $1
+RETURNING id, region_id, code, cell_type, status, capacity_limits, created_at
+`
+
+type UpdateCellStatusParams struct {
+	ID     uuid.UUID `json:"id"`
+	Status string    `json:"status"`
+}
+
+func (q *Queries) UpdateCellStatus(ctx context.Context, arg UpdateCellStatusParams) (Cell, error) {
+	row := q.db.QueryRow(ctx, updateCellStatus, arg.ID, arg.Status)
+	var i Cell
+	err := row.Scan(
+		&i.ID,
+		&i.RegionID,
+		&i.Code,
+		&i.CellType,
+		&i.Status,
+		&i.CapacityLimits,
+		&i.CreatedAt,
+	)
+	return i, err
 }

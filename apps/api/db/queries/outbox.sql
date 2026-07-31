@@ -14,6 +14,13 @@ WHERE provider_id = $1 AND environment_id = $2
 ORDER BY created_at DESC
 LIMIT $3;
 
+-- name: CountUnconfirmedOutbox :one
+-- Counts outbox events that are pending or failed (not yet delivered)
+-- for a provider. Used by CompleteFailover to report replay counts
+-- (spec Section 14: "切换后重放未确认 Outbox").
+SELECT COUNT(*) FROM outbox_events
+WHERE provider_id = $1 AND status IN ('pending', 'failed');
+
 -- name: StreamOutboxEvents :many
 -- Cursor-based forward pagination for the Enterprise Event Stream API.
 -- The cursor is the last event ID the consumer processed. Uses tuple

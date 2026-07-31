@@ -43,6 +43,12 @@ func (s *Service) SyncInvoices(ctx context.Context, tc tenant.Ctx) (int, error) 
 	if s.adapter == nil {
 		return 0, nil
 	}
+	// Invoice freeze: block invoice sync during cell failover/migration
+	// (spec Section 14: "灾难期间发票冻结"). Draining cells must not
+	// accept new invoice data to prevent inconsistency during switchover.
+	if err := s.CheckCellDraining(ctx, tc); err != nil {
+		return 0, err
+	}
 	page := int32(1)
 	synced := 0
 	for {

@@ -25,6 +25,21 @@ type AuditEvent struct {
 	CreatedAt     time.Time     `json:"created_at"`
 }
 
+type BudgetAlert struct {
+	ID                uuid.UUID     `json:"id"`
+	ProviderID        uuid.UUID     `json:"provider_id"`
+	EnvironmentID     uuid.UUID     `json:"environment_id"`
+	SubscriptionID    uuid.NullUUID `json:"subscription_id"`
+	MetricCode        pgtype.Text   `json:"metric_code"`
+	BudgetCents       int64         `json:"budget_cents"`
+	ThresholdPct      float64       `json:"threshold_pct"`
+	CurrentSpendCents int64         `json:"current_spend_cents"`
+	AlertStatus       string        `json:"alert_status"`
+	LastAlertedAt     *time.Time    `json:"last_alerted_at"`
+	CreatedAt         time.Time     `json:"created_at"`
+	UpdatedAt         time.Time     `json:"updated_at"`
+}
+
 type CatalogVersion struct {
 	ID            uuid.UUID  `json:"id"`
 	ProviderID    uuid.UUID  `json:"provider_id"`
@@ -45,6 +60,40 @@ type Cell struct {
 	Status         string    `json:"status"`
 	CapacityLimits []byte    `json:"capacity_limits"`
 	CreatedAt      time.Time `json:"created_at"`
+}
+
+type CellFailover struct {
+	ID             uuid.UUID  `json:"id"`
+	ProviderID     uuid.UUID  `json:"provider_id"`
+	FromCellID     uuid.UUID  `json:"from_cell_id"`
+	ToCellID       uuid.UUID  `json:"to_cell_id"`
+	Status         string     `json:"status"`
+	Reason         string     `json:"reason"`
+	InitiatedBy    string     `json:"initiated_by"`
+	FencingToken   string     `json:"fencing_token"`
+	ReplayedUsage  int32      `json:"replayed_usage"`
+	ReplayedOutbox int32      `json:"replayed_outbox"`
+	StartedAt      time.Time  `json:"started_at"`
+	CompletedAt    *time.Time `json:"completed_at"`
+}
+
+type CellMigration struct {
+	ID                uuid.UUID   `json:"id"`
+	ProviderID        uuid.UUID   `json:"provider_id"`
+	FromCellID        uuid.UUID   `json:"from_cell_id"`
+	ToCellID          uuid.UUID   `json:"to_cell_id"`
+	Status            string      `json:"status"`
+	ScheduledAt       *time.Time  `json:"scheduled_at"`
+	PrecheckPassed    bool        `json:"precheck_passed"`
+	DataIntegrityHash pgtype.Text `json:"data_integrity_hash"`
+	RecordCount       int32       `json:"record_count"`
+	Reason            string      `json:"reason"`
+	InitiatedBy       string      `json:"initiated_by"`
+	StartedAt         *time.Time  `json:"started_at"`
+	CompletedAt       *time.Time  `json:"completed_at"`
+	ErrorMessage      pgtype.Text `json:"error_message"`
+	CreatedAt         time.Time   `json:"created_at"`
+	UpdatedAt         time.Time   `json:"updated_at"`
 }
 
 type CommerceAccount struct {
@@ -226,6 +275,20 @@ type InvoiceLine struct {
 	CreatedAt          time.Time     `json:"created_at"`
 	MetricID           uuid.NullUUID `json:"metric_id"`
 	PriceID            uuid.NullUUID `json:"price_id"`
+}
+
+type MeteredPricingRule struct {
+	ID                uuid.UUID `json:"id"`
+	ProviderID        uuid.UUID `json:"provider_id"`
+	EnvironmentID     uuid.UUID `json:"environment_id"`
+	MetricCode        string    `json:"metric_code"`
+	PricingModel      string    `json:"pricing_model"`
+	BasePriceCents    int64     `json:"base_price_cents"`
+	TierConfig        []byte    `json:"tier_config"`
+	MinimumSpendCents int64     `json:"minimum_spend_cents"`
+	Enabled           bool      `json:"enabled"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 type Metric struct {

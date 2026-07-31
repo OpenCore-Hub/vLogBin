@@ -311,3 +311,14 @@ SELECT EXISTS(
     AND provider_id = $2
     AND environment_id = $3
 ) AS invoiced;
+
+-- name: CountUninvoicedUsage :one
+-- Counts usage events that have not yet been included in an invoice.
+-- Used by CompleteFailover to report replay counts (spec Section 14:
+-- "切换后重放未确认 Usage").
+SELECT count(*)::bigint FROM usage_events ue
+WHERE ue.provider_id = $1
+    AND NOT EXISTS (
+        SELECT 1 FROM invoice_lines il WHERE il.event_transaction_id = ue.transaction_id
+        AND il.provider_id = ue.provider_id AND il.environment_id = ue.environment_id
+    );

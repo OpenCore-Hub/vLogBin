@@ -602,6 +602,23 @@ func checkTenantOwnership(providerID, environmentID uuid.UUID, tc tenant.Ctx, en
 	return nil
 }
 
+// ErrCellDraining is returned when a billing operation is attempted
+// on a provider whose cell is in 'draining' status (write fencing
+// during failover/migration, spec Section 14).
+var ErrCellDraining = fmt.Errorf("cell is draining: writes are suspended during failover/migration")
+
+// requireStatus checks that the current status matches one of the allowed
+// statuses. Returns ErrConflict if not. This eliminates the duplicated
+// `if status != X` pattern across failover and migration methods.
+func requireStatus(current string, allowed []string, entity string, id any) error {
+	for _, s := range allowed {
+		if current == s {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: %s %v must be %v (status=%s)", ErrConflict, entity, id, allowed, current)
+}
+
 // ExpirySweeper is a generic background sweeper that periodically calls
 // a sweep function to expire past-due resources. Used by support session
 // expiry and quota reservation expiry (eliminates duplicated sweeper structs).

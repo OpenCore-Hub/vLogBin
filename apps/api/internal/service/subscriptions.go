@@ -26,6 +26,10 @@ func (s *Service) CreateSubscription(ctx context.Context, tc tenant.Ctx, externa
 	if err := s.CheckCutoverLock(ctx, tc); err != nil {
 		return nil, err
 	}
+	// Write fencing: block writes during cell failover/migration (spec Section 14).
+	if err := s.CheckCellDraining(ctx, tc); err != nil {
+		return nil, err
+	}
 	var out storegen.Subscription
 	err := s.store.WithTenant(ctx, tc, func(tx pgx.Tx, q *store.Queries) error {
 		customer, err := q.GetCustomerByExternalID(ctx, storegen.GetCustomerByExternalIDParams{
