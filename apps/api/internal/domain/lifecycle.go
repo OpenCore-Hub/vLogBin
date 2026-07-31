@@ -49,6 +49,35 @@ const (
 // allowed by the state machine.
 var ErrInvalidTransition = errors.New("invalid lifecycle transition")
 
+// Provider Live capabilities. Each is granted independently by the
+// operator — there is no single "go live" switch (spec ID #46).
+const (
+	CapabilityMessaging     = "messaging"
+	CapabilityDomains       = "domains"
+	CapabilityPayments      = "payments"
+	CapabilityThroughput    = "throughput"
+	CapabilityEventDelivery = "event_delivery"
+)
+
+// AllCapabilities lists every capability an operator can grant.
+var AllCapabilities = []string{
+	CapabilityMessaging,
+	CapabilityDomains,
+	CapabilityPayments,
+	CapabilityThroughput,
+	CapabilityEventDelivery,
+}
+
+// ValidCapability reports whether s is a known capability.
+func ValidCapability(s string) bool {
+	for _, c := range AllCapabilities {
+		if s == c {
+			return true
+		}
+	}
+	return false
+}
+
 // allowedTransitions encodes:
 //
 //	REGISTERED → TEST_ACTIVE → LIVE_REVIEW → LIVE_ACTIVE → (RESTRICTED | SUSPENDED | OFFBOARDING)

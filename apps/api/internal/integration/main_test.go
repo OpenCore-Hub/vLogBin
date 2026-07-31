@@ -13,11 +13,14 @@ import (
 	"os"
 	"testing"
 
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/billing"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/crypto"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/domain"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/httpapi"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/service"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/tenant"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/webhook"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
@@ -90,7 +93,12 @@ func TestMain(m *testing.M) {
 	}
 	defer appStore.Close()
 
-	svc = service.New(appStore, baseDomain)
+	testEncryptor, _ := crypto.NewEncryptor("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	svc = service.New(appStore, baseDomain,
+		service.WithBillingAdapter(billing.NewNoop(nil)),
+		service.WithURLValidator(webhook.ValidateURLAllowLoopback),
+		service.WithCryptoEncryptor(testEncryptor),
+	)
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	httpServer = httptest.NewServer(httpapi.NewServer(appStore, svc, operatorToken, logger).Router())
 	defer httpServer.Close()

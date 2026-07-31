@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/keys"
+	"github.com/go-chi/chi/v5"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store/storegen"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/tenant"
@@ -21,6 +22,117 @@ import (
 )
 
 type requestIDKey struct{}
+
+// maxBodySize limits request bodies to 1 MB to prevent DoS via large
+// payloads. Billing API requests are small JSON objects; 1 MB is generous.
+const maxBodySize = 1 << 20
+
+// bodyLimitMiddleware wraps r.Body with an http.MaxBytesReader so that
+// requests exceeding maxBodySize are rejected with 413.
+func bodyLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
+		next.ServeHTTP(w, r)
+	})
+}
+
+// recoverMiddleware catches panics in handlers, logs them with the request
+// ID, and returns 500. Without this, a single handler panic would crash
+// the entire server process.
+func (s *Server) recoverMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				reqID, _ := r.Context().Value(requestIDKey{}).(string)
+				s.log.Error("panic recovered",
+					"error", rec,
+					"method", r.Method,
+					"path", r.URL.Path,
+					"request_id", reqID,
+				)
+				writeError(w, http.StatusInternalServerError, "internal", "internal server error", reqID)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
+// rateLimitMiddleware enforces 4-level rate limiting (spec Section 7.3):
+// Provider, Environment, Credential, and Endpoint. Each level has its own
+// limit; if any level is exceeded, the request is rejected with 429.
+func (s *Server) rateLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tc, ok := tenant.FromContext(r.Context())
+		if !ok {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Get the route pattern (e.g. /v1/usage/ingest) so that
+		// different UUIDs in the path don't create separate buckets.
+		routePattern := chi.RouteContext(r.Context()).RoutePattern()
+		if routePattern == "" {
+			routePattern = r.URL.Path
+		}
+		endpointKey := r.Method + ":" + routePattern
+
+		limits := []struct {
+			key   string
+			limit int
+		}{
+			{"provider:" + tc.ProviderID.String(), s.rateLimits.Provider},
+			{"env:" + tc.EnvironmentID.String(), s.rateLimits.Environment},
+			{"cred:" + tc.CredentialID.String(), s.rateLimits.Credential},
+			{"cred_ep:" + tc.CredentialID.String() + ":" + endpointKey, s.rateLimits.Endpoint},
+		}
+
+		for _, lm := range limits {
+			if !s.limiter.Allow(lm.key, lm.limit, s.rateLimits.Window) {
+				w.Header().Set("Retry-After", "60")
+				writeError(w, http.StatusTooManyRequests, "rate_limited",
+					"rate limit exceeded; retry after the window resets",
+					reqIDFromRequest(r))
+				s.log.Warn("rate limit exceeded",
+					"key", lm.key,
+					"limit", lm.limit,
+					"request_id", reqIDFromRequest(r),
+				)
+				return
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// corsMiddleware handles Cross-Origin Resource Sharing. In development the
+// default "*" allows the Next.js dev server (port 3000) to call the API
+// (port 8080). In production, CORS_ALLOWED_ORIGINS should be set to the
+// specific frontend origin(s).
+func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			if origin != "" {
+				for _, o := range allowedOrigins {
+					if o == "*" || o == origin {
+						w.Header().Set("Access-Control-Allow-Origin", origin)
+						w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+						w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Request-ID")
+						w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID")
+						w.Header().Set("Access-Control-Max-Age", "3600")
+						break
+					}
+				}
+			}
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
 
 // requestIDMiddleware assigns every request a request id, propagated into
 // responses and available for audit correlation.
@@ -36,18 +148,90 @@ func requestIDMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// operatorAuth authenticates /v1/operator/* with the configured operator
-// token (constant-time compare).
+// statusRecorder wraps http.ResponseWriter to capture the response status
+// code for structured request logging.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (sr *statusRecorder) WriteHeader(code int) {
+	sr.status = code
+	sr.ResponseWriter.WriteHeader(code)
+}
+
+// requestLogMiddleware logs every request (except health probes) with
+// method, path, status, duration, and request_id for production
+// observability and audit correlation.
+func (s *Server) requestLogMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip health-check endpoints to avoid log noise from probes.
+		if r.URL.Path == "/health" || r.URL.Path == "/ready" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		start := time.Now()
+		sr := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+
+		next.ServeHTTP(sr, r)
+
+		reqID, _ := r.Context().Value(requestIDKey{}).(string)
+		duration := time.Since(start)
+
+		attrs := []any{
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", sr.status,
+			"duration_ms", duration.Milliseconds(),
+			"request_id", reqID,
+			"remote_addr", remoteIP(r),
+		}
+
+		if sr.status >= 500 {
+			s.log.Error("request", attrs...)
+		} else if sr.status >= 400 {
+			s.log.Warn("request", attrs...)
+		} else {
+			s.log.Info("request", attrs...)
+		}
+	})
+}
+
+// operatorAuth authenticates /v1/operator/* with either a ZITADEL OIDC
+// token (when oidcVerifier is configured) or the static OPERATOR_TOKEN
+// (backward compatible fallback).
 func (s *Server) operatorAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, ok := bearerToken(r)
-		if !ok || subtle.ConstantTimeCompare([]byte(token), []byte(s.operatorToken)) != 1 {
-			writeError(w, http.StatusUnauthorized, "unauthorized", "invalid operator token")
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "unauthorized", "missing or malformed bearer token", reqIDFromRequest(r))
+			return
+		}
+
+		if s.oidcVerifier != nil {
+			// OIDC mode: verify JWT access token from ZITADEL.
+			claims, err := s.oidcVerifier.Verify(r.Context(), token)
+			if err != nil {
+				writeError(w, http.StatusUnauthorized, "invalid_token", err.Error(), reqIDFromRequest(r))
+				return
+			}
+			ctx := context.WithValue(r.Context(), operatorClaimsKey{}, claims)
+			next.ServeHTTP(w, r.WithContext(tenant.WithOperator(ctx)))
+			return
+		}
+
+		// Legacy mode: constant-time token comparison.
+		if subtle.ConstantTimeCompare([]byte(token), []byte(s.operatorToken)) != 1 {
+			writeError(w, http.StatusUnauthorized, "unauthorized", "invalid operator token", reqIDFromRequest(r))
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(tenant.WithOperator(r.Context())))
 	})
 }
+
+// operatorClaimsKey is the context key for OIDC operator claims.
+type operatorClaimsKey struct{}
 
 // apiKeyAuth authenticates provider routes: resolves the presented API key
 // to its credential row, checks revocation/expiry/CIDR, and derives the
@@ -56,7 +240,7 @@ func (s *Server) apiKeyAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key, ok := bearerToken(r)
 		if !ok || (!strings.HasPrefix(key, keys.PrefixTest) && !strings.HasPrefix(key, keys.PrefixLive)) {
-			writeError(w, http.StatusUnauthorized, "unauthorized", "missing or malformed API key")
+			writeError(w, http.StatusUnauthorized, "unauthorized", "missing or malformed API key", reqIDFromRequest(r))
 			return
 		}
 		var row storegen.ResolveCredentialByKeyHashRow
@@ -66,19 +250,19 @@ func (s *Server) apiKeyAuth(next http.Handler) http.Handler {
 			return err
 		})
 		if err != nil {
-			writeError(w, http.StatusUnauthorized, "unauthorized", "invalid API key")
+			writeError(w, http.StatusUnauthorized, "unauthorized", "invalid API key", reqIDFromRequest(r))
 			return
 		}
 		if row.RevokedAt != nil {
-			writeError(w, http.StatusUnauthorized, "credential_revoked", "API key has been revoked")
+			writeError(w, http.StatusUnauthorized, "credential_revoked", "API key has been revoked", reqIDFromRequest(r))
 			return
 		}
 		if row.ExpiresAt != nil && time.Now().After(*row.ExpiresAt) {
-			writeError(w, http.StatusUnauthorized, "credential_expired", "API key has expired")
+			writeError(w, http.StatusUnauthorized, "credential_expired", "API key has expired", reqIDFromRequest(r))
 			return
 		}
 		if !cidrAllowed(row.AllowedCidrs, remoteIP(r)) {
-			writeError(w, http.StatusForbidden, "cidr_not_allowed", "source IP is not allowed for this API key")
+			writeError(w, http.StatusForbidden, "cidr_not_allowed", "source IP is not allowed for this API key", reqIDFromRequest(r))
 			return
 		}
 		// Best-effort usage stamp; failures must not block the request.
@@ -106,11 +290,11 @@ func requireScope(scope string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			tc, ok := tenant.FromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusUnauthorized, "unauthorized", "missing tenant context")
+				writeError(w, http.StatusUnauthorized, "unauthorized", "missing tenant context", reqIDFromRequest(r))
 				return
 			}
 			if !tc.HasScope(scope) {
-				writeError(w, http.StatusForbidden, "insufficient_scope", "credential lacks required scope "+scope)
+				writeError(w, http.StatusForbidden, "insufficient_scope", "credential lacks required scope "+scope, reqIDFromRequest(r))
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -133,7 +317,7 @@ func (s *Server) tenantGuard(next http.Handler) http.Handler {
 				s.log.Error("audit tenant override attempt failed", "error", err)
 			}
 			writeError(w, http.StatusForbidden, "tenant_context_override",
-				"provider_id/environment_id must come from the credential, not the request")
+				"provider_id/environment_id must come from the credential, not the request", reqIDFromRequest(r))
 			return
 		}
 		next.ServeHTTP(w, r)

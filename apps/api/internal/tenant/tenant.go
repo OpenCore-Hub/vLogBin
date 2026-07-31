@@ -31,6 +31,17 @@ func (c Ctx) HasScope(s string) bool {
 	return false
 }
 
+// ProviderNullUUID returns the provider ID as a uuid.NullUUID for query
+// parameters and audit records.
+func (c Ctx) ProviderNullUUID() uuid.NullUUID {
+	return uuid.NullUUID{UUID: c.ProviderID, Valid: true}
+}
+
+// EnvironmentNullUUID returns the environment ID as a uuid.NullUUID.
+func (c Ctx) EnvironmentNullUUID() uuid.NullUUID {
+	return uuid.NullUUID{UUID: c.EnvironmentID, Valid: true}
+}
+
 type ctxKey struct{}
 
 // WithContext returns a context carrying the tenant context.

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/billing"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/outbox"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
 	"github.com/jackc/pgx/v5"
@@ -16,7 +17,7 @@ func TestOutboxRelayPublishesPending(t *testing.T) {
 	a := createProvider(t, "relay")
 	tc := tenantOf(t, a.Provider.ID, a.Environments[0].ID)
 
-	relay := outbox.NewRelay(appStore, 50*time.Millisecond, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	relay := outbox.NewRelay(appStore, billing.NewNoop(nil), 50*time.Millisecond, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err := relay.DrainOnce(testCtx); err != nil {
 		t.Fatalf("drain: %v", err)
 	}

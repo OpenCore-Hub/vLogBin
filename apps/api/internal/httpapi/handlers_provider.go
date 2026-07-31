@@ -56,7 +56,7 @@ func (s *Server) listCredentials(w http.ResponseWriter, r *http.Request) {
 	tc, _ := tenant.FromContext(r.Context())
 	creds, err := s.svc.ListCredentials(r.Context(), tc)
 	if err != nil {
-		s.serviceError(w, err)
+		s.serviceError(w, r, err)
 		return
 	}
 	views := make([]credentialView, 0, len(creds))
@@ -80,7 +80,7 @@ func (s *Server) createCredential(w http.ResponseWriter, r *http.Request) {
 	}
 	created, err := s.svc.CreateCredential(r.Context(), tc, req.Name, req.Scopes, req.ExpiresAt)
 	if err != nil {
-		s.serviceError(w, err)
+		s.serviceError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
@@ -93,12 +93,12 @@ func (s *Server) revokeCredential(w http.ResponseWriter, r *http.Request) {
 	tc, _ := tenant.FromContext(r.Context())
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_id", "credential id must be a uuid")
+		writeError(w, http.StatusBadRequest, "invalid_id", "credential id must be a uuid", reqIDFromRequest(r))
 		return
 	}
 	cred, err := s.svc.RevokeCredential(r.Context(), tc, id)
 	if err != nil {
-		s.serviceError(w, err)
+		s.serviceError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"credential": toCredentialView(*cred)})
@@ -108,7 +108,7 @@ func (s *Server) listAuditEvents(w http.ResponseWriter, r *http.Request) {
 	tc, _ := tenant.FromContext(r.Context())
 	events, err := s.svc.ListAuditEvents(r.Context(), tc, queryLimit(r, 100))
 	if err != nil {
-		s.serviceError(w, err)
+		s.serviceError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"audit_events": events})
@@ -118,7 +118,7 @@ func (s *Server) listOutboxEvents(w http.ResponseWriter, r *http.Request) {
 	tc, _ := tenant.FromContext(r.Context())
 	events, err := s.svc.ListOutboxEvents(r.Context(), tc, queryLimit(r, 100))
 	if err != nil {
-		s.serviceError(w, err)
+		s.serviceError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"outbox_events": events})

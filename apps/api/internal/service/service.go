@@ -10,13 +10,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/billing"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/crypto"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/domain"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/keys"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store/storegen"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/tenant"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/webhook"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -24,18 +28,83 @@ import (
 )
 
 var (
-	ErrNotFound   = errors.New("not found")
-	ErrConflict   = errors.New("conflict")
-	ErrValidation = errors.New("validation error")
+	ErrNotFound      = errors.New("not found")
+	ErrConflict      = errors.New("conflict")
+	ErrValidation    = errors.New("validation error")
+	ErrUsageConflict = errors.New("usage conflict")
+	// ErrUsageAlreadyInvoiced is returned when a reversal is attempted on
+	// usage that has already been included in a finalized invoice. The
+	// caller must issue a credit note instead (Testing #6 post-invoice).
+	ErrUsageAlreadyInvoiced = errors.New("usage already invoiced")
 )
 
 type Service struct {
 	store      *store.Store
 	baseDomain string
+	log        *slog.Logger
+	// adapter is the billing engine adapter, used for invoice sync. When
+	// nil (no billing engine configured), invoice sync is a no-op.
+	adapter billing.Adapter
+	// encryptor is used for PSP credential encryption. When nil, PSP
+	// credential creation returns an error.
+	encryptor *crypto.Encryptor
+	// usageLateWindow is how far back usage timestamps may lag (config
+	// USAGE_LATE_WINDOW_HOURS, default 168h).
+	usageLateWindow time.Duration
+	// usageFutureSkew is how far in the future a usage timestamp may be
+	// (clock skew allowance, default 5min).
+	usageFutureSkew time.Duration
+	// urlValidator validates webhook endpoint URLs for SSRF safety. Tests
+	// may override it to permit loopback (httptest servers).
+	urlValidator func(string) error
 }
 
-func New(st *store.Store, platformBaseDomain string) *Service {
-	return &Service{store: st, baseDomain: platformBaseDomain}
+// Option customizes the service (billing core settings).
+type Option func(*Service)
+
+// WithUsageLateWindow sets the maximum age of accepted usage timestamps.
+func WithUsageLateWindow(d time.Duration) Option {
+	return func(s *Service) { s.usageLateWindow = d }
+}
+
+// WithUsageFutureSkew sets the accepted future clock skew for usage
+// timestamps.
+func WithUsageFutureSkew(d time.Duration) Option {
+	return func(s *Service) { s.usageFutureSkew = d }
+}
+
+// WithBillingAdapter injects the billing adapter used by invoice sync.
+// main.go passes the same adapter that feeds the outbox relay.
+func WithBillingAdapter(a billing.Adapter) Option {
+	return func(s *Service) { s.adapter = a }
+}
+
+// WithLogger injects a structured logger. Defaults to slog.Default().
+func WithLogger(log *slog.Logger) Option {
+	return func(s *Service) { s.log = log }
+}
+
+// WithURLValidator overrides the webhook URL validator (SSRF check). Tests
+// use this to permit loopback addresses (httptest servers bind to
+// 127.0.0.1). Production must keep the default webhook.ValidateURL.
+func WithURLValidator(fn func(string) error) Option {
+	return func(s *Service) { s.urlValidator = fn }
+}
+
+func New(st *store.Store, platformBaseDomain string, opts ...Option) *Service {
+	s := &Service{
+		store:           st,
+		baseDomain:      platformBaseDomain,
+		log:             slog.Default(),
+		adapter:         billing.NewNoop(nil),
+		usageLateWindow: 168 * time.Hour,
+		usageFutureSkew: 5 * time.Minute,
+		urlValidator:    webhook.ValidateURL,
+	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 func (s *Service) issuer(slug, envKind string) string {
@@ -308,7 +377,7 @@ func (s *Service) CreateCredential(ctx context.Context, tc tenant.Ctx, name stri
 		}); err != nil {
 			return err
 		}
-		if err := insertAuditTx(ctx, q, uuid.NullUUID{UUID: tc.ProviderID, Valid: true}, uuid.NullUUID{UUID: tc.EnvironmentID, Valid: true},
+		if err := insertAuditTx(ctx, q, tc.ProviderNullUUID(), tc.EnvironmentNullUUID(),
 			"credential", tc.CredentialID.String(), "credential.create", "credential", cred.ID.String(), nil); err != nil {
 			return err
 		}
@@ -343,7 +412,7 @@ func (s *Service) RevokeCredential(ctx context.Context, tc tenant.Ctx, credentia
 		}); err != nil {
 			return err
 		}
-		if err := insertAuditTx(ctx, q, uuid.NullUUID{UUID: tc.ProviderID, Valid: true}, uuid.NullUUID{UUID: tc.EnvironmentID, Valid: true},
+		if err := insertAuditTx(ctx, q, tc.ProviderNullUUID(), tc.EnvironmentNullUUID(),
 			"credential", tc.CredentialID.String(), "credential.revoke", "credential", cred.ID.String(), nil); err != nil {
 			return err
 		}
@@ -372,7 +441,7 @@ func (s *Service) ListAuditEvents(ctx context.Context, tc tenant.Ctx, limit int3
 	var out []storegen.AuditEvent
 	err := s.store.WithTenant(ctx, tc, func(tx pgx.Tx, q *store.Queries) error {
 		evs, err := q.ListAuditEventsByProvider(ctx, storegen.ListAuditEventsByProviderParams{
-			ProviderID: uuid.NullUUID{UUID: tc.ProviderID, Valid: true}, Limit: limit,
+			ProviderID: tc.ProviderNullUUID(), Limit: limit,
 		})
 		out = evs
 		return err
@@ -440,6 +509,28 @@ func emitOutboxTx(ctx context.Context, q *store.Queries, providerID, envID uuid.
 	return err
 }
 
+// emitOutboxWithTxIDTx appends an outbox event carrying a caller-supplied
+// stable transaction_id (the usage idempotency seam): the outbox row shares
+// the usage event's transaction_id, and a unique-conflict retry is a no-op
+// (the event is already durable from the first attempt).
+func emitOutboxWithTxIDTx(ctx context.Context, q *store.Queries, providerID, envID uuid.UUID, aggregateType, aggregateID, eventType, txID string, payload map[string]any) error {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	sum := sha256.Sum256(raw)
+	return q.InsertOutboxEventIdempotent(ctx, storegen.InsertOutboxEventIdempotentParams{
+		ProviderID:    providerID,
+		EnvironmentID: envID,
+		AggregateType: aggregateType,
+		AggregateID:   aggregateID,
+		EventType:     eventType,
+		Payload:       raw,
+		PayloadHash:   hex.EncodeToString(sum[:]),
+		TransactionID: txID,
+	})
+}
+
 func insertAuditTx(ctx context.Context, q *store.Queries, providerID, envID uuid.NullUUID, actorType, actorID, action, targetType, targetID string, metadata map[string]any) error {
 	var raw []byte
 	var err error
@@ -481,8 +572,8 @@ func mapErr(err error, whatFmt string, args ...any) error {
 func (s *Service) RecordTenantOverrideAttempt(ctx context.Context, tc tenant.Ctx, field, presented string) error {
 	return s.store.WithTenant(ctx, tc, func(tx pgx.Tx, q *store.Queries) error {
 		return insertAuditTx(ctx, q,
-			uuid.NullUUID{UUID: tc.ProviderID, Valid: true},
-			uuid.NullUUID{UUID: tc.EnvironmentID, Valid: true},
+			tc.ProviderNullUUID(),
+			tc.EnvironmentNullUUID(),
 			"credential", tc.CredentialID.String(), "tenant.context_override_attempt",
 			"credential", tc.CredentialID.String(),
 			map[string]any{"field": field, "presented": presented,

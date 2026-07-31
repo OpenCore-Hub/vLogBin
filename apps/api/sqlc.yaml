@@ -3,6 +3,13 @@ sql:
   - engine: "postgresql"
     schema:
       - "db/migrations/0001_core.sql"
+      - "db/migrations/0004_billing_core.sql"
+      - "db/migrations/0005_invoice.sql"
+      - "db/migrations/0006_provider_capabilities.sql"
+      - "db/migrations/0007_invoice_line_traceability.sql"
+      - "db/migrations/0008_reconciliation.sql"
+      - "db/migrations/0009_webhooks.sql"
+      - "db/migrations/0010_psp_credentials.sql"
     queries: "db/queries"
     gen:
       go:

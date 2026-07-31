@@ -26,6 +26,12 @@ type Store struct {
 	pool *pgxpool.Pool
 }
 
+// Ping verifies that the database is reachable. Used by the /ready
+// health-check endpoint for Kubernetes readiness probes.
+func (s *Store) Ping(ctx context.Context) error {
+	return s.pool.Ping(ctx)
+}
+
 func New(ctx context.Context, databaseURL string) (*Store, error) {
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {

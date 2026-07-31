@@ -12,21 +12,38 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/billing"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/config"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/crypto"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/httpapi"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/outbox"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/service"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/webhook"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/zitadel"
 )
 
 func main() {
-	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-
 	cfg, err := config.Load()
 	if err != nil {
-		log.Error("config load failed", "error", err)
+		slog.Error("config load failed", "error", err)
 		os.Exit(1)
 	}
+
+	var level slog.Level
+	switch cfg.LogLevel {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
+	}
+	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
+
+	log.Info("starting platform API", "log_level", cfg.LogLevel)
 
 	ctx := context.Background()
 	if err := store.Migrate(ctx, cfg.MigrationDatabaseURL); err != nil {
@@ -42,10 +59,50 @@ func main() {
 	}
 	defer st.Close()
 
-	svc := service.New(st, cfg.PlatformBaseDomain)
+	adapter, err := billing.New(cfg.BillingAdapter, cfg.LagoAPIURL, cfg.LagoAPIKey)
+	if err != nil {
+		log.Error("billing adapter init failed", "error", err)
+		os.Exit(1)
+	}
+	log.Info("billing adapter configured", "adapter", adapter.Name())
+
+	// PSP credential encryption (optional — only if PSP_MASTER_KEY is set).
+	var encryptor *crypto.Encryptor
+	if cfg.PSPMasterKey != "" {
+		encryptor, err = crypto.NewEncryptor(cfg.PSPMasterKey)
+		if err != nil {
+			log.Error("invalid PSP master key", "error", err)
+			os.Exit(1)
+		}
+		log.Info("PSP credential encryption enabled")
+	}
+
+	svc := service.New(st, cfg.PlatformBaseDomain,
+		service.WithLogger(log),
+		service.WithBillingAdapter(adapter),
+		service.WithCryptoEncryptor(encryptor),
+		service.WithUsageLateWindow(cfg.UsageLateWindow),
+		service.WithUsageFutureSkew(5*time.Minute),
+	)
+	apiServer := httpapi.NewServer(st, svc, cfg.OperatorToken, log)
+	apiServer.SetCORSOrigins(cfg.CORSAllowedOrigins)
+	apiServer.SetRateLimits(cfg.RateLimits)
+
+	// ZITADEL OIDC verification (optional — when ZITADEL_URL is set).
+	if cfg.ZITADELURL != "" {
+		verifier, err := zitadel.NewVerifier(ctx, cfg.ZITADELURL)
+		if err != nil {
+			log.Error("ZITADEL OIDC verifier init failed", "error", err, "url", cfg.ZITADELURL)
+			os.Exit(1)
+		}
+		apiServer.SetOIDCVerifier(verifier)
+		log.Info("ZITADEL OIDC verification enabled", "issuer", cfg.ZITADELURL)
+	} else {
+		log.Info("ZITADEL OIDC not configured; using static OPERATOR_TOKEN")
+	}
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.NewServer(st, svc, cfg.OperatorToken, log).Router(),
+		Handler:           apiServer.Router(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -54,7 +111,28 @@ func main() {
 	relayDone := make(chan struct{})
 	go func() {
 		defer close(relayDone)
-		_ = outbox.NewRelay(st, cfg.OutboxPollInterval, log).Run(relayCtx)
+		_ = outbox.NewRelay(st, adapter, cfg.OutboxPollInterval, log).Run(relayCtx)
+	}()
+
+	// Reconciliation worker: runs hourly consistency checks.
+	reconCtx, stopRecon := context.WithCancel(ctx)
+	defer stopRecon()
+	reconDone := make(chan struct{})
+	go func() {
+		defer close(reconDone)
+		worker := service.NewReconciliationWorker(svc, cfg.ReconciliationInterval, log)
+		_ = worker.Run(reconCtx)
+	}()
+
+	// Webhook delivery worker: signs and delivers published outbox events
+	// to registered provider endpoints (HMAC-SHA256).
+	webhookCtx, stopWebhook := context.WithCancel(ctx)
+	defer stopWebhook()
+	webhookDone := make(chan struct{})
+	go func() {
+		defer close(webhookDone)
+		wk := webhook.NewWorker(st, log, cfg.WebhookPollInterval)
+		_ = wk.Run(webhookCtx)
 	}()
 
 	go func() {
@@ -75,4 +153,9 @@ func main() {
 	_ = srv.Shutdown(shutdownCtx)
 	stopRelay()
 	<-relayDone
+	stopRecon()
+	<-reconDone
+	stopWebhook()
+	<-webhookDone
+	log.Info("shutdown complete")
 }

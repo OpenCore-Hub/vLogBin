@@ -28,7 +28,7 @@ func (s *Server) createProvider(w http.ResponseWriter, r *http.Request) {
 	}
 	created, err := s.svc.CreateProvider(r.Context(), req.Slug, req.Name, req.HomeRegionCode)
 	if err != nil {
-		s.serviceError(w, err)
+		s.serviceError(w, r, err)
 		return
 	}
 	resp := createProviderResponse{
@@ -45,7 +45,7 @@ func (s *Server) createProvider(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listProviders(w http.ResponseWriter, r *http.Request) {
 	providers, err := s.svc.ListProviders(r.Context())
 	if err != nil {
-		s.serviceError(w, err)
+		s.serviceError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"providers": providers})
@@ -54,12 +54,12 @@ func (s *Server) listProviders(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getProvider(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_id", "provider id must be a uuid")
+		writeError(w, http.StatusBadRequest, "invalid_id", "provider id must be a uuid", reqIDFromRequest(r))
 		return
 	}
 	detail, err := s.svc.GetProvider(r.Context(), id)
 	if err != nil {
-		s.serviceError(w, err)
+		s.serviceError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -75,7 +75,7 @@ type lifecycleRequest struct {
 func (s *Server) transitionLifecycle(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_id", "provider id must be a uuid")
+		writeError(w, http.StatusBadRequest, "invalid_id", "provider id must be a uuid", reqIDFromRequest(r))
 		return
 	}
 	var req lifecycleRequest
@@ -84,7 +84,7 @@ func (s *Server) transitionLifecycle(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := s.svc.TransitionLifecycle(r.Context(), id, domain.LifecycleState(req.To))
 	if err != nil {
-		s.serviceError(w, err)
+		s.serviceError(w, r, err)
 		return
 	}
 	resp := map[string]any{"provider": res.Provider}
@@ -100,7 +100,7 @@ func (s *Server) transitionLifecycle(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listRegions(w http.ResponseWriter, r *http.Request) {
 	regions, err := s.svc.ListRegions(r.Context())
 	if err != nil {
-		s.serviceError(w, err)
+		s.serviceError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"regions": regions})
@@ -109,7 +109,7 @@ func (s *Server) listRegions(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listCells(w http.ResponseWriter, r *http.Request) {
 	cells, err := s.svc.ListCells(r.Context())
 	if err != nil {
-		s.serviceError(w, err)
+		s.serviceError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"cells": cells})
