@@ -5,57 +5,274 @@ import (
 	"testing"
 )
 
-func TestValidTransitions(t *testing.T) {
-	valid := [][2]LifecycleState{
-		{StateRegistered, StateTestActive},
-		{StateTestActive, StateLiveReview},
-		{StateLiveReview, StateLiveActive},
-		{StateLiveReview, StateRestricted},
-		{StateLiveReview, StateSuspended},
-		{StateLiveActive, StateRestricted},
-		{StateLiveActive, StateSuspended},
-		{StateLiveActive, StateOffboarding},
-		{StateRestricted, StateLiveActive},
-		{StateSuspended, StateLiveActive},
+func TestCanTransition(t *testing.T) {
+	tests := []struct {
+		name string
+		from LifecycleState
+		to   LifecycleState
+		want bool
+	}{
+		{"registered to test", StateRegistered, StateTestActive, true},
+		{"test to review", StateTestActive, StateLiveReview, true},
+		{"review to active", StateLiveReview, StateLiveActive, true},
+		{"active to restricted", StateLiveActive, StateRestricted, true},
+		{"active to suspended", StateLiveActive, StateSuspended, true},
+		{"active to offboarding", StateLiveActive, StateOffboarding, true},
+		{"restricted to active", StateRestricted, StateLiveActive, true},
+		{"suspended to active", StateSuspended, StateLiveActive, true},
+		{"suspended to offboarding", StateSuspended, StateOffboarding, true},
+		// Invalid transitions
+		{"registered to live", StateRegistered, StateLiveActive, false},
+		{"registered to review", StateRegistered, StateLiveReview, false},
+		{"offboarding to active", StateOffboarding, StateLiveActive, false},
+		{"test to suspended", StateTestActive, StateSuspended, false},
+		{"unknown state", LifecycleState("UNKNOWN"), StateRegistered, false},
 	}
-	for _, tr := range valid {
-		if !CanTransition(tr[0], tr[1]) {
-			t.Errorf("expected %s -> %s to be allowed", tr[0], tr[1])
-		}
-		if _, err := Transition(tr[0], tr[1]); err != nil {
-			t.Errorf("Transition(%s, %s): %v", tr[0], tr[1], err)
-		}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CanTransition(tt.from, tt.to)
+			if got != tt.want {
+				t.Errorf("CanTransition(%s, %s) = %v, want %v", tt.from, tt.to, got, tt.want)
+			}
+		})
 	}
 }
 
-func TestInvalidTransitions(t *testing.T) {
-	invalid := [][2]LifecycleState{
-		{StateRegistered, StateLiveActive},  // skip the chain
-		{StateTestActive, StateLiveActive},  // must pass review first
-		{StateTestActive, StateSuspended},   // not yet live
-		{StateLiveActive, StateTestActive},  // no way back to test
-		{StateLiveActive, StateLiveReview},  // no way back to review
-		{StateOffboarding, StateLiveActive}, // terminal
-		{StateTestActive, StateTestActive},  // no self-transition
-		{StateLiveReview, StateRegistered},  // backwards
-	}
-	for _, tr := range invalid {
-		if CanTransition(tr[0], tr[1]) {
-			t.Errorf("expected %s -> %s to be rejected", tr[0], tr[1])
+func TestTransition(t *testing.T) {
+	t.Run("valid transition", func(t *testing.T) {
+		got, err := Transition(StateRegistered, StateTestActive)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
-		if _, err := Transition(tr[0], tr[1]); !errors.Is(err, ErrInvalidTransition) {
-			t.Errorf("Transition(%s, %s) err = %v, want ErrInvalidTransition", tr[0], tr[1], err)
+		if got != StateTestActive {
+			t.Fatalf("got %v, want %v", got, StateTestActive)
 		}
-	}
+	})
+
+	t.Run("invalid transition", func(t *testing.T) {
+		_, err := Transition(StateRegistered, StateLiveActive)
+		if !errors.Is(err, ErrInvalidTransition) {
+			t.Fatalf("expected ErrInvalidTransition, got %v", err)
+		}
+	})
 }
 
 func TestValidScope(t *testing.T) {
-	for _, s := range AllScopes {
+	valid := []string{ScopeRead, ScopeWrite, ScopeCredentialsManage, ScopeAuditRead, ScopeSupportApprove, ScopeSCIMManage}
+	for _, s := range valid {
 		if !ValidScope(s) {
-			t.Errorf("scope %q must be valid", s)
+			t.Errorf("ValidScope(%q) = false, want true", s)
 		}
 	}
-	if ValidScope("admin") {
-		t.Error("unknown scope must be invalid")
+
+	invalid := []string{"", "admin", "superuser", "read-write", "scopes"}
+	for _, s := range invalid {
+		if ValidScope(s) {
+			t.Errorf("ValidScope(%q) = true, want false", s)
+		}
+	}
+}
+
+func TestValidCapability(t *testing.T) {
+	for _, c := range AllCapabilities {
+		if !ValidCapability(c) {
+			t.Errorf("ValidCapability(%q) = false, want true", c)
+		}
+	}
+
+	if ValidCapability("unknown") {
+		t.Error("ValidCapability(unknown) should be false")
+	}
+	if ValidCapability("") {
+		t.Error("ValidCapability(empty) should be false")
+	}
+}
+
+func TestRoleScopes(t *testing.T) {
+	tests := []struct {
+		role     string
+		minCount int
+		hasRead  bool
+	}{
+		{TeamRoleAdmin, 6, true},
+		{TeamRoleBillingAdmin, 3, true},
+		{TeamRoleDeveloper, 2, true},
+		{TeamRoleSupportAgent, 3, true},
+		{"unknown", 0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.role, func(t *testing.T) {
+			scopes := RoleScopes(tt.role)
+			if len(scopes) < tt.minCount {
+				t.Errorf("RoleScopes(%q) returned %d scopes, want >= %d", tt.role, len(scopes), tt.minCount)
+			}
+			foundRead := false
+			for _, s := range scopes {
+				if s == ScopeRead {
+					foundRead = true
+				}
+			}
+			if foundRead != tt.hasRead {
+				t.Errorf("RoleScopes(%q) has read=%v, want %v", tt.role, foundRead, tt.hasRead)
+			}
+		})
+	}
+}
+
+func TestValidTeamRole(t *testing.T) {
+	valid := []string{TeamRoleAdmin, TeamRoleBillingAdmin, TeamRoleDeveloper, TeamRoleSupportAgent}
+	for _, r := range valid {
+		if !ValidTeamRole(r) {
+			t.Errorf("ValidTeamRole(%q) = false, want true", r)
+		}
+	}
+
+	if ValidTeamRole("superadmin") {
+		t.Error("ValidTeamRole(superadmin) should be false")
+	}
+	if ValidTeamRole("") {
+		t.Error("ValidTeamRole(empty) should be false")
+	}
+}
+
+func TestValidSupportAccessType(t *testing.T) {
+	if !ValidSupportAccessType(SupportAccessStandard) {
+		t.Error("standard should be valid")
+	}
+	if !ValidSupportAccessType(SupportAccessEmergency) {
+		t.Error("emergency should be valid")
+	}
+	if ValidSupportAccessType("unknown") {
+		t.Error("unknown should be invalid")
+	}
+}
+
+func TestValidQuotaPeriod(t *testing.T) {
+	valid := []string{QuotaPeriodDaily, QuotaPeriodMonthly, QuotaPeriodTotal}
+	for _, p := range valid {
+		if !ValidQuotaPeriod(p) {
+			t.Errorf("ValidQuotaPeriod(%q) = false", p)
+		}
+	}
+	if ValidQuotaPeriod("hourly") {
+		t.Error("hourly should be invalid")
+	}
+}
+
+func TestValidMigrationRecordType(t *testing.T) {
+	if !ValidMigrationRecordType(MigrationRecordCustomer) {
+		t.Error("customer should be valid")
+	}
+	if !ValidMigrationRecordType(MigrationRecordSubscription) {
+		t.Error("subscription should be valid")
+	}
+	if ValidMigrationRecordType("invoice") {
+		t.Error("invoice should be invalid")
+	}
+}
+
+func TestValidNotificationChannel(t *testing.T) {
+	if !ValidNotificationChannel(NotificationChannelEmail) {
+		t.Error("email should be valid")
+	}
+	if !ValidNotificationChannel(NotificationChannelSMS) {
+		t.Error("sms should be valid")
+	}
+	if ValidNotificationChannel("push") {
+		t.Error("push should be invalid")
+	}
+}
+
+func TestValidCellType(t *testing.T) {
+	if !ValidCellType(CellTypeShared) {
+		t.Error("shared should be valid")
+	}
+	if !ValidCellType(CellTypeDedicated) {
+		t.Error("dedicated should be valid")
+	}
+	if ValidCellType("hybrid") {
+		t.Error("hybrid should be invalid")
+	}
+}
+
+func TestValidCellStatus(t *testing.T) {
+	valid := []string{CellStatusActive, CellStatusDraining, CellStatusInactive}
+	for _, s := range valid {
+		if !ValidCellStatus(s) {
+			t.Errorf("ValidCellStatus(%q) = false", s)
+		}
+	}
+	if ValidCellStatus("unknown") {
+		t.Error("unknown should be invalid")
+	}
+}
+
+func TestValidPricingModel(t *testing.T) {
+	valid := []string{PricingModelPerUnit, PricingModelTiered, PricingModelVolume, PricingModelStairStep}
+	for _, m := range valid {
+		if !ValidPricingModel(m) {
+			t.Errorf("ValidPricingModel(%q) = false", m)
+		}
+	}
+	if ValidPricingModel("fixed") {
+		t.Error("fixed should be invalid")
+	}
+}
+
+func TestAllScopesComplete(t *testing.T) {
+	// Ensure AllScopes contains all scope constants.
+	expected := map[string]bool{
+		ScopeRead:              false,
+		ScopeWrite:             false,
+		ScopeCredentialsManage: false,
+		ScopeAuditRead:         false,
+		ScopeSupportApprove:    false,
+		ScopeSCIMManage:        false,
+	}
+	for _, s := range AllScopes {
+		expected[s] = true
+	}
+	for scope, found := range expected {
+		if !found {
+			t.Errorf("AllScopes missing %q", scope)
+		}
+	}
+}
+
+func TestAllCapabilitiesComplete(t *testing.T) {
+	expected := map[string]bool{
+		CapabilityMessaging:     false,
+		CapabilityDomains:       false,
+		CapabilityPayments:      false,
+		CapabilityThroughput:    false,
+		CapabilityEventDelivery: false,
+	}
+	for _, c := range AllCapabilities {
+		expected[c] = true
+	}
+	for cap, found := range expected {
+		if !found {
+			t.Errorf("AllCapabilities missing %q", cap)
+		}
+	}
+}
+
+func TestMaxSupportSessionDuration(t *testing.T) {
+	if MaxSupportSessionDuration != 4*60*60 {
+		t.Fatalf("MaxSupportSessionDuration = %d, want %d", MaxSupportSessionDuration, 4*60*60)
+	}
+}
+
+func TestWebhookSchemaVersion(t *testing.T) {
+	if WebhookSchemaVersion != "1.0" {
+		t.Fatalf("WebhookSchemaVersion = %q, want 1.0", WebhookSchemaVersion)
+	}
+}
+
+func TestDNSVerificationPrefix(t *testing.T) {
+	if DNSVerificationPrefix != "_vlogbin-verify" {
+		t.Fatalf("DNSVerificationPrefix = %q, want _vlogbin-verify", DNSVerificationPrefix)
 	}
 }

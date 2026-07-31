@@ -3,65 +3,105 @@ package keys
 import (
 	"strings"
 	"testing"
+
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/domain"
 )
 
-func TestGenerateFormat(t *testing.T) {
-	k, err := Generate("test")
+func TestGenerateTest(t *testing.T) {
+	key, err := Generate(domain.EnvKindTest)
 	if err != nil {
-		t.Fatalf("Generate(test): %v", err)
+		t.Fatalf("Generate: %v", err)
 	}
-	if !strings.HasPrefix(k, PrefixTest) {
-		t.Fatalf("expected prefix %q, got %q", PrefixTest, k)
+	if !strings.HasPrefix(key, PrefixTest) {
+		t.Fatalf("key = %q, want prefix %q", key, PrefixTest)
 	}
-	if got := len(strings.TrimPrefix(k, PrefixTest)); got != 32 {
-		t.Fatalf("expected 32 random chars, got %d", got)
+	// pk_test_ + 32 base64url chars = 40 chars total
+	if len(key) != len(PrefixTest)+32 {
+		t.Fatalf("key length = %d, want %d", len(key), len(PrefixTest)+32)
 	}
+}
 
-	k, err = Generate("live")
+func TestGenerateLive(t *testing.T) {
+	key, err := Generate(domain.EnvKindLive)
 	if err != nil {
-		t.Fatalf("Generate(live): %v", err)
+		t.Fatalf("Generate: %v", err)
 	}
-	if !strings.HasPrefix(k, PrefixLive) {
-		t.Fatalf("expected prefix %q, got %q", PrefixLive, k)
+	if !strings.HasPrefix(key, PrefixLive) {
+		t.Fatalf("key = %q, want prefix %q", key, PrefixLive)
+	}
+	if len(key) != len(PrefixLive)+32 {
+		t.Fatalf("key length = %d, want %d", len(key), len(PrefixLive)+32)
 	}
 }
 
 func TestGenerateUnknownKind(t *testing.T) {
-	if _, err := Generate("staging"); err == nil {
-		t.Fatal("expected error for unknown environment kind")
+	_, err := Generate("invalid")
+	if err == nil {
+		t.Fatal("Generate with invalid kind should fail")
 	}
 }
 
-func TestGenerateUnique(t *testing.T) {
-	a, _ := Generate("test")
-	b, _ := Generate("test")
-	if a == b {
-		t.Fatal("two generated keys must differ")
+func TestGenerateUniqueness(t *testing.T) {
+	keys := make(map[string]bool)
+	for i := 0; i < 100; i++ {
+		k, _ := Generate(domain.EnvKindTest)
+		if keys[k] {
+			t.Fatalf("duplicate key generated: %s", k)
+		}
+		keys[k] = true
 	}
 }
 
 func TestHash(t *testing.T) {
-	k, _ := Generate("live")
-	h := Hash(k)
+	key := "pk_test_abc123"
+	h := Hash(key)
+
+	// SHA-256 hex = 64 chars
 	if len(h) != 64 {
-		t.Fatalf("expected sha256 hex (64 chars), got %d", len(h))
+		t.Fatalf("hash length = %d, want 64", len(h))
 	}
-	other, _ := Generate("live")
-	if Hash(other) == h {
-		t.Fatal("different keys must hash differently")
+
+	// Same input → same hash
+	h2 := Hash(key)
+	if h != h2 {
+		t.Fatal("same input must produce same hash")
+	}
+
+	// Different input → different hash
+	h3 := Hash("pk_test_different")
+	if h == h3 {
+		t.Fatal("different inputs must produce different hashes")
 	}
 }
 
 func TestPrefix(t *testing.T) {
-	k, _ := Generate("test")
-	p := Prefix(k)
+	key := "pk_test_abcdefghijklmnop"
+	p := Prefix(key)
+
 	if len(p) != PrefixLen {
-		t.Fatalf("expected %d chars, got %d", PrefixLen, len(p))
+		t.Fatalf("prefix length = %d, want %d", len(p), PrefixLen)
 	}
-	if !strings.HasPrefix(k, p) {
-		t.Fatal("stored prefix must be a prefix of the key")
+	if p != key[:PrefixLen] {
+		t.Fatalf("prefix = %q, want %q", p, key[:PrefixLen])
 	}
-	if got := Prefix("short"); got != "short" {
-		t.Fatalf("short key prefix = %q", got)
+}
+
+func TestPrefixShortKey(t *testing.T) {
+	short := "short"
+	p := Prefix(short)
+
+	// Short key should return itself (no truncation).
+	if p != short {
+		t.Fatalf("Prefix(%q) = %q, want %q", short, p, short)
+	}
+}
+
+func TestHashVerifyRoundTrip(t *testing.T) {
+	key, _ := Generate(domain.EnvKindLive)
+	h := Hash(key)
+
+	// Verify: hash of the generated key must match the stored hash.
+	if Hash(key) != h {
+		t.Fatal("hash verification failed: stored hash doesn't match")
 	}
 }
