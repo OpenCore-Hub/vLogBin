@@ -328,10 +328,44 @@ func newProviderCredentialRowView(c storegen.GetCredentialByProviderRow) provide
 	}
 }
 
+func newProviderCredentialEnvView(c storegen.Credential, envKind, envIssuer string) providerCredentialView {
+	return providerCredentialView{
+		ID:                c.ID,
+		Name:              c.Name,
+		KeyPrefix:         c.KeyPrefix,
+		Scopes:            c.Scopes,
+		AllowedCIDRs:      c.AllowedCidrs,
+		EnvironmentID:     c.EnvironmentID,
+		EnvironmentKind:   envKind,
+		EnvironmentIssuer: envIssuer,
+		ExpiresAt:         c.ExpiresAt,
+		RevokedAt:         c.RevokedAt,
+		LastUsedAt:        c.LastUsedAt,
+		CreatedAt:         c.CreatedAt,
+	}
+}
+
 // listProviderCredentials — GET /v1/operator/providers/{id}/credentials
 // Operator view of a provider's API keys across all environments. The raw key
 // hash is never returned; keys are identified by their key_prefix.
 func (s *Server) listProviderCredentials(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("env") != "" {
+		providerID, env, ok := s.providerEnvFromRequest(w, r)
+		if !ok {
+			return
+		}
+		creds, err := s.svc.ListProviderCredentialsByEnv(r.Context(), providerID, env.ID)
+		if err != nil {
+			s.serviceError(w, r, err)
+			return
+		}
+		views := make([]providerCredentialView, 0, len(creds))
+		for _, c := range creds {
+			views = append(views, newProviderCredentialEnvView(c, env.Kind, env.Issuer))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"credentials": views})
+		return
+	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_id", "provider id must be a uuid", reqIDFromRequest(r))

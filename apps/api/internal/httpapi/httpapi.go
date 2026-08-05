@@ -209,7 +209,10 @@ func (s *Server) Router() chi.Router {
 			r.Get("/providers/{id}/audit/stats", s.providerAuditEventStats)
 			r.Get("/providers/{id}/audit/export", s.providerAuditEventExport)
 			r.Get("/providers/{id}/credentials", s.listProviderCredentials)
+			// Developers control plane (§8 M3): API keys, webhooks, event stream.
+			r.Post("/providers/{id}/credentials", s.operatorCreateCredential)
 			r.Post("/providers/{id}/credentials/{credentialId}/revoke", s.revokeProviderCredential)
+			r.Post("/providers/{id}/credentials/{credentialId}/rotate", s.operatorRotateCredential)
 			r.Get("/regions", s.listRegions)
 			r.Get("/cells", s.listCells)
 			// Operator billing views (cross-environment, read-only).
@@ -231,6 +234,8 @@ func (s *Server) Router() chi.Router {
 			r.Get("/providers/{id}/invoices", s.operatorListInvoices)
 			// Console Invoices control plane (§8 M2), environment-scoped via ?env=.
 			r.Get("/providers/{id}/invoices/{invoiceId}", s.operatorGetInvoice)
+			// Console Events stream (§8 M3), environment-scoped via ?env=.
+			r.Get("/providers/{id}/events", s.operatorStreamEvents)
 			// Provider capability grants (operator-managed).
 			r.Get("/providers/{id}/capabilities", s.operatorListCapabilities)
 			r.Post("/providers/{id}/capabilities/{capability}/grant", s.operatorGrantCapability)
@@ -252,6 +257,8 @@ func (s *Server) Router() chi.Router {
 			r.Post("/audit/chain/anchor", s.auditChainAnchor)
 			// Webhook monitoring (operator view, cross-environment).
 			r.Get("/providers/{id}/webhooks", s.operatorListWebhooks)
+			r.Post("/providers/{id}/webhooks", s.operatorCreateWebhook)
+			r.Delete("/providers/{id}/webhooks/{webhookId}", s.operatorDeleteWebhook)
 			r.Get("/providers/{id}/webhook-deliveries", s.operatorListWebhookDeliveries)
 			r.Post("/providers/{id}/webhook-deliveries/{deliveryId}/replay", s.operatorReplayWebhookDelivery)
 			// Cell management (operator-only).

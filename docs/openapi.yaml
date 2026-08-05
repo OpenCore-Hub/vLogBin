@@ -663,6 +663,34 @@ components:
           type: string
           format: date-time
 
+    CredentialCreateInput:
+      type: object
+      description: Console 创建 API 密钥入参
+      required: [name, scopes]
+      properties:
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+          description: 可选，必须是未来时间
+        created_by:
+          type: string
+          description: 审计 actor 标识，默认 operator
+
+    CreatedCredentialResult:
+      type: object
+      description: 创建 / 轮换 API 密钥的响应（明文 api_key 只返回一次）
+      properties:
+        credential:
+          $ref: '#/components/schemas/Credential'
+        api_key:
+          type: string
+
     Invoice:
       type: object
       description: 发票（Lago 同步）
@@ -900,6 +928,7 @@ components:
 
     WebhookEndpoint:
       type: object
+      description: Webhook 端点（operator 视图；列表响应永不包含 secret）
       properties:
         id:
           type: string
@@ -910,10 +939,16 @@ components:
         environment_id:
           type: string
           format: uuid
+        environment_kind:
+          type: string
+          enum: [test, live]
+        environment_issuer:
+          type: string
         url:
           type: string
         secret:
           type: string
+          description: 仅在创建响应中出现一次
         enabled:
           type: boolean
         events:
@@ -923,6 +958,88 @@ components:
         created_at:
           type: string
           format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WebhookCreateInput:
+      type: object
+      description: Console 创建 Webhook 端点入参
+      required: [url]
+      properties:
+        url:
+          type: string
+        events:
+          type: array
+          items:
+            type: string
+          description: 空数组订阅全部事件
+        secret:
+          type: string
+          description: 可选；留空自动生成
+        created_by:
+          type: string
+          description: 审计 actor 标识，默认 operator
+
+    PlatformEvent:
+      type: object
+      description: Console 事件流视图（payload 为已解码 JSON）
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
+        environment_kind:
+          type: string
+          enum: [test, live]
+        aggregate_type:
+          type: string
+        aggregate_id:
+          type: string
+        event_type:
+          type: string
+        payload:
+          description: 原始 JSONB 载荷，解码后的任意 JSON
+        payload_hash:
+          type: string
+        transaction_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, failed, published, dead_letter]
+        attempts:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        published_at:
+          type: string
+          format: date-time
+        next_attempt_at:
+          type: string
+          format: date-time
+        last_error:
+          type: string
+
+    PlatformEventStream:
+      type: object
+      description: 事件流分页响应（cursor 为上一页最后一个事件 id）
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEvent'
+        next_cursor:
+          type: string
+          format: uuid
+          nullable: true
+        has_more:
+          type: boolean
 
     WebhookDelivery:
       type: object
@@ -1717,9 +1834,16 @@ paths:
   /operator/providers/{provider_id}/credentials:
     get:
       tags: [Operator]
-      summary: List API credentials
+      summary: List API credentials (cross-environment, or a single environment with ?env=)
       parameters:
         - $ref: '#/components/parameters/ProviderID'
+        - name: env
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [test, live]
+          description: 传入时只返回该环境的密钥；缺省返回跨环境 operator 视图
       responses:
         '200':
           description: Credential list
@@ -1732,6 +1856,62 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Credential'
+    post:
+      tags: [Operator]
+      summary: Create an API key in the given environment (Console M3)
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CredentialCreateInput'
+      responses:
+        '201':
+          description: API key created (plaintext returned exactly once)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedCredentialResult'
+        '400':
+          description: Invalid input
+        '404':
+          description: Unknown provider or environment
+
+  /operator/providers/{provider_id}/credentials/{credential_id}/rotate:
+    post:
+      tags: [Operator]
+      summary: Atomically rotate an API key (revoke old + issue replacement)
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+        - name: credential_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                created_by:
+                  type: string
+                  description: 审计 actor 标识，默认 operator
+      responses:
+        '200':
+          description: Rotated (new plaintext returned exactly once)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedCredentialResult'
+        '404':
+          description: Unknown provider, environment, or credential
+        '409':
+          description: Credential already revoked
 
   /operator/providers/{provider_id}/credentials/{credential_id}/revoke:
     post:
@@ -1817,9 +1997,16 @@ paths:
   /operator/providers/{provider_id}/webhooks:
     get:
       tags: [Operator]
-      summary: List webhook endpoints
+      summary: List webhook endpoints (cross-environment, or a single environment with ?env=)
       parameters:
         - $ref: '#/components/parameters/ProviderID'
+        - name: env
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [test, live]
+          description: 传入时只返回该环境的端点；缺省返回跨环境 operator 视图
       responses:
         '200':
           description: Webhook endpoint list
@@ -1832,6 +2019,96 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/WebhookEndpoint'
+    post:
+      tags: [Operator]
+      summary: Create a webhook endpoint (Console M3)
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookCreateInput'
+      responses:
+        '201':
+          description: Webhook endpoint created (signing secret returned once)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  endpoint:
+                    $ref: '#/components/schemas/WebhookEndpoint'
+        '400':
+          description: Invalid input or URL
+        '404':
+          description: Unknown provider or environment
+
+  /operator/providers/{provider_id}/webhooks/{webhook_id}:
+    delete:
+      tags: [Operator]
+      summary: Delete a webhook endpoint (Console M3)
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+        - name: webhook_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Webhook endpoint deleted
+        '404':
+          description: Unknown provider, environment, or endpoint
+
+  /operator/providers/{provider_id}/events:
+    get:
+      tags: [Operator]
+      summary: Stream platform events for one environment (Console M3)
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: 上一页 next_cursor；省略从头开始
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按 event_type 过滤
+        - name: aggregate_type
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按 aggregate_type 过滤
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+          description: 每页数量，默认 100
+      responses:
+        '200':
+          description: Event stream page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformEventStream'
+        '400':
+          description: Invalid env or cursor
+        '404':
+          description: Unknown provider or environment
 
   /operator/providers/{provider_id}/webhook-deliveries:
     get:
