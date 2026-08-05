@@ -15,6 +15,7 @@ import {
   MenuIcon,
   PackageIcon,
   SettingsIcon,
+  ShieldIcon,
   UsersIcon,
   WebhookIcon,
   XIcon,
@@ -33,6 +34,7 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       { href: "/console", label: "概览", icon: HomeIcon },
       { href: "/ops", label: "运营商台", icon: BoxIcon },
       { href: "/console/settings", label: "设置", icon: SettingsIcon },
+      { href: "/console/audit", label: "审计日志", icon: ShieldIcon },
     ],
   },
   {

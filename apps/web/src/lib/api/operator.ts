@@ -33,6 +33,10 @@ import type {
   CustomerDetail,
   UsageEvent,
   AuditEvent,
+  AuditStats,
+  AuditChainState,
+  AuditChainVerifyResult,
+  AuditPageResult,
   Credential,
   CreatedCredential,
   Invoice,
@@ -87,6 +91,10 @@ export type {
   CustomerDetail,
   UsageEvent,
   AuditEvent,
+  AuditStats,
+  AuditChainState,
+  AuditChainVerifyResult,
+  AuditPageResult,
   Credential,
   CreatedCredential,
   Invoice,
@@ -979,6 +987,108 @@ export async function listAuditEvents(providerId: string): Promise<AuditEvent[]>
   return data.audit_events
     .map(asAuditEvent)
     .filter((e): e is AuditEvent => e !== null);
+}
+
+/** 审计日志分页查询（keyset cursor + 多维过滤）。 */
+export async function queryAuditEvents(
+  providerId: string,
+  params: {
+    cursor?: number;
+    limit?: number;
+    action?: string;
+    actor_type?: string;
+    actor_id?: string;
+    target_type?: string;
+    target_id?: string;
+    from?: string;
+    to?: string;
+  } = {},
+): Promise<AuditPageResult> {
+  const qs = new URLSearchParams();
+  if (params.cursor) qs.set("cursor", String(params.cursor));
+  if (params.limit) qs.set("limit", String(params.limit));
+  if (params.action) qs.set("action", params.action);
+  if (params.actor_type) qs.set("actor_type", params.actor_type);
+  if (params.actor_id) qs.set("actor_id", params.actor_id);
+  if (params.target_type) qs.set("target_type", params.target_type);
+  if (params.target_id) qs.set("target_id", params.target_id);
+  if (params.from) qs.set("from", params.from);
+  if (params.to) qs.set("to", params.to);
+  const suffix = qs.toString();
+  const data = await request<{ audit_events?: unknown; next_cursor?: unknown }>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/audit${suffix ? `?${suffix}` : ""}`,
+  );
+  const events = Array.isArray(data.audit_events)
+    ? data.audit_events.map(asAuditEvent).filter((e): e is AuditEvent => e !== null)
+    : [];
+  const nextCursor =
+    typeof data.next_cursor === "number"
+      ? data.next_cursor
+      : data.next_cursor != null
+        ? Number(data.next_cursor)
+        : null;
+  return { events, next_cursor: Number.isFinite(nextCursor) ? nextCursor : null };
+}
+
+/** 审计统计（必须有界 from/to，避免全表聚合）。 */
+export async function getAuditStats(
+  providerId: string,
+  from: string,
+  to: string,
+  granularity: "hour" | "day" | "week" = "day",
+): Promise<AuditStats | null> {
+  const data = await request<Partial<AuditStats>>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/audit/stats?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&granularity=${granularity}`,
+  );
+  return {
+    total: typeof data.total === "number" ? data.total : 0,
+    by_action: Array.isArray(data.by_action)
+      ? data.by_action.map((row) => ({
+          key: String(row.key ?? ""),
+          count: Number(row.count ?? 0),
+        }))
+      : [],
+    by_actor_type: Array.isArray(data.by_actor_type)
+      ? data.by_actor_type.map((row) => ({
+          key: String(row.key ?? ""),
+          count: Number(row.count ?? 0),
+        }))
+      : [],
+    series: Array.isArray(data.series)
+      ? data.series.map((row) => ({
+          bucket: String(row.bucket ?? ""),
+          count: Number(row.count ?? 0),
+        }))
+      : [],
+  };
+}
+
+export async function getAuditChain(): Promise<AuditChainState | null> {
+  const data = await request<Partial<AuditChainState>>("/v1/operator/audit/chain");
+  return {
+    total_events: typeof data.total_events === "number" ? data.total_events : 0,
+    tail_hash: data.tail_hash,
+    tail_event_id: data.tail_event_id,
+    last_anchor_id: typeof data.last_anchor_id === "number" ? data.last_anchor_id : 0,
+    last_anchor_event_id:
+      typeof data.last_anchor_event_id === "number" ? data.last_anchor_event_id : 0,
+    last_anchor_hash: data.last_anchor_hash ?? "",
+    last_anchor_at: data.last_anchor_at,
+  };
+}
+
+export async function verifyAuditChain(): Promise<AuditChainVerifyResult | null> {
+  const data = await request<Partial<AuditChainVerifyResult>>(
+    "/v1/operator/audit/chain/verify",
+  );
+  return {
+    ok: data.ok === true,
+    verified_from: typeof data.verified_from === "number" ? data.verified_from : 0,
+    verified_to: typeof data.verified_to === "number" ? data.verified_to : 0,
+    verified_count: typeof data.verified_count === "number" ? data.verified_count : 0,
+    broken_at: data.broken_at,
+    reason: data.reason,
+  };
 }
 
 /**

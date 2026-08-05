@@ -233,6 +233,39 @@ export interface AuditEvent {
   created_at?: string;
 }
 
+/** 审计统计聚合（operator 视图）。 */
+export interface AuditStats {
+  total: number;
+  by_action: Array<{ key: string; count: number }>;
+  by_actor_type: Array<{ key: string; count: number }>;
+  series: Array<{ bucket: string; count: number }>;
+}
+
+/** 审计哈希链状态（tamper-evident）。 */
+export interface AuditChainState {
+  total_events: number;
+  tail_hash?: string;
+  tail_event_id?: number;
+  last_anchor_id: number;
+  last_anchor_event_id: number;
+  last_anchor_hash: string;
+  last_anchor_at?: string;
+}
+
+export interface AuditChainVerifyResult {
+  ok: boolean;
+  verified_from: number;
+  verified_to: number;
+  verified_count: number;
+  broken_at?: number;
+  reason?: string;
+}
+
+export interface AuditPageResult {
+  events: AuditEvent[];
+  next_cursor: number | null;
+}
+
 /** API 密钥（key_hash 永不下发，仅 key_prefix 标识）。 */
 export interface Credential {
   id: string;
