@@ -104,3 +104,53 @@ func (s *Server) operatorDeleteCatalogPlan(w http.ResponseWriter, r *http.Reques
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// operatorListPlanEntitlements — GET /v1/operator/providers/{id}/catalog/plans/{code}/entitlements?env=test
+func (s *Server) operatorListPlanEntitlements(w http.ResponseWriter, r *http.Request) {
+	providerID, env, ok := s.providerEnvFromRequest(w, r)
+	if !ok {
+		return
+	}
+	code := chi.URLParam(r, "code")
+	grants, err := s.svc.ListPlanEntitlements(r.Context(), service.OperatorAuthContext(providerID, env), code)
+	if err != nil {
+		s.serviceError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"entitlements": grants})
+}
+
+// operatorSetPlanEntitlement — PUT /v1/operator/providers/{id}/catalog/plans/{code}/entitlements/{key}?env=test
+func (s *Server) operatorSetPlanEntitlement(w http.ResponseWriter, r *http.Request) {
+	providerID, env, ok := s.providerEnvFromRequest(w, r)
+	if !ok {
+		return
+	}
+	code := chi.URLParam(r, "code")
+	key := chi.URLParam(r, "key")
+	var input domain.EntitlementInput
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	grant, err := s.svc.SetPlanEntitlement(r.Context(), service.OperatorAuthContext(providerID, env), code, key, input)
+	if err != nil {
+		s.serviceError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"entitlement": grant})
+}
+
+// operatorDeletePlanEntitlement — DELETE /v1/operator/providers/{id}/catalog/plans/{code}/entitlements/{key}?env=test
+func (s *Server) operatorDeletePlanEntitlement(w http.ResponseWriter, r *http.Request) {
+	providerID, env, ok := s.providerEnvFromRequest(w, r)
+	if !ok {
+		return
+	}
+	code := chi.URLParam(r, "code")
+	key := chi.URLParam(r, "key")
+	if err := s.svc.DeletePlanEntitlement(r.Context(), service.OperatorAuthContext(providerID, env), code, key); err != nil {
+		s.serviceError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

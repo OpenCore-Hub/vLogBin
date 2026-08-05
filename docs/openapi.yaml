@@ -3074,6 +3074,79 @@ paths:
         '404':
           description: Unknown plan, provider, or environment
 
+  /operator/providers/{provider_id}/catalog/plans/{plan_code}/entitlements:
+    get:
+      tags: [Operator]
+      summary: List plan-level entitlement grants (Console Policies page)
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+        - $ref: '#/components/parameters/PlanCode'
+      responses:
+        '200':
+          description: Entitlement grants for the current draft plan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entitlements:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EntitlementGrant'
+        '404':
+          description: Unknown provider, environment, or plan
+
+  /operator/providers/{provider_id}/catalog/plans/{plan_code}/entitlements/{key}:
+    put:
+      tags: [Operator]
+      summary: Upsert one plan-level entitlement grant
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+        - $ref: '#/components/parameters/PlanCode'
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EntitlementInput'
+      responses:
+        '200':
+          description: Grant upserted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entitlement:
+                    $ref: '#/components/schemas/EntitlementGrant'
+        '400':
+          description: Invalid grant or immutable key mismatch
+        '404':
+          description: Unknown provider, environment, or plan
+    delete:
+      tags: [Operator]
+      summary: Delete one plan-level entitlement grant
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+        - $ref: '#/components/parameters/PlanCode'
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Grant deleted
+        '404':
+          description: Unknown provider, environment, plan, or grant
+
   # ---- 工作区（operator 会话域，RLS 仅 operator 事务可见）----
   /me/workspaces:
     get:

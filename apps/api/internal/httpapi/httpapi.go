@@ -233,6 +233,10 @@ func (s *Server) Router() chi.Router {
 			r.Post("/providers/{id}/catalog/plans", s.operatorCreateCatalogPlan)
 			r.Put("/providers/{id}/catalog/plans/{code}", s.operatorUpdateCatalogPlan)
 			r.Delete("/providers/{id}/catalog/plans/{code}", s.operatorDeleteCatalogPlan)
+			// Console Policies control plane (plan-level entitlement grants).
+			r.Get("/providers/{id}/catalog/plans/{code}/entitlements", s.operatorListPlanEntitlements)
+			r.Put("/providers/{id}/catalog/plans/{code}/entitlements/{key}", s.operatorSetPlanEntitlement)
+			r.Delete("/providers/{id}/catalog/plans/{code}/entitlements/{key}", s.operatorDeletePlanEntitlement)
 			r.Get("/providers/{id}/subscriptions", s.operatorListSubscriptions)
 			r.Get("/providers/{id}/customers", s.operatorListCustomers)
 			// Console Customers control plane (§8 M2), environment-scoped via ?env=.
