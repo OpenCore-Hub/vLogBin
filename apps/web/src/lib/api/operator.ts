@@ -29,6 +29,7 @@ import type {
   UsageEvent,
   AuditEvent,
   Credential,
+  CreatedCredential,
   Invoice,
   InvoiceLine,
   InvoiceDetail,
@@ -55,6 +56,8 @@ import type {
   Capability,
   WebhookEndpoint,
   WebhookDelivery,
+  PlatformEvent,
+  PlatformEventStream,
   HostedAuthConfig,
   HostedAuthCreateResult,
   CreateProviderInput,
@@ -73,6 +76,7 @@ export type {
   UsageEvent,
   AuditEvent,
   Credential,
+  CreatedCredential,
   Invoice,
   InvoiceLine,
   InvoiceDetail,
@@ -99,6 +103,8 @@ export type {
   Capability,
   WebhookEndpoint,
   WebhookDelivery,
+  PlatformEvent,
+  PlatformEventStream,
   HostedAuthConfig,
   HostedAuthCreateResult,
   CreateProviderInput,
@@ -946,14 +952,45 @@ export async function listAuditEvents(providerId: string): Promise<AuditEvent[]>
  * 列出 Provider 在所有环境（test/live）下签发的 API 密钥（operator 视图）。
  * key_hash 永远不会下发给客户端，仅通过 key_prefix 标识密钥。
  */
-export async function listCredentials(providerId: string): Promise<Credential[]> {
+export async function listCredentials(
+  providerId: string,
+  env?: "test" | "live",
+): Promise<Credential[]> {
+  const qs = env ? `?env=${env}` : "";
   const data = await request<{ credentials?: unknown }>(
-    `/v1/operator/providers/${encodeURIComponent(providerId)}/credentials`,
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/credentials${qs}`,
   );
   if (!Array.isArray(data.credentials)) return [];
   return data.credentials
     .map(asCredential)
     .filter((c): c is Credential => c !== null);
+}
+
+/** 从 Console 签发一枚新 API 密钥（operator 路径，明文只返回一次）。 */
+export async function createCredential(
+  providerId: string,
+  env: "test" | "live",
+  input: { name: string; scopes: string[]; expires_at?: string; created_by?: string },
+): Promise<CreatedCredential> {
+  const data = await request<Partial<CreatedCredential>>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/credentials?env=${env}`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return { credential: asCredential(data.credential), api_key: data.api_key ?? "" };
+}
+
+/** 原子轮换：旧密钥立即失效，新密钥同权限/同名，明文只返回一次。 */
+export async function rotateCredential(
+  providerId: string,
+  env: "test" | "live",
+  credentialId: string,
+  createdBy?: string,
+): Promise<CreatedCredential> {
+  const data = await request<Partial<CreatedCredential>>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/credentials/${encodeURIComponent(credentialId)}/rotate?env=${env}`,
+    { method: "POST", body: JSON.stringify(createdBy ? { created_by: createdBy } : {}) },
+  );
+  return { credential: asCredential(data.credential), api_key: data.api_key ?? "" };
 }
 
 /**
@@ -1036,11 +1073,16 @@ function asWebhookEndpoint(value: unknown): WebhookEndpoint | null {
     id: typeof rec.id === "string" ? rec.id : "",
     provider_id: typeof rec.provider_id === "string" ? rec.provider_id : "",
     environment_id: typeof rec.environment_id === "string" ? rec.environment_id : "",
+    environment_kind:
+      typeof rec.environment_kind === "string" ? rec.environment_kind : undefined,
+    environment_issuer:
+      typeof rec.environment_issuer === "string" ? rec.environment_issuer : undefined,
     url: typeof rec.url === "string" ? rec.url : "",
-    secret: typeof rec.secret === "string" ? rec.secret : "",
+    secret: typeof rec.secret === "string" ? rec.secret : undefined,
     enabled: typeof rec.enabled === "boolean" ? rec.enabled : false,
     events: asStringArray(rec.events),
     created_at: typeof rec.created_at === "string" ? rec.created_at : undefined,
+    updated_at: typeof rec.updated_at === "string" ? rec.updated_at : undefined,
   };
 }
 
@@ -1060,9 +1102,13 @@ function asWebhookDelivery(value: unknown): WebhookDelivery | null {
   };
 }
 
-export async function listWebhooks(providerId: string): Promise<WebhookEndpoint[]> {
+export async function listWebhooks(
+  providerId: string,
+  env?: "test" | "live",
+): Promise<WebhookEndpoint[]> {
+  const qs = env ? `?env=${env}` : "";
   const data = await request<{ endpoints?: unknown }>(
-    `/v1/operator/providers/${encodeURIComponent(providerId)}/webhooks`,
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/webhooks${qs}`,
   );
   if (!Array.isArray(data.endpoints)) return [];
   return data.endpoints
@@ -1070,9 +1116,37 @@ export async function listWebhooks(providerId: string): Promise<WebhookEndpoint[
     .filter((e): e is WebhookEndpoint => e !== null);
 }
 
-export async function listWebhookDeliveries(providerId: string): Promise<WebhookDelivery[]> {
+/** 创建 Webhook 端点；响应中的签名密钥仅展示一次。 */
+export async function createWebhook(
+  providerId: string,
+  env: "test" | "live",
+  input: { url: string; events: string[]; secret?: string; created_by?: string },
+): Promise<WebhookEndpoint | null> {
+  const data = await request<{ endpoint?: unknown }>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/webhooks?env=${env}`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return asWebhookEndpoint(data.endpoint);
+}
+
+export async function deleteWebhook(
+  providerId: string,
+  env: "test" | "live",
+  webhookId: string,
+): Promise<void> {
+  await request<never>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/webhooks/${encodeURIComponent(webhookId)}?env=${env}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function listWebhookDeliveries(
+  providerId: string,
+  env?: "test" | "live",
+): Promise<WebhookDelivery[]> {
+  const qs = env ? `?env=${env}` : "";
   const data = await request<{ deliveries?: unknown }>(
-    `/v1/operator/providers/${encodeURIComponent(providerId)}/webhook-deliveries`,
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/webhook-deliveries${qs}`,
   );
   if (!Array.isArray(data.deliveries)) return [];
   return data.deliveries
@@ -1094,6 +1168,55 @@ export async function replayWebhookDelivery(
     },
   );
   return asWebhookDelivery(data.delivery);
+}
+
+function asPlatformEvent(value: unknown): PlatformEvent | null {
+  const rec = asRecord(value);
+  if (!rec) return null;
+  return {
+    id: typeof rec.id === "string" ? rec.id : "",
+    provider_id: typeof rec.provider_id === "string" ? rec.provider_id : "",
+    environment_id: typeof rec.environment_id === "string" ? rec.environment_id : "",
+    environment_kind:
+      typeof rec.environment_kind === "string" ? rec.environment_kind : "",
+    aggregate_type: typeof rec.aggregate_type === "string" ? rec.aggregate_type : "",
+    aggregate_id: typeof rec.aggregate_id === "string" ? rec.aggregate_id : "",
+    event_type: typeof rec.event_type === "string" ? rec.event_type : "",
+    payload: rec.payload as PlatformEvent["payload"],
+    payload_hash: typeof rec.payload_hash === "string" ? rec.payload_hash : "",
+    transaction_id: typeof rec.transaction_id === "string" ? rec.transaction_id : "",
+    status: typeof rec.status === "string" ? rec.status : "",
+    attempts: typeof rec.attempts === "number" ? rec.attempts : 0,
+    created_at: typeof rec.created_at === "string" ? rec.created_at : undefined,
+    published_at: typeof rec.published_at === "string" ? rec.published_at : undefined,
+    next_attempt_at:
+      typeof rec.next_attempt_at === "string" ? rec.next_attempt_at : undefined,
+    last_error: typeof rec.last_error === "string" ? rec.last_error : undefined,
+  };
+}
+
+/** Console 事件流：operator 路径，?env= 隔离环境。 */
+export async function streamEvents(
+  providerId: string,
+  env: "test" | "live",
+  params: { cursor?: string; type?: string; aggregate_type?: string; limit?: number } = {},
+): Promise<PlatformEventStream> {
+  const qs = new URLSearchParams({ env });
+  if (params.cursor) qs.set("cursor", params.cursor);
+  if (params.type) qs.set("type", params.type);
+  if (params.aggregate_type) qs.set("aggregate_type", params.aggregate_type);
+  if (params.limit) qs.set("limit", String(params.limit));
+  const data = await request<Partial<PlatformEventStream>>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/events?${qs.toString()}`,
+  );
+  const events = Array.isArray(data.events)
+    ? data.events.map(asPlatformEvent).filter((e): e is PlatformEvent => e !== null)
+    : [];
+  return {
+    events,
+    next_cursor: typeof data.next_cursor === "string" ? data.next_cursor : null,
+    has_more: data.has_more === true,
+  };
 }
 
 export async function listRegions(): Promise<Region[]> {

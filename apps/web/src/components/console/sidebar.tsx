@@ -6,13 +6,16 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { LogoCompact } from "@/components/brand/logo";
 import {
+  ActivityIcon,
   AppIcon,
   BoxIcon,
   CreditCardIcon,
   HomeIcon,
+  KeyIcon,
   MenuIcon,
   PackageIcon,
   UsersIcon,
+  WebhookIcon,
   XIcon,
 } from "@/components/ui/icons";
 
@@ -57,6 +60,26 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
         href: "/console/billing/invoices",
         label: "账单",
         icon: CreditCardIcon,
+      },
+    ],
+  },
+  {
+    label: "开发者",
+    items: [
+      {
+        href: "/console/developers/api-keys",
+        label: "API Keys",
+        icon: KeyIcon,
+      },
+      {
+        href: "/console/developers/webhooks",
+        label: "Webhooks",
+        icon: WebhookIcon,
+      },
+      {
+        href: "/console/developers/events",
+        label: "事件流",
+        icon: ActivityIcon,
       },
     ],
   },

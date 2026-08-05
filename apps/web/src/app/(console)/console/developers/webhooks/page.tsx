@@ -1,0 +1,44 @@
+import { requireAuth } from "@/lib/auth/rbac";
+import { resolveEnv } from "@/lib/env";
+import {
+  listProviders,
+  listWebhookDeliveries,
+  listWebhooks,
+  type WebhookDelivery,
+  type WebhookEndpoint,
+} from "@/lib/api/operator";
+import { WebhooksClient } from "./webhooks-client";
+
+export const dynamic = "force-dynamic";
+
+export default async function WebhooksPage() {
+  const session = await requireAuth();
+  const env = await resolveEnv(session);
+
+  const providers = await listProviders().catch(() => []);
+  const provider = providers[0] ?? null;
+
+  let endpoints: WebhookEndpoint[] = [];
+  let deliveries: WebhookDelivery[] = [];
+  let loadError: string | null = null;
+  if (provider) {
+    try {
+      [endpoints, deliveries] = await Promise.all([
+        listWebhooks(provider.id, env),
+        listWebhookDeliveries(provider.id, env),
+      ]);
+    } catch (err) {
+      loadError = err instanceof Error ? err.message : "Webhook 数据加载失败";
+    }
+  }
+
+  return (
+    <WebhooksClient
+      providerId={provider?.id ?? null}
+      env={env}
+      endpoints={endpoints}
+      deliveries={deliveries}
+      loadError={loadError}
+    />
+  );
+}

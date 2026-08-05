@@ -149,6 +149,12 @@ export interface Credential {
   created_at?: string;
 }
 
+/** 创建 / 轮换 API 密钥后的响应（明文 key 仅返回一次）。 */
+export interface CreatedCredential {
+  credential: Credential | null;
+  api_key: string;
+}
+
 /** 发票（Lago 同步）。 */
 export interface Invoice {
   id: string;
@@ -325,11 +331,15 @@ export interface WebhookEndpoint {
   id: string;
   provider_id: string;
   environment_id: string;
+  environment_kind?: string;
+  environment_issuer?: string;
   url: string;
-  secret: string;
+  /** 仅在创建响应中出现一次，列表永不返回签名密钥。 */
+  secret?: string;
   enabled: boolean;
   events: string[];
   created_at?: string;
+  updated_at?: string;
 }
 
 /** Webhook 投递记录。 */
@@ -343,6 +353,32 @@ export interface WebhookDelivery {
   response_body?: string;
   delivered_at?: string;
   created_at?: string;
+}
+
+/** Console 事件流视图（operator /v1/operator/providers/{id}/events）。 */
+export interface PlatformEvent {
+  id: string;
+  provider_id: string;
+  environment_id: string;
+  environment_kind: string;
+  aggregate_type: string;
+  aggregate_id: string;
+  event_type: string;
+  payload: Record<string, unknown> | unknown[] | string | number | boolean | null;
+  payload_hash: string;
+  transaction_id: string;
+  status: string;
+  attempts: number;
+  created_at?: string;
+  published_at?: string;
+  next_attempt_at?: string;
+  last_error?: string;
+}
+
+export interface PlatformEventStream {
+  events: PlatformEvent[];
+  next_cursor: string | null;
+  has_more: boolean;
 }
 
 /** OIDC 应用（Console 控制面视图；client_secret 永不随列表返回）。 */
