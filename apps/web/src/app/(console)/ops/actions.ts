@@ -20,7 +20,7 @@ import {
   createProviderInputSchema,
   lifecycleReasonSchema,
   lifecycleTargetSchema,
-} from "@/lib/api/schemas";
+} from "@/lib/validate";
 
 export interface OpActionState {
   ok: boolean;

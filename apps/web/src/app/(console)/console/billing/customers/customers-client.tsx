@@ -4,7 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Customer } from "@/lib/api/operator";
-import { createCustomerSchema } from "@/lib/api/schemas";
+import { createCustomerSchema } from "@/lib/validate";
 import type { Env } from "@/lib/env-shared";
 import { formatDate } from "@/lib/format";
 import { Button, LinkButton } from "@/components/ui/button";

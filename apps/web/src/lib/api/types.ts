@@ -2,7 +2,7 @@
  * Platform API 实体类型（纯类型，零运行时依赖）。
  *
  * 与 docs/openapi.yaml 的 components.schemas 对齐（§11 变更管理）：
- * - 本文件是前端类型单一事实源：operator.ts（API 解析）与 schemas.ts（zod 校验）
+ * - 本文件是前端类型单一事实源：operator.ts（API 解析）与 lib/validate/（zod 校验）
  *   导出的类型均 re-export 自本文件，禁止各自定义同名类型。
  * - 漂移修复流程：发现字段与 openapi.yaml / 实际 API 响应不一致时，先修正
  *   docs/openapi.yaml，再同步本文件，最后跑 tsc --noEmit 验证。

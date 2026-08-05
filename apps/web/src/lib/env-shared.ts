@@ -1,15 +1,8 @@
-export type Env = "test" | "live";
-
-export const ENV_COOKIE = "vlb_env";
-
-/** 会话 cookie 名（edge 中间件与服务端共用）。 */
-export const SESSION_COOKIE = "vlb_session";
-
-/** First-Run 引导跳过标记（R18：跳过后可随时恢复）。 */
-export const ONBOARDING_DISMISS_COOKIE = "vlb_onboarding_dismissed";
-
-/** 客户门户独立会话 cookie（与平台用户会话隔离）。 */
-export const PORTAL_COOKIE = "vlb_portal_session";
-
-/** 会话最长有效期（秒），中间件滑动续期时使用。 */
-export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
+export {
+  ENV_COOKIE,
+  SESSION_COOKIE,
+  ONBOARDING_DISMISS_COOKIE,
+  PORTAL_COOKIE,
+  SESSION_MAX_AGE_SECONDS,
+} from "./env/shared";
+export type { Env } from "./env/shared";

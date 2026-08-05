@@ -10,7 +10,7 @@ import {
   updateHostedAuthRedirectURIs,
   type HostedAuthConfig,
 } from "@/lib/api/operator";
-import { createHostedAuthAppSchema } from "@/lib/api/schemas";
+import { createHostedAuthAppSchema } from "@/lib/validate";
 
 export interface AppActionState {
   ok: boolean;

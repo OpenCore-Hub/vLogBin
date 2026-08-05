@@ -1,11 +1,11 @@
 import "server-only";
 
 import { cookies, headers } from "next/headers";
-import { ENV_COOKIE } from "./env-shared";
-import type { Env, Session } from "./auth/session";
+import { ENV_COOKIE } from "./shared";
+import type { Env, Session } from "../auth/session";
 
 export { ENV_COOKIE };
-export type { Env } from "./env-shared";
+export type { Env } from "./shared";
 
 export const ENV_LABELS: Record<Env, { label: string; description: string }> = {
   test: { label: "Test", description: "隔离的测试环境，可自由变更" },

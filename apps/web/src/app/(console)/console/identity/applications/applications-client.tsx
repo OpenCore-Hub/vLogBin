@@ -3,7 +3,7 @@
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { HostedAuthConfig } from "@/lib/api/operator";
-import { createHostedAuthAppSchema } from "@/lib/api/schemas";
+import { createHostedAuthAppSchema } from "@/lib/validate";
 import type { Env } from "@/lib/env-shared";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";

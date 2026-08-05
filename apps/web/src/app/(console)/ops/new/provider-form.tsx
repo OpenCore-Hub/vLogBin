@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { createProviderAction, type OpActionState } from "../actions";
-import { createProviderInputSchema } from "@/lib/api/schemas";
+import { createProviderInputSchema } from "@/lib/validate";
 import type { Region } from "@/lib/api/operator";
 import { Field, Input, Select } from "@/components/ui/field";
 import { Button, LinkButton } from "@/components/ui/button";

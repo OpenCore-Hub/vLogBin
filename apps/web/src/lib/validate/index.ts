@@ -201,7 +201,7 @@ import type {
   PriceInput,
   EntitlementInput,
   CustomerCreateInput,
-} from "./types";
+} from "../api/types";
 
 export type {
   Provider,

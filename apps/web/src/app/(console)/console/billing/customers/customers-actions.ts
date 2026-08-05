@@ -8,7 +8,7 @@ import {
   type Customer,
   type CustomerCreateInput,
 } from "@/lib/api/operator";
-import { createCustomerSchema } from "@/lib/api/schemas";
+import { createCustomerSchema } from "@/lib/validate";
 
 export interface CustomerActionState {
   ok: boolean;

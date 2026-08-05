@@ -10,7 +10,7 @@ import {
 import { authConfig, isOidcConfigured } from "@/lib/auth/config";
 import { createSession } from "@/lib/auth/session";
 import { rememberEnv } from "@/lib/env";
-import { loginFormSchema } from "@/lib/api/schemas";
+import { loginFormSchema } from "@/lib/validate";
 import {
   OIDC_NEXT_COOKIE,
   OIDC_STATE_COOKIE,

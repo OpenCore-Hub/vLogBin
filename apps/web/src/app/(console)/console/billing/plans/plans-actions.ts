@@ -10,7 +10,7 @@ import {
   type PlanDetail,
   type PlanInput,
 } from "@/lib/api/operator";
-import { planInputSchema } from "@/lib/api/schemas";
+import { planInputSchema } from "@/lib/validate";
 
 export interface PlanActionState {
   ok: boolean;
