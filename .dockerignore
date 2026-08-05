@@ -1,0 +1,16 @@
+.git
+.gitnexus
+.claude
+.env
+.env.*
+apps/api/server
+apps/web/node_modules
+apps/web/.next
+apps/web/test-results
+apps/web/tsconfig.tsbuildinfo
+docs
+prototype
+third-party
+deploy
+**/*.log
+.DS_Store

@@ -13,6 +13,7 @@ import {
   CreditCardIcon,
   HomeIcon,
   KeyIcon,
+  LayersIcon,
   MenuIcon,
   PackageIcon,
   SettingsIcon,
@@ -55,6 +56,11 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
   {
     label: "计费",
     items: [
+      {
+        href: "/console/billing/dashboard",
+        label: "Dashboard",
+        icon: LayersIcon,
+      },
       {
         href: "/console/billing/plans",
         label: "套餐",
