@@ -357,6 +357,25 @@ JOIN environments e ON e.id = i.environment_id
 WHERE i.provider_id = $1
 ORDER BY i.issuing_date DESC LIMIT 200;
 
+-- name: ListInvoicesByProviderEnv :many
+SELECT i.id, i.number, i.lago_id, i.issuing_date, i.invoice_type, i.status, i.payment_status,
+       i.currency, i.total_amount_cents, i.customer_account_id, i.subscription_id, i.catalog_version_id,
+       ca.external_id AS customer_external_id, i.environment_id, e.kind AS environment_kind
+FROM invoices i
+JOIN customer_accounts ca ON ca.id = i.customer_account_id
+JOIN environments e ON e.id = i.environment_id
+WHERE i.provider_id = $1 AND i.environment_id = $2
+ORDER BY i.issuing_date DESC LIMIT 200;
+
+-- name: GetInvoiceByProviderEnvID :one
+SELECT i.id, i.number, i.lago_id, i.issuing_date, i.invoice_type, i.status, i.payment_status,
+       i.currency, i.total_amount_cents, i.customer_account_id, i.subscription_id, i.catalog_version_id,
+       ca.external_id AS customer_external_id, i.environment_id, e.kind AS environment_kind
+FROM invoices i
+JOIN customer_accounts ca ON ca.id = i.customer_account_id
+JOIN environments e ON e.id = i.environment_id
+WHERE i.id = $1 AND i.provider_id = $2 AND i.environment_id = $3;
+
 -- name: ListInvoicesByCustomer :many
 SELECT i.id, i.number, i.lago_id, i.issuing_date, i.invoice_type, i.status, i.payment_status,
        i.currency, i.total_amount_cents, i.customer_account_id, i.subscription_id, i.catalog_version_id,

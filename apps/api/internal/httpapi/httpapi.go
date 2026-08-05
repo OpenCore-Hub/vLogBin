@@ -229,6 +229,8 @@ func (s *Server) Router() chi.Router {
 			r.Get("/providers/{id}/customers/{externalId}", s.operatorGetCustomer)
 			r.Get("/providers/{id}/usage-events", s.operatorListUsageEvents)
 			r.Get("/providers/{id}/invoices", s.operatorListInvoices)
+			// Console Invoices control plane (§8 M2), environment-scoped via ?env=.
+			r.Get("/providers/{id}/invoices/{invoiceId}", s.operatorGetInvoice)
 			// Provider capability grants (operator-managed).
 			r.Get("/providers/{id}/capabilities", s.operatorListCapabilities)
 			r.Post("/providers/{id}/capabilities/{capability}/grant", s.operatorGrantCapability)
@@ -298,6 +300,7 @@ func (s *Server) Router() chi.Router {
 		r.Group(func(r chi.Router) {
 			r.Use(s.apiKeyAuth)
 			r.Use(s.tenantGuard)
+			r.Use(s.environmentHeaderMiddleware)
 			r.Use(s.rateLimitMiddleware)
 			r.Use(s.idempotencyMiddleware)
 			r.Use(s.lifecycleWriteGuard)

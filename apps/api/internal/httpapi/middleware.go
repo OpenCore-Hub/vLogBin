@@ -535,6 +535,27 @@ func (s *Server) tenantGuard(next http.Handler) http.Handler {
 	})
 }
 
+// environmentHeaderMiddleware enforces the documented X-Environment contract
+// for provider-domain requests: when the client sends the header it must
+// match the environment bound to its API key. Environment isolation is still
+// enforced by the credential itself (tenant context always comes from the
+// key); this makes accidental cross-environment calls fail fast instead of
+// silently succeeding, and gives SDKs a deterministic signal when they wired
+// the wrong environment.
+func (s *Server) environmentHeaderMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tc, ok := tenant.FromContext(r.Context())
+		if ok {
+			if header := r.Header.Get("X-Environment"); header != "" && header != tc.EnvironmentKind {
+				writeError(w, http.StatusBadRequest, "environment_mismatch",
+					"X-Environment does not match the credential environment", reqIDFromRequest(r))
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // lifecycleWriteGuard enforces a read-only mode on the provider API while the
 // provider is not in a writable lifecycle state (REGISTERED, SUSPENDED,
 // OFFBOARDING). Write methods (POST/PUT/PATCH/DELETE) are rejected with 409

@@ -345,6 +345,63 @@ func (q *Queries) GetInvoiceByID(ctx context.Context, arg GetInvoiceByIDParams) 
 	return i, err
 }
 
+const getInvoiceByProviderEnvID = `-- name: GetInvoiceByProviderEnvID :one
+SELECT i.id, i.number, i.lago_id, i.issuing_date, i.invoice_type, i.status, i.payment_status,
+       i.currency, i.total_amount_cents, i.customer_account_id, i.subscription_id, i.catalog_version_id,
+       ca.external_id AS customer_external_id, i.environment_id, e.kind AS environment_kind
+FROM invoices i
+JOIN customer_accounts ca ON ca.id = i.customer_account_id
+JOIN environments e ON e.id = i.environment_id
+WHERE i.id = $1 AND i.provider_id = $2 AND i.environment_id = $3
+`
+
+type GetInvoiceByProviderEnvIDParams struct {
+	ID            uuid.UUID `json:"id"`
+	ProviderID    uuid.UUID `json:"provider_id"`
+	EnvironmentID uuid.UUID `json:"environment_id"`
+}
+
+type GetInvoiceByProviderEnvIDRow struct {
+	ID                 uuid.UUID     `json:"id"`
+	Number             string        `json:"number"`
+	LagoID             string        `json:"lago_id"`
+	IssuingDate        pgtype.Date   `json:"issuing_date"`
+	InvoiceType        string        `json:"invoice_type"`
+	Status             string        `json:"status"`
+	PaymentStatus      string        `json:"payment_status"`
+	Currency           string        `json:"currency"`
+	TotalAmountCents   int64         `json:"total_amount_cents"`
+	CustomerAccountID  uuid.UUID     `json:"customer_account_id"`
+	SubscriptionID     uuid.NullUUID `json:"subscription_id"`
+	CatalogVersionID   uuid.NullUUID `json:"catalog_version_id"`
+	CustomerExternalID string        `json:"customer_external_id"`
+	EnvironmentID      uuid.UUID     `json:"environment_id"`
+	EnvironmentKind    string        `json:"environment_kind"`
+}
+
+func (q *Queries) GetInvoiceByProviderEnvID(ctx context.Context, arg GetInvoiceByProviderEnvIDParams) (GetInvoiceByProviderEnvIDRow, error) {
+	row := q.db.QueryRow(ctx, getInvoiceByProviderEnvID, arg.ID, arg.ProviderID, arg.EnvironmentID)
+	var i GetInvoiceByProviderEnvIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.Number,
+		&i.LagoID,
+		&i.IssuingDate,
+		&i.InvoiceType,
+		&i.Status,
+		&i.PaymentStatus,
+		&i.Currency,
+		&i.TotalAmountCents,
+		&i.CustomerAccountID,
+		&i.SubscriptionID,
+		&i.CatalogVersionID,
+		&i.CustomerExternalID,
+		&i.EnvironmentID,
+		&i.EnvironmentKind,
+	)
+	return i, err
+}
+
 const getInvoiceStatusByLagoID = `-- name: GetInvoiceStatusByLagoID :one
 SELECT id, status FROM invoices WHERE provider_id = $1 AND environment_id = $2 AND lago_id = $3
 `
@@ -1423,6 +1480,76 @@ func (q *Queries) ListInvoicesByProvider(ctx context.Context, providerID uuid.UU
 	var items []ListInvoicesByProviderRow
 	for rows.Next() {
 		var i ListInvoicesByProviderRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.LagoID,
+			&i.IssuingDate,
+			&i.InvoiceType,
+			&i.Status,
+			&i.PaymentStatus,
+			&i.Currency,
+			&i.TotalAmountCents,
+			&i.CustomerAccountID,
+			&i.SubscriptionID,
+			&i.CatalogVersionID,
+			&i.CustomerExternalID,
+			&i.EnvironmentID,
+			&i.EnvironmentKind,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listInvoicesByProviderEnv = `-- name: ListInvoicesByProviderEnv :many
+SELECT i.id, i.number, i.lago_id, i.issuing_date, i.invoice_type, i.status, i.payment_status,
+       i.currency, i.total_amount_cents, i.customer_account_id, i.subscription_id, i.catalog_version_id,
+       ca.external_id AS customer_external_id, i.environment_id, e.kind AS environment_kind
+FROM invoices i
+JOIN customer_accounts ca ON ca.id = i.customer_account_id
+JOIN environments e ON e.id = i.environment_id
+WHERE i.provider_id = $1 AND i.environment_id = $2
+ORDER BY i.issuing_date DESC LIMIT 200
+`
+
+type ListInvoicesByProviderEnvParams struct {
+	ProviderID    uuid.UUID `json:"provider_id"`
+	EnvironmentID uuid.UUID `json:"environment_id"`
+}
+
+type ListInvoicesByProviderEnvRow struct {
+	ID                 uuid.UUID     `json:"id"`
+	Number             string        `json:"number"`
+	LagoID             string        `json:"lago_id"`
+	IssuingDate        pgtype.Date   `json:"issuing_date"`
+	InvoiceType        string        `json:"invoice_type"`
+	Status             string        `json:"status"`
+	PaymentStatus      string        `json:"payment_status"`
+	Currency           string        `json:"currency"`
+	TotalAmountCents   int64         `json:"total_amount_cents"`
+	CustomerAccountID  uuid.UUID     `json:"customer_account_id"`
+	SubscriptionID     uuid.NullUUID `json:"subscription_id"`
+	CatalogVersionID   uuid.NullUUID `json:"catalog_version_id"`
+	CustomerExternalID string        `json:"customer_external_id"`
+	EnvironmentID      uuid.UUID     `json:"environment_id"`
+	EnvironmentKind    string        `json:"environment_kind"`
+}
+
+func (q *Queries) ListInvoicesByProviderEnv(ctx context.Context, arg ListInvoicesByProviderEnvParams) ([]ListInvoicesByProviderEnvRow, error) {
+	rows, err := q.db.Query(ctx, listInvoicesByProviderEnv, arg.ProviderID, arg.EnvironmentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListInvoicesByProviderEnvRow
+	for rows.Next() {
+		var i ListInvoicesByProviderEnvRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Number,

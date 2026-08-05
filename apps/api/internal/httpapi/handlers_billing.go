@@ -483,6 +483,21 @@ func (s *Server) getInvoice(w http.ResponseWriter, r *http.Request) {
 // ---- operator invoice views ----
 
 func (s *Server) operatorListInvoices(w http.ResponseWriter, r *http.Request) {
+	// Console invoices page passes ?env= to read a single environment;
+	// without it the operator billing view keeps returning cross-environment.
+	if r.URL.Query().Get("env") != "" {
+		providerID, env, ok := s.providerEnvFromRequest(w, r)
+		if !ok {
+			return
+		}
+		invoices, err := s.svc.ListInvoicesByProviderEnv(r.Context(), providerID, env.ID)
+		if err != nil {
+			s.serviceError(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"invoices": invoices})
+		return
+	}
 	providerID, err := parseUUIDParam(w, r, "id")
 	if err != nil {
 		return
@@ -493,6 +508,24 @@ func (s *Server) operatorListInvoices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"invoices": invoices})
+}
+
+// operatorGetInvoice — GET /v1/operator/providers/{id}/invoices/{invoiceId}?env=test
+func (s *Server) operatorGetInvoice(w http.ResponseWriter, r *http.Request) {
+	providerID, env, ok := s.providerEnvFromRequest(w, r)
+	if !ok {
+		return
+	}
+	invoiceID, err := parseUUIDParam(w, r, "invoiceId")
+	if err != nil {
+		return
+	}
+	detail, err := s.svc.GetInvoiceDetailByProvider(r.Context(), providerID, env.ID, invoiceID)
+	if err != nil {
+		s.serviceError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
 }
 
 // ---- operator billing views ----

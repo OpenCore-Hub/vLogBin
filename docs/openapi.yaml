@@ -9,6 +9,15 @@ info:
     
     All API requests require a Bearer token (API key) in the `Authorization` header.
     Operator endpoints use OIDC JWT tokens (ZITADEL Hosted Auth).
+
+    ## Environment Isolation
+
+    Every API key is bound to exactly one environment (test or live); tenant
+    context always comes from the credential, never from request input.
+    Provider-domain clients may send `X-Environment: test|live` as a safety
+    check: when present it must match the key's environment, otherwise the
+    API rejects the request with `400 environment_mismatch`. Console
+    control-plane endpoints select the environment explicitly via `?env=`.
     
     ## API Versioning
     
@@ -697,6 +706,59 @@ components:
           type: string
           enum: [test, live]
 
+    InvoiceLine:
+      type: object
+      description: 发票行明细
+      properties:
+        id:
+          type: string
+          format: uuid
+        lago_fee_id:
+          type: string
+        metric_code:
+          type: string
+        item_type:
+          type: string
+        item_name:
+          type: string
+        units:
+          type: string
+        precise_unit_amount:
+          type: string
+        amount_cents:
+          type: integer
+          format: int64
+        taxes_amount_cents:
+          type: integer
+          format: int64
+        total_amount_cents:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        event_transaction_id:
+          type: string
+        from_date:
+          type: string
+          format: date-time
+        to_date:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    InvoiceDetail:
+      type: object
+      description: 发票详情（发票 + 行明细）
+      properties:
+        invoice:
+          $ref: '#/components/schemas/Invoice'
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/InvoiceLine'
+
     AuditEvent:
       type: object
       properties:
@@ -1144,6 +1206,14 @@ components:
       schema:
         type: string
       description: 客户外部 ID（provider 环境内唯一）
+    InvoiceID:
+      name: invoice_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: 发票 ID
 
 tags:
   - name: Providers
@@ -1682,9 +1752,16 @@ paths:
   /operator/providers/{provider_id}/invoices:
     get:
       tags: [Operator]
-      summary: List invoices
+      summary: List invoices (cross-environment, or a single environment with ?env=)
       parameters:
         - $ref: '#/components/parameters/ProviderID'
+        - name: env
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [test, live]
+          description: 传入时只返回该环境的账单；缺省返回跨环境 operator 视图
       responses:
         '200':
           description: Invoice list
@@ -1697,6 +1774,26 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Invoice'
+
+  /operator/providers/{provider_id}/invoices/{invoice_id}:
+    get:
+      tags: [Operator]
+      summary: Get invoice detail with line items
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+        - $ref: '#/components/parameters/InvoiceID'
+      responses:
+        '200':
+          description: Invoice detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvoiceDetail'
+        '400':
+          description: Invalid provider id, env, or invoice id
+        '404':
+          description: Unknown invoice, provider, or environment
 
   /operator/providers/{provider_id}/capabilities:
     get:

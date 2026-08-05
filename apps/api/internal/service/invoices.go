@@ -25,7 +25,7 @@ const (
 
 // InvoiceDetail is an invoice with its lines.
 type InvoiceDetail struct {
-	Invoice storegen.Invoice   `json:"invoice"`
+	Invoice storegen.Invoice       `json:"invoice"`
 	Lines   []storegen.InvoiceLine `json:"lines"`
 }
 
@@ -215,42 +215,42 @@ func (s *Service) syncOneInvoice(ctx context.Context, tc tenant.Ctx, inv billing
 				return err
 			}
 			for _, fee := range inv.Fees {
-			// Resolve per-line traceability: metric_id from the catalog
-			// metric code, price_id from the plan's price for that metric.
-			var metricID, priceID uuid.NullUUID
-			if id, ok := metricByCode[fee.ItemCode]; ok {
-				metricID = uuid.NullUUID{UUID: id, Valid: true}
-				if pid, ok := priceByMetric[id]; ok {
-					priceID = uuid.NullUUID{UUID: pid, Valid: true}
+				// Resolve per-line traceability: metric_id from the catalog
+				// metric code, price_id from the plan's price for that metric.
+				var metricID, priceID uuid.NullUUID
+				if id, ok := metricByCode[fee.ItemCode]; ok {
+					metricID = uuid.NullUUID{UUID: id, Valid: true}
+					if pid, ok := priceByMetric[id]; ok {
+						priceID = uuid.NullUUID{UUID: pid, Valid: true}
+					}
 				}
-			}
-			if _, err := q.InsertInvoiceLine(ctx, storegen.InsertInvoiceLineParams{
-				InvoiceID: invoice.ID, ProviderID: tc.ProviderID, EnvironmentID: tc.EnvironmentID,
-				LagoFeeID:          fee.LagoFeeID,
-				MetricCode:         fee.ItemCode,
-				ItemType:           fee.ItemType,
-				ItemName:           fee.ItemName,
-				Units:              fee.Units,
-				PreciseUnitAmount:  fee.PreciseUnitAmount,
-				AmountCents:        fee.AmountCents,
-				TaxesAmountCents:   fee.TaxesAmountCents,
-				TotalAmountCents:   fee.TotalAmountCents,
-				Currency:           fee.Currency,
-				EventTransactionID: pgtype.Text{String: fee.EventTransactionID, Valid: fee.EventTransactionID != ""},
-				FromDate:           fee.FromDate,
-				ToDate:             fee.ToDate,
-				MetricID:           metricID,
-				PriceID:            priceID,
-			}); err != nil {
+				if _, err := q.InsertInvoiceLine(ctx, storegen.InsertInvoiceLineParams{
+					InvoiceID: invoice.ID, ProviderID: tc.ProviderID, EnvironmentID: tc.EnvironmentID,
+					LagoFeeID:          fee.LagoFeeID,
+					MetricCode:         fee.ItemCode,
+					ItemType:           fee.ItemType,
+					ItemName:           fee.ItemName,
+					Units:              fee.Units,
+					PreciseUnitAmount:  fee.PreciseUnitAmount,
+					AmountCents:        fee.AmountCents,
+					TaxesAmountCents:   fee.TaxesAmountCents,
+					TotalAmountCents:   fee.TotalAmountCents,
+					Currency:           fee.Currency,
+					EventTransactionID: pgtype.Text{String: fee.EventTransactionID, Valid: fee.EventTransactionID != ""},
+					FromDate:           fee.FromDate,
+					ToDate:             fee.ToDate,
+					MetricID:           metricID,
+					PriceID:            priceID,
+				}); err != nil {
 					return mapErr(err, "invoice line lago_fee_id %q", fee.LagoFeeID)
 				}
 			}
 		}
 
 		if err := emitOutboxTx(ctx, q, tc.ProviderID, tc.EnvironmentID, "invoice", invoice.ID.String(), "invoice.synced", map[string]any{
-			"invoice_id":    invoice.ID.String(),
-			"lago_id":       inv.LagoID,
-			"status":        invoice.Status,
+			"invoice_id":          invoice.ID.String(),
+			"lago_id":             inv.LagoID,
+			"status":              invoice.Status,
 			"customer_account_id": customer.ID.String(),
 		}); err != nil {
 			return err
@@ -315,4 +315,53 @@ func (s *Service) ListInvoicesByProvider(ctx context.Context, providerID uuid.UU
 		return err
 	})
 	return out, err
+}
+
+// OperatorInvoiceDetail is the Console-facing invoice detail: the joined
+// invoice view (customer_external_id + environment_kind resolved) plus its
+// line items.
+type OperatorInvoiceDetail struct {
+	Invoice storegen.GetInvoiceByProviderEnvIDRow `json:"invoice"`
+	Lines   []storegen.InvoiceLine                `json:"lines"`
+}
+
+// ListInvoicesByProviderEnv lists invoices of one provider environment
+// (operator path, for the Console invoices page).
+func (s *Service) ListInvoicesByProviderEnv(ctx context.Context, providerID, envID uuid.UUID) ([]storegen.ListInvoicesByProviderEnvRow, error) {
+	var out []storegen.ListInvoicesByProviderEnvRow
+	err := s.store.WithOperator(ctx, func(tx pgx.Tx, q *store.Queries) error {
+		invs, err := q.ListInvoicesByProviderEnv(ctx, storegen.ListInvoicesByProviderEnvParams{
+			ProviderID: providerID, EnvironmentID: envID,
+		})
+		out = invs
+		return err
+	})
+	return out, err
+}
+
+// GetInvoiceDetailByProvider returns one invoice with its lines for the
+// operator Console. Unknown invoices yield ErrNotFound.
+func (s *Service) GetInvoiceDetailByProvider(ctx context.Context, providerID, envID, invoiceID uuid.UUID) (*OperatorInvoiceDetail, error) {
+	var out OperatorInvoiceDetail
+	err := s.store.WithOperator(ctx, func(tx pgx.Tx, q *store.Queries) error {
+		invoice, err := q.GetInvoiceByProviderEnvID(ctx, storegen.GetInvoiceByProviderEnvIDParams{
+			ID: invoiceID, ProviderID: providerID, EnvironmentID: envID,
+		})
+		if err != nil {
+			return mapErr(err, "invoice %s", invoiceID)
+		}
+		lines, err := q.ListInvoiceLinesByInvoice(ctx, storegen.ListInvoiceLinesByInvoiceParams{
+			InvoiceID: invoiceID, ProviderID: providerID, EnvironmentID: envID,
+		})
+		if err != nil {
+			return err
+		}
+		out.Invoice = invoice
+		out.Lines = emptyIfNil(lines)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
