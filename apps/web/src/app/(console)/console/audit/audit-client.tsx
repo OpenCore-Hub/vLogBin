@@ -1,6 +1,7 @@
 "use client";
 
-import { startTransition, useState } from "react";
+import { keepPreviousData, useInfiniteQuery, useMutation } from "@tanstack/react-query";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type {
   AuditChainState,
@@ -9,6 +10,7 @@ import type {
   AuditStats,
 } from "@/lib/api/operator";
 import { formatDateTime } from "@/lib/format";
+import { consoleQueryKeys, QUERY_STALE_TIME } from "@/hooks/query-keys";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
 import { Alert, EmptyState, ErrorState } from "@/components/ui/feedback";
@@ -20,8 +22,9 @@ import {
   RefreshIcon,
 } from "@/components/ui/icons";
 import {
-  fetchAuditPageAction,
+  queryAuditPageAction,
   verifyAuditChainAction,
+  type AuditPageActionState,
 } from "./audit-actions";
 
 const ACTOR_STYLE: Record<string, "success" | "info" | "warning" | "neutral"> = {
@@ -29,6 +32,18 @@ const ACTOR_STYLE: Record<string, "success" | "info" | "warning" | "neutral"> = 
   credential: "info",
   customer: "warning",
 };
+
+type AuditPage = {
+  events: AuditEvent[];
+  next_cursor: number | null;
+};
+
+function unwrapAuditPage(result: AuditPageActionState): AuditPage {
+  if (!result.ok) {
+    throw new Error(result.error ?? "审计日志加载失败");
+  }
+  return { events: result.events, next_cursor: result.next_cursor };
+}
 
 export function AuditClient({
   providerId,
@@ -50,10 +65,6 @@ export function AuditClient({
   loadError: string | null;
 }) {
   const router = useRouter();
-  const [events, setEvents] = useState<AuditEvent[]>(initialEvents);
-  const [next, setNext] = useState<number | null>(nextCursor);
-  const [pending, setPending] = useState(false);
-  const [queryError, setQueryError] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     action: "",
     actor_type: "",
@@ -63,61 +74,64 @@ export function AuditClient({
   });
   const [verify, setVerify] = useState<AuditChainVerifyResult | null>(null);
   const [verifyError, setVerifyError] = useState<string | null>(null);
-  const [verifying, setVerifying] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
 
-  function runQuery(formData: FormData) {
-    setPending(true);
-    setQueryError(null);
-    startTransition(async () => {
-      const result = await fetchAuditPageAction(
-        { ok: false, events: [], next_cursor: null },
-        formData,
-      );
-      setEvents(result.events);
-      setNext(result.next_cursor);
-      setQueryError(result.error ?? null);
-      setPending(false);
-    });
-  }
-
-  function loadMore() {
-    if (!providerId || next == null) return;
-    setLoadingMore(true);
-    const fd = new FormData();
-    fd.set("provider_id", providerId);
-    fd.set("cursor", String(next));
-    fd.set("action", filters.action);
-    fd.set("actor_type", filters.actor_type);
-    fd.set("target_type", filters.target_type);
-    fd.set("from", filters.from);
-    fd.set("to", filters.to);
-    startTransition(async () => {
-      const result = await fetchAuditPageAction(
-        { ok: false, events: [], next_cursor: null },
-        fd,
-      );
-      if (result.ok) {
-        setEvents((prev) => {
-          const seen = new Set(prev.map((e) => e.id));
-          return [...prev, ...result.events.filter((e) => !seen.has(e.id))];
-        });
-        setNext(result.next_cursor);
+  const hasServerData = initialEvents.length > 0 || nextCursor != null;
+  const isDefaultFilters =
+    filters.action === "" &&
+    filters.actor_type === "" &&
+    filters.target_type === "" &&
+    filters.from === defaultFrom.slice(0, 10) &&
+    filters.to === defaultTo.slice(0, 10);
+  const auditQuery = useInfiniteQuery({
+    queryKey: consoleQueryKeys.audit(providerId, filters),
+    queryFn: async ({ pageParam }) => {
+      if (!providerId) {
+        return { events: [], next_cursor: null };
       }
-      setLoadingMore(false);
-    });
-  }
+      const result = await queryAuditPageAction({
+        providerId,
+        cursor: pageParam,
+        action: filters.action,
+        actorType: filters.actor_type,
+        targetType: filters.target_type,
+        from: filters.from,
+        to: filters.to,
+      });
+      return unwrapAuditPage(result);
+    },
+    initialPageParam: null as number | null,
+    getNextPageParam: (lastPage) => lastPage.next_cursor,
+    staleTime: QUERY_STALE_TIME.audit,
+    placeholderData: keepPreviousData,
+    initialData:
+      providerId && isDefaultFilters && hasServerData
+        ? {
+            pages: [{ events: initialEvents, next_cursor: nextCursor }],
+            pageParams: [null],
+          }
+        : undefined,
+  });
+  const events =
+    auditQuery.data?.pages.flatMap((page) => page.events) ?? [];
+  const queryError = auditQuery.isError
+    ? auditQuery.error instanceof Error
+      ? auditQuery.error.message
+      : "审计日志加载失败"
+    : null;
 
-  function runVerify() {
-    setVerifying(true);
-    setVerifyError(null);
-    startTransition(async () => {
+  const verifyMutation = useMutation({
+    mutationFn: async () => {
       const result = await verifyAuditChainAction();
-      if (result.verify) setVerify(result.verify);
-      else setVerifyError(result.error ?? "哈希链验证失败");
-      setVerifying(false);
-    });
-  }
+      if (!result.ok || !result.verify) {
+        throw new Error(result.error ?? "哈希链验证失败");
+      }
+      return result.verify;
+    },
+    onMutate: () => setVerifyError(null),
+    onSuccess: (result) => setVerify(result),
+    onError: (err) =>
+      setVerifyError(err instanceof Error ? err.message : "哈希链验证失败"),
+  });
 
   return (
     <div className="space-y-6">
@@ -144,14 +158,21 @@ export function AuditClient({
         />
       ) : (
         <>
-          {chain && <ChainPanel chain={chain} verify={verify} verifyError={verifyError} verifying={verifying} onVerify={runVerify} />}
+          {chain && (
+            <ChainPanel
+              chain={chain}
+              verify={verify}
+              verifyError={verifyError}
+              verifying={verifyMutation.isPending}
+              onVerify={() => verifyMutation.mutate()}
+            />
+          )}
           {stats && <StatsPanel stats={stats} />}
 
           <section className="rounded-2xl border border-border bg-surface-1 p-5 shadow-[var(--shadow-premium)]">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                runQuery(new FormData(e.currentTarget));
               }}
               className="grid gap-3 md:grid-cols-6"
             >
@@ -201,7 +222,9 @@ export function AuditClient({
                 />
               </Field>
               <div className="flex items-end gap-2 md:col-span-6">
-                <Button type="submit" loading={pending}>查询</Button>
+                <Button type="submit" loading={auditQuery.isPending || auditQuery.isFetching}>
+                  查询
+                </Button>
                 <Button type="button" variant="ghost" onClick={() => router.refresh()}>
                   重置
                 </Button>
@@ -212,9 +235,13 @@ export function AuditClient({
 
           <AuditTable events={events} />
 
-          {next != null && (
+          {auditQuery.hasNextPage && (
             <div className="flex justify-center">
-              <Button variant="outline" onClick={loadMore} loading={loadingMore || pending}>
+              <Button
+                variant="outline"
+                onClick={() => void auditQuery.fetchNextPage()}
+                loading={auditQuery.isFetchingNextPage || auditQuery.isPending}
+              >
                 加载更多
               </Button>
             </div>

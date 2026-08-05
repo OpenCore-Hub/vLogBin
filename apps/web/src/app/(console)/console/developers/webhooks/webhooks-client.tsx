@@ -25,6 +25,7 @@ import {
   TrashIcon,
   WebhookIcon,
 } from "@/components/ui/icons";
+import { useActionFeedback } from "@/hooks/use-action-feedback";
 import {
   createWebhookAction,
   deleteWebhookAction,
@@ -485,7 +486,15 @@ function DeleteWebhookDialog({
   endpoint: WebhookEndpoint;
 }) {
   const router = useRouter();
-  const [state, formAction, pending] = useActionState(deleteWebhookAction, initialState);
+  const { state, formAction, pending } = useActionFeedback<WebhookActionState>({
+    action: deleteWebhookAction,
+    initialState,
+    onSuccess: () => {
+      onOpenChange(false);
+      router.refresh();
+    },
+    successTitle: "Webhook 端点已删除",
+  });
 
   function confirm() {
     const fd = new FormData();
@@ -494,13 +503,6 @@ function DeleteWebhookDialog({
     fd.set("webhook_id", endpoint.id);
     formAction(fd);
   }
-
-  useEffect(() => {
-    if (state.ok) {
-      onOpenChange(false);
-      router.refresh();
-    }
-  }, [state.ok, router, onOpenChange]);
 
   return (
     <ConfirmDialog
@@ -536,7 +538,15 @@ function ReplayDeliveryDialog({
   delivery: WebhookDelivery;
 }) {
   const router = useRouter();
-  const [state, formAction, pending] = useActionState(replayWebhookDeliveryAction, initialState);
+  const { state, formAction, pending } = useActionFeedback<WebhookActionState>({
+    action: replayWebhookDeliveryAction,
+    initialState,
+    onSuccess: () => {
+      onOpenChange(false);
+      router.refresh();
+    },
+    successTitle: "投递已重新入队",
+  });
 
   function confirm() {
     const fd = new FormData();
@@ -544,13 +554,6 @@ function ReplayDeliveryDialog({
     fd.set("delivery_id", delivery.id);
     formAction(fd);
   }
-
-  useEffect(() => {
-    if (state.ok) {
-      onOpenChange(false);
-      router.refresh();
-    }
-  }, [state.ok, router, onOpenChange]);
 
   return (
     <ConfirmDialog

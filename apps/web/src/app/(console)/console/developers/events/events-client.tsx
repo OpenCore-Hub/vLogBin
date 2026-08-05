@@ -1,10 +1,12 @@
 "use client";
 
-import { startTransition, useEffect, useRef, useState } from "react";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PlatformEvent } from "@/lib/api/operator";
 import type { Env } from "@/lib/env-shared";
 import { formatDate } from "@/lib/format";
+import { consoleQueryKeys, QUERY_STALE_TIME } from "@/hooks/query-keys";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Select } from "@/components/ui/field";
 import { Dialog } from "@/components/ui/overlay";
@@ -17,7 +19,10 @@ import {
   ArrowRightIcon,
   EyeIcon,
 } from "@/components/ui/icons";
-import { fetchEventsAction } from "./events-actions";
+import {
+  queryEventStreamAction,
+  type EventStreamActionState,
+} from "./events-actions";
 
 const EVENT_TYPE_OPTIONS = [
   "customer.created",
@@ -52,6 +57,23 @@ const STATUS_VARIANT: Record<string, "success" | "neutral" | "warning" | "danger
   dead_letter: "danger",
 };
 
+type EventStreamPage = {
+  events: PlatformEvent[];
+  next_cursor: string | null;
+  has_more: boolean;
+};
+
+function unwrapEventStream(result: EventStreamActionState): EventStreamPage {
+  if (!result.ok) {
+    throw new Error(result.error ?? "事件流加载失败");
+  }
+  return {
+    events: result.events,
+    next_cursor: result.next_cursor,
+    has_more: result.has_more,
+  };
+}
+
 export function EventsClient({
   providerId,
   env,
@@ -66,13 +88,8 @@ export function EventsClient({
   const router = useRouter();
   const { env: activeEnv } = useEnv();
   const prevEnv = useRef(env);
-  const [events, setEvents] = useState<PlatformEvent[]>(initial.events);
-  const [nextCursor, setNextCursor] = useState(initial.next_cursor);
-  const [hasMore, setHasMore] = useState(initial.has_more);
   const [type, setType] = useState("");
   const [aggregateType, setAggregateType] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<PlatformEvent | null>(null);
 
   useEffect(() => {
@@ -82,42 +99,49 @@ export function EventsClient({
     }
   }, [activeEnv, router]);
 
-  function load(cursor?: string, reset = false, nextType?: string, nextAgg?: string) {
-    if (!providerId) return;
-    setLoading(true);
-    setError(null);
-    const fd = new FormData();
-    fd.set("provider_id", providerId);
-    fd.set("env", env);
-    if (cursor) fd.set("cursor", cursor);
-    fd.set("type", nextType ?? type);
-    fd.set("aggregate_type", nextAgg ?? aggregateType);
-    startTransition(async () => {
-      const state = await fetchEventsAction(
-        { ok: false, events: [], next_cursor: null, has_more: false },
-        fd,
-      );
-      if (!state.ok) {
-        setError(state.error ?? "事件流加载失败");
-        setLoading(false);
-        return;
+  const hasServerData =
+    initial.events.length > 0 || initial.has_more || initial.next_cursor != null;
+  const eventQuery = useInfiniteQuery({
+    queryKey: consoleQueryKeys.eventStream(providerId, env, type, aggregateType),
+    queryFn: async ({ pageParam }) => {
+      if (!providerId) {
+        return { events: [], next_cursor: null, has_more: false };
       }
-      setEvents((prev) => (reset ? state.events : [...prev, ...state.events]));
-      setNextCursor(state.next_cursor);
-      setHasMore(state.has_more);
-      setLoading(false);
-    });
-  }
-
-  function changeType(value: string) {
-    setType(value);
-    load(undefined, true, value, aggregateType);
-  }
-
-  function changeAggregate(value: string) {
-    setAggregateType(value);
-    load(undefined, true, type, value);
-  }
+      const result = await queryEventStreamAction({
+        providerId,
+        env,
+        cursor: pageParam,
+        type,
+        aggregateType,
+      });
+      return unwrapEventStream(result);
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) =>
+      lastPage.has_more ? lastPage.next_cursor : undefined,
+    staleTime: QUERY_STALE_TIME.standard,
+    placeholderData: keepPreviousData,
+    initialData:
+      providerId && !type && !aggregateType && hasServerData
+        ? {
+            pages: [
+              {
+                events: initial.events,
+                next_cursor: initial.next_cursor,
+                has_more: initial.has_more,
+              },
+            ],
+            pageParams: [undefined],
+          }
+        : undefined,
+  });
+  const events =
+    eventQuery.data?.pages.flatMap((page) => page.events) ?? [];
+  const error = eventQuery.isError
+    ? eventQuery.error instanceof Error
+      ? eventQuery.error.message
+      : "事件流加载失败"
+    : null;
 
   return (
     <div className="space-y-6">
@@ -157,7 +181,7 @@ export function EventsClient({
             <Select
               aria-label="事件类型"
               value={type}
-              onChange={(e) => changeType(e.target.value)}
+              onChange={(e) => setType(e.target.value)}
               className="h-9 w-56 text-sm"
             >
               <option value="">全部事件类型</option>
@@ -170,7 +194,7 @@ export function EventsClient({
             <Select
               aria-label="聚合类型"
               value={aggregateType}
-              onChange={(e) => changeAggregate(e.target.value)}
+              onChange={(e) => setAggregateType(e.target.value)}
               className="h-9 w-52 text-sm"
             >
               <option value="">全部聚合类型</option>
@@ -180,7 +204,9 @@ export function EventsClient({
                 </option>
               ))}
             </Select>
-            {loading && <Spinner size={14} label="加载事件流" />}
+            {(eventQuery.isPending || eventQuery.isFetching) && (
+              <Spinner size={14} label="加载事件流" />
+            )}
           </div>
 
           {error && <Alert title="加载失败">{error}</Alert>}
@@ -265,12 +291,12 @@ export function EventsClient({
             </div>
           )}
 
-          {hasMore && (
+          {eventQuery.hasNextPage && (
             <div className="flex justify-center">
               <Button
                 variant="outline"
-                onClick={() => load(nextCursor ?? undefined)}
-                loading={loading}
+                onClick={() => void eventQuery.fetchNextPage()}
+                loading={eventQuery.isFetchingNextPage || eventQuery.isPending}
               >
                 加载更多
               </Button>

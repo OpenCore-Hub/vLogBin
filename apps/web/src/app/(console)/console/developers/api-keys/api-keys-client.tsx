@@ -26,6 +26,7 @@ import {
   RefreshIcon,
   TrashIcon,
 } from "@/components/ui/icons";
+import { useActionFeedback } from "@/hooks/use-action-feedback";
 import {
   createCredentialAction,
   revokeCredentialAction,
@@ -486,7 +487,15 @@ function RevokeKeyDialog({
   credential: Credential;
 }) {
   const router = useRouter();
-  const [state, formAction, pending] = useActionState(revokeCredentialAction, initialState);
+  const { state, formAction, pending } = useActionFeedback<ApiKeyActionState>({
+    action: revokeCredentialAction,
+    initialState,
+    onSuccess: () => {
+      onOpenChange(false);
+      router.refresh();
+    },
+    successTitle: "API 密钥已吊销",
+  });
 
   function confirm() {
     const fd = new FormData();
@@ -494,13 +503,6 @@ function RevokeKeyDialog({
     fd.set("credential_id", credential.id);
     formAction(fd);
   }
-
-  useEffect(() => {
-    if (state.ok) {
-      onOpenChange(false);
-      router.refresh();
-    }
-  }, [state.ok, router, onOpenChange]);
 
   return (
     <ConfirmDialog

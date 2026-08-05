@@ -1,5 +1,6 @@
 "use server";
 
+import { z } from "zod";
 import { requireAuth } from "@/lib/auth/rbac";
 import {
   queryAuditEvents,
@@ -18,7 +19,27 @@ export interface AuditPageActionState {
 
 const empty: AuditPageActionState = { ok: false, events: [], next_cursor: null };
 
-function toIso(value: string, endOfDay = false): string | undefined {
+export interface AuditPageQueryInput {
+  providerId: string;
+  cursor?: number | null;
+  action?: string | null;
+  actorType?: string | null;
+  targetType?: string | null;
+  from?: string | null;
+  to?: string | null;
+}
+
+const auditPageQuerySchema = z.object({
+  providerId: z.string().trim().min(1, "缺少必要参数"),
+  cursor: z.number().int().nonnegative().optional().nullable(),
+  action: z.string().trim().optional().nullable(),
+  actorType: z.string().trim().optional().nullable(),
+  targetType: z.string().trim().optional().nullable(),
+  from: z.string().trim().optional().nullable(),
+  to: z.string().trim().optional().nullable(),
+});
+
+function toIso(value: string | null | undefined, endOfDay = false): string | undefined {
   if (!value) return undefined;
   if (value.includes("T")) {
     const parsed = new Date(value);
@@ -28,23 +49,26 @@ function toIso(value: string, endOfDay = false): string | undefined {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
 }
 
-export async function fetchAuditPageAction(
-  _prev: AuditPageActionState,
-  formData: FormData,
+export async function queryAuditPageAction(
+  input: AuditPageQueryInput,
 ): Promise<AuditPageActionState> {
   await requireAuth();
-  const providerId = String(formData.get("provider_id") ?? "").trim();
-  if (!providerId) return { ...empty, error: "缺少必要参数" };
+  const parsed = auditPageQuerySchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ...empty,
+      error: parsed.error.issues[0]?.message ?? "查询参数无效",
+    };
+  }
   try {
-    const cursorRaw = String(formData.get("cursor") ?? "").trim();
-    const result = await queryAuditEvents(providerId, {
-      cursor: cursorRaw ? Number(cursorRaw) : undefined,
+    const result = await queryAuditEvents(parsed.data.providerId, {
+      cursor: parsed.data.cursor ?? undefined,
       limit: 100,
-      action: String(formData.get("action") ?? "").trim() || undefined,
-      actor_type: String(formData.get("actor_type") ?? "").trim() || undefined,
-      target_type: String(formData.get("target_type") ?? "").trim() || undefined,
-      from: toIso(String(formData.get("from") ?? "").trim()),
-      to: toIso(String(formData.get("to") ?? "").trim(), true),
+      action: parsed.data.action || undefined,
+      actor_type: parsed.data.actorType || undefined,
+      target_type: parsed.data.targetType || undefined,
+      from: toIso(parsed.data.from),
+      to: toIso(parsed.data.to, true),
     });
     return { ok: true, events: result.events, next_cursor: result.next_cursor };
   } catch (err) {

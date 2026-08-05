@@ -1,5 +1,6 @@
 "use server";
 
+import { z } from "zod";
 import { requireAuth } from "@/lib/auth/rbac";
 import type { Env } from "@/lib/env-shared";
 import {
@@ -15,28 +16,43 @@ export interface EventStreamActionState {
   has_more: boolean;
 }
 
-function parseEnv(value: FormDataEntryValue | null): Env | null {
-  return value === "test" || value === "live" ? value : null;
+export interface EventStreamQueryInput {
+  providerId: string;
+  env: Env;
+  cursor?: string | null;
+  type?: string | null;
+  aggregateType?: string | null;
 }
 
-export async function fetchEventsAction(
-  _prev: EventStreamActionState,
-  formData: FormData,
+const eventStreamQuerySchema = z.object({
+  providerId: z.string().trim().min(1, "缺少必要参数"),
+  env: z.enum(["test", "live"]),
+  cursor: z.string().trim().optional().nullable(),
+  type: z.string().trim().optional().nullable(),
+  aggregateType: z.string().trim().optional().nullable(),
+});
+
+export async function queryEventStreamAction(
+  input: EventStreamQueryInput,
 ): Promise<EventStreamActionState> {
   await requireAuth();
-  const providerId = String(formData.get("provider_id") ?? "").trim();
-  const env = parseEnv(formData.get("env"));
-  if (!providerId || !env) return { ok: false, error: "缺少必要参数", events: [], next_cursor: null, has_more: false };
-
-  const cursor = String(formData.get("cursor") ?? "").trim() || undefined;
-  const type = String(formData.get("type") ?? "").trim() || undefined;
-  const aggregateType = String(formData.get("aggregate_type") ?? "").trim() || undefined;
+  const parsed = eventStreamQuerySchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "查询参数无效",
+      events: [],
+      next_cursor: null,
+      has_more: false,
+    };
+  }
+  const { providerId, env, cursor, type, aggregateType } = parsed.data;
 
   try {
     const stream = await streamEvents(providerId, env, {
-      cursor,
-      type,
-      aggregate_type: aggregateType,
+      cursor: cursor || undefined,
+      type: type || undefined,
+      aggregate_type: aggregateType || undefined,
       limit: 50,
     });
     return { ok: true, events: stream.events, next_cursor: stream.next_cursor, has_more: stream.has_more };
