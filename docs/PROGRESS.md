@@ -374,6 +374,7 @@
 | React Query 缓存 + hooks 扩充 | `@tanstack/react-query` 客户端缓存（全局 QueryClient + staleTime：事件流 30s / 审计 60s）；事件流与审计日志改用 `useInfiniteQuery`（keyset 分页 + keepPreviousData + RSC 首屏数据作 initialData）；`hooks/use-action-feedback.ts` 统一 useActionState 成功/失败回调与 toast，并落地到 API Key 吊销 / Webhook 删除与重放 | ✅ 已完成（候选 49） |
 | 交互体验与技术债收敛 | 环境切换成功/失败 toast + 失败回滚；First-Run 引导「跳过/恢复」入口（cookie 持久化，R18）；`ApiKeyCallout` 迁移到 token 色 + 中文品牌语音 + 复制反馈；API Key 创建/轮换未复制即关闭给一次性提醒 | ✅ 已完成（候选 50） |
 | lib 目录化（env/utils/validate） | `lib/env/`（shared/server/index）+ 根 `env-shared.ts` barrel；`lib/utils/`（index + format）+ 根 `format.ts` barrel；schemas 迁至 `lib/validate/` 并全量更新导入，删除 `lib/api/schemas.ts` | ✅ 已完成（候选 51） |
+| UI 组件补齐（Card/Drawer/Pagination） | 新增 `Card` 家族（CardHeader/Title/Content/Footer）、`Drawer`（Esc 关闭 + 焦点管理 + 滚动锁 + 左右侧开）、`Pagination`（页码 + 省略号 + URL 驱动）；接入审计统计卡 / 窄屏侧边栏 / DataTable 分页；修复移动端汉堡按钮被顶栏遮挡的 z-index 问题 | ✅ 已完成（候选 52） |
 
 ## 四、Web 前端重构任务追踪（设计基线 v1.4）
 
@@ -386,7 +387,7 @@
 | M0 基座 | 目录 / tokens / 认证 / 官网 / Console 布局 / Ops 迁移 / 引导 | ✅ 已完成（静态验收，待提交） |
 | M1 控制面 API | `apps/api` 新增 Console 端点（最大前置依赖） | ✅ 已完成（候选 29-33） |
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
-| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 51） |
+| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 52） |
 
 ### M0 — 基座（✅ 已完成，待提交）
 
@@ -577,6 +578,12 @@
   - `lib/utils/`：`index.ts`（cn/mapLimit/error 等）、`format.ts`（日期/金额格式化）；根 `lib/format.ts` 改为 barrel 保持既有导入
   - `lib/validate/index.ts`：zod schemas 由 `lib/api/schemas.ts` 迁入，8 处调用方统一改为 `@/lib/validate`，旧文件删除
   - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright 全量 46/47 + Portal 单跑通过（唯一失败为登录 429 限流偶发，非代码回归）
+- [x] UI 组件补齐（Card/Drawer/Pagination）— 候选 52
+  - `components/ui/card.tsx`：Card / CardHeader / CardTitle / CardDescription / CardContent / CardFooter，支持 `premium` 内高光
+  - `components/ui/drawer.tsx`：left/right 侧开、Esc 关闭、焦点管理、body 滚动锁、`animate-slide-in-left`
+  - `components/ui/pagination.tsx`：上一页/下一页 + 页码 + 省略号；接入 DataTable 分页脚，URL 契约不变
+  - Sidebar 窄屏抽屉改用 Drawer；审计统计卡改用 Card；修复移动端汉堡按钮 z-index
+  - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **48/48 全绿** ✅（新增窄屏抽屉用例）
 
 ### 技术债 / 结构偏差（M0 遗留，随里程碑消化）
 
@@ -585,7 +592,7 @@
 - [x] 引导跳过入口（R18"跳过引导始终可见"）——候选 50 落地（cookie 持久化 + 顶栏恢复入口；进度条步骤可点击回跳已在候选 40 完成）
 - [x] `api-key-callout.tsx` 旧原型遗留——候选 50 迁移到 token 色 + 中文品牌语音 + 复制反馈，并接入 API Keys 成功态
 - [x] `lib/env/`、`lib/utils/`、`lib/validate/` 目录化（当前为单文件 `env.ts` / `utils.ts`，schemas 在 `lib/api/`）——候选 51 落地（根路径 barrel 保持向后兼容）
-- [ ] UI 组件补齐：input / select / checkbox / card / drawer / tooltip / pagination / copy-button / DataTable（§7.2）
+- [x] UI 组件补齐：input / select / checkbox / card / drawer / tooltip / pagination / copy-button / DataTable（§7.2）——候选 52 补齐 Card / Drawer / Pagination；input/select/checkbox/tooltip/copy-button/DataTable 已在既有组件中落地
 - [x] 密钥未复制即离开页面的提醒（§6.5.4）——候选 50 落地（创建/轮换成功态关闭前给一次性 toast）
 
 ## 五、更新约定
