@@ -20,6 +20,11 @@ import { authConfig } from "../auth/config";
 import type {
   Provider,
   Environment,
+  RiskReview,
+  SupportSession,
+  Cell,
+  CellFailover,
+  CellMigration,
   Region,
   CatalogVersion,
   Subscription,
@@ -69,6 +74,11 @@ import type {
 export type {
   Provider,
   Environment,
+  RiskReview,
+  SupportSession,
+  Cell,
+  CellFailover,
+  CellMigration,
   Region,
   CatalogVersion,
   Subscription,
@@ -1541,4 +1551,230 @@ export async function activateProvider(
     testEnvironment: asEnvironment(data.test_environment),
     apiKey: extractApiKey(data.api_key),
   };
+}
+
+function asTextValue(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    const rec = value as Record<string, unknown>;
+    if (typeof rec.String === "string" && rec.Valid !== false) return rec.String;
+  }
+  return undefined;
+}
+
+function asChecks(value: unknown): Record<string, boolean> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const rec = value as Record<string, unknown>;
+    const out: Record<string, boolean> = {};
+    for (const [k, v] of Object.entries(rec)) out[k] = v === true;
+    return out;
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(Buffer.from(value, "base64").toString("utf8"));
+      if (parsed && typeof parsed === "object") {
+        const out: Record<string, boolean> = {};
+        for (const [k, v] of Object.entries(parsed)) out[k] = v === true;
+        return out;
+      }
+    } catch {
+      // fall through to empty checks
+    }
+  }
+  return {};
+}
+
+function asRiskReview(value: unknown): RiskReview | null {
+  const rec = asRecord(value);
+  if (!rec) return null;
+  const decision = rec.decision === "rejected" ? "rejected" : "approved";
+  return {
+    id: typeof rec.id === "string" ? rec.id : "",
+    provider_id: typeof rec.provider_id === "string" ? rec.provider_id : "",
+    risk_score: typeof rec.risk_score === "number" ? rec.risk_score : Number(rec.risk_score ?? 0),
+    checks: asChecks(rec.checks),
+    decision,
+    reason: asTextValue(rec.reason),
+    reviewed_by: typeof rec.reviewed_by === "string" ? rec.reviewed_by : "",
+    reviewed_at: asTextValue(rec.reviewed_at),
+    created_at: asTextValue(rec.created_at),
+  };
+}
+
+export async function listRiskReviews(providerId: string): Promise<RiskReview[]> {
+  const data = await request<{ reviews?: unknown }>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/risk-reviews`,
+  );
+  if (!Array.isArray(data.reviews)) return [];
+  return data.reviews.map(asRiskReview).filter((r): r is RiskReview => r !== null);
+}
+
+export async function submitRiskReview(
+  providerId: string,
+  input: {
+    risk_score: number;
+    checks: Record<string, boolean>;
+    decision: "approved" | "rejected";
+    reason?: string;
+    reviewed_by?: string;
+  },
+): Promise<RiskReview | null> {
+  const data = await request<{ review?: unknown }>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/risk-review`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return asRiskReview(data.review);
+}
+
+function asSupportSession(value: unknown): SupportSession | null {
+  const rec = asRecord(value);
+  if (!rec) return null;
+  return {
+    id: typeof rec.id === "string" ? rec.id : "",
+    provider_id: typeof rec.provider_id === "string" ? rec.provider_id : "",
+    environment_id: typeof rec.environment_id === "string" ? rec.environment_id : "",
+    access_type: rec.access_type === "emergency" ? "emergency" : "standard",
+    status: typeof rec.status === "string" ? rec.status : "",
+    requested_by: typeof rec.requested_by === "string" ? rec.requested_by : "",
+    reason: typeof rec.reason === "string" ? rec.reason : "",
+    requested_scopes: Array.isArray(rec.requested_scopes)
+      ? rec.requested_scopes.filter((s): s is string => typeof s === "string")
+      : [],
+    approved_by: asTextValue(rec.approved_by),
+    second_approver: asTextValue(rec.second_approver),
+    granted_at: asTextValue(rec.granted_at),
+    expires_at: asTextValue(rec.expires_at),
+    revoked_at: asTextValue(rec.revoked_at),
+    revoked_by: asTextValue(rec.revoked_by),
+    revoke_reason: asTextValue(rec.revoke_reason),
+    created_at: asTextValue(rec.created_at),
+    updated_at: asTextValue(rec.updated_at),
+  };
+}
+
+export async function listSupportSessions(providerId: string): Promise<SupportSession[]> {
+  const data = await request<{ support_sessions?: unknown }>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/support-sessions`,
+  );
+  if (!Array.isArray(data.support_sessions)) return [];
+  return data.support_sessions
+    .map(asSupportSession)
+    .filter((s): s is SupportSession => s !== null);
+}
+
+function asCell(value: unknown): Cell | null {
+  const rec = asRecord(value);
+  if (!rec) return null;
+  return {
+    id: typeof rec.id === "string" ? rec.id : "",
+    region_id: typeof rec.region_id === "string" ? rec.region_id : "",
+    code: typeof rec.code === "string" ? rec.code : "",
+    cell_type: rec.cell_type === "dedicated" ? "dedicated" : "shared",
+    status:
+      rec.status === "draining" || rec.status === "inactive" ? rec.status : "active",
+    capacity_limits: rec.capacity_limits,
+    created_at: asTextValue(rec.created_at),
+  };
+}
+
+export async function listCells(): Promise<Cell[]> {
+  const data = await request<{ cells?: unknown }>("/v1/operator/cells");
+  if (!Array.isArray(data.cells)) return [];
+  return data.cells.map(asCell).filter((c): c is Cell => c !== null);
+}
+
+export async function createCell(input: {
+  region_id: string;
+  code: string;
+  cell_type: "shared" | "dedicated";
+  status: "active" | "draining" | "inactive";
+  capacity_limits?: Record<string, unknown>;
+}): Promise<Cell | null> {
+  const data = await request<Partial<Cell>>("/v1/operator/cells", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return asCell(data);
+}
+
+export async function updateCellStatus(
+  cellId: string,
+  status: "active" | "draining" | "inactive",
+): Promise<Cell | null> {
+  const data = await request<Partial<Cell>>(
+    `/v1/operator/cells/${encodeURIComponent(cellId)}`,
+    { method: "PATCH", body: JSON.stringify({ status }) },
+  );
+  return asCell(data);
+}
+
+export async function assignProviderCell(
+  providerId: string,
+  cellId: string,
+): Promise<boolean> {
+  const data = await request<{ assigned?: unknown }>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/cell`,
+    { method: "POST", body: JSON.stringify({ cell_id: cellId }) },
+  );
+  return data.assigned === true;
+}
+
+function asFailover(value: unknown): CellFailover | null {
+  const rec = asRecord(value);
+  if (!rec) return null;
+  return {
+    id: typeof rec.id === "string" ? rec.id : "",
+    provider_id: typeof rec.provider_id === "string" ? rec.provider_id : "",
+    from_cell_id: typeof rec.from_cell_id === "string" ? rec.from_cell_id : "",
+    to_cell_id: typeof rec.to_cell_id === "string" ? rec.to_cell_id : "",
+    status: typeof rec.status === "string" ? rec.status : "",
+    reason: asTextValue(rec.reason),
+    initiated_by: typeof rec.initiated_by === "string" ? rec.initiated_by : "",
+    fencing_token: asTextValue(rec.fencing_token),
+    replayed_usage: typeof rec.replayed_usage === "number" ? rec.replayed_usage : 0,
+    replayed_outbox: typeof rec.replayed_outbox === "number" ? rec.replayed_outbox : 0,
+    started_at: asTextValue(rec.started_at),
+    completed_at: asTextValue(rec.completed_at),
+  };
+}
+
+export async function listFailovers(providerId: string): Promise<CellFailover[]> {
+  const data = await request<{ failovers?: unknown }>(
+    `/v1/operator/failovers?provider_id=${encodeURIComponent(providerId)}`,
+  );
+  if (!Array.isArray(data.failovers)) return [];
+  return data.failovers.map(asFailover).filter((f): f is CellFailover => f !== null);
+}
+
+function asMigration(value: unknown): CellMigration | null {
+  const rec = asRecord(value);
+  if (!rec) return null;
+  return {
+    id: typeof rec.id === "string" ? rec.id : "",
+    provider_id: typeof rec.provider_id === "string" ? rec.provider_id : "",
+    from_cell_id: typeof rec.from_cell_id === "string" ? rec.from_cell_id : "",
+    to_cell_id: typeof rec.to_cell_id === "string" ? rec.to_cell_id : "",
+    status: typeof rec.status === "string" ? rec.status : "",
+    scheduled_at: asTextValue(rec.scheduled_at),
+    precheck_passed: rec.precheck_passed === true,
+    data_integrity_hash: asTextValue(rec.data_integrity_hash),
+    record_count: typeof rec.record_count === "number" ? rec.record_count : 0,
+    reason: asTextValue(rec.reason),
+    initiated_by: typeof rec.initiated_by === "string" ? rec.initiated_by : "",
+    started_at: asTextValue(rec.started_at),
+    completed_at: asTextValue(rec.completed_at),
+    error_message: asTextValue(rec.error_message),
+    created_at: asTextValue(rec.created_at),
+    updated_at: asTextValue(rec.updated_at),
+  };
+}
+
+export async function listCellMigrations(providerId: string): Promise<CellMigration[]> {
+  const data = await request<{ cell_migrations?: unknown }>(
+    `/v1/operator/cell-migrations?provider_id=${encodeURIComponent(providerId)}`,
+  );
+  if (!Array.isArray(data.cell_migrations)) return [];
+  return data.cell_migrations
+    .map(asMigration)
+    .filter((m): m is CellMigration => m !== null);
 }

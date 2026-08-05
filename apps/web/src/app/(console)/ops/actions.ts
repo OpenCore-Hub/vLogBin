@@ -4,10 +4,15 @@ import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/rbac";
 import {
   activateProvider,
+  assignProviderCell,
+  createCell,
   createProvider,
   replayWebhookDelivery,
   revokeCredential,
+  submitRiskReview,
   transitionLifecycle,
+  updateCellStatus,
+  type RiskReview,
   type LifecycleTarget,
 } from "@/lib/api/operator";
 import {
@@ -22,6 +27,7 @@ export interface OpActionState {
   error?: string;
   apiKey?: string;
   providerId?: string;
+  review?: RiskReview;
 }
 
 function errorMessage(err: unknown): string {
@@ -181,6 +187,117 @@ export async function transitionLifecycleAction(
       apiKey: result.apiKey ?? undefined,
       providerId,
     };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+/** 提交 Live Provider 风险审核（8 项 go-live checklist + risk_score）。 */
+export async function submitRiskReviewAction(
+  _prev: OpActionState,
+  formData: FormData,
+): Promise<OpActionState> {
+  await requireRole("operator");
+  const providerId = String(formData.get("provider_id") ?? "").trim();
+  const riskScore = Number(formData.get("risk_score"));
+  const decisionRaw = String(formData.get("decision") ?? "");
+  if (!providerId || !["approved", "rejected"].includes(decisionRaw)) {
+    return { ok: false, error: "缺少必要参数" };
+  }
+  if (!Number.isFinite(riskScore) || riskScore < 0 || riskScore > 100) {
+    return { ok: false, error: "风险评分必须在 0-100 之间" };
+  }
+  const checks = Object.fromEntries(
+    [
+      "email_and_company_domain",
+      "tos_dpa",
+      "custom_domain_ownership",
+      "payment_tax_connection",
+      "webhook_destination",
+      "initial_quota",
+      "security_contact",
+    ].map((key) => [key, formData.get(`check_${key}`) === "on"]),
+  ) as Record<string, boolean>;
+
+  try {
+    const review = await submitRiskReview(providerId, {
+      risk_score: riskScore,
+      checks,
+      decision: decisionRaw as "approved" | "rejected",
+      reason: String(formData.get("reason") ?? "").trim() || undefined,
+      reviewed_by: String(formData.get("reviewed_by") ?? "").trim() || "operator",
+    });
+    if (!review) return { ok: false, error: "提交失败：API 未返回审核记录" };
+    revalidatePath("/ops");
+    revalidatePath(`/ops/${providerId}`);
+    return { ok: true, providerId, review };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+/** 创建 Cell（区域 / 类型 / 状态 / 容量限制）。 */
+export async function createCellAction(
+  _prev: OpActionState,
+  formData: FormData,
+): Promise<OpActionState> {
+  await requireRole("operator");
+  const regionId = String(formData.get("region_id") ?? "").trim();
+  const code = String(formData.get("code") ?? "").trim();
+  const cellType = String(formData.get("cell_type") ?? "");
+  const status = String(formData.get("status") ?? "");
+  if (!regionId || !code || !["shared", "dedicated"].includes(cellType)) {
+    return { ok: false, error: "缺少必要参数" };
+  }
+  try {
+    const cell = await createCell({
+      region_id: regionId,
+      code,
+      cell_type: cellType as "shared" | "dedicated",
+      status: (status === "draining" || status === "inactive" ? status : "active") as "active" | "draining" | "inactive",
+      capacity_limits: {},
+    });
+    if (!cell) return { ok: false, error: "创建失败：API 未返回 Cell" };
+    revalidatePath("/ops");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+/** 更新 Cell 状态（active / draining / inactive）。 */
+export async function updateCellStatusAction(
+  _prev: OpActionState,
+  formData: FormData,
+): Promise<OpActionState> {
+  await requireRole("operator");
+  const cellId = String(formData.get("cell_id") ?? "").trim();
+  const status = String(formData.get("status") ?? "");
+  if (!cellId || !["active", "draining", "inactive"].includes(status)) {
+    return { ok: false, error: "缺少必要参数" };
+  }
+  try {
+    await updateCellStatus(cellId, status as "active" | "draining" | "inactive");
+    revalidatePath("/ops");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+/** 将 Provider 分配到指定 Cell。 */
+export async function assignProviderCellAction(
+  _prev: OpActionState,
+  formData: FormData,
+): Promise<OpActionState> {
+  await requireRole("operator");
+  const providerId = String(formData.get("provider_id") ?? "").trim();
+  const cellId = String(formData.get("cell_id") ?? "").trim();
+  if (!providerId || !cellId) return { ok: false, error: "缺少必要参数" };
+  try {
+    await assignProviderCell(providerId, cellId);
+    revalidatePath("/ops");
+    return { ok: true, providerId };
   } catch (err) {
     return { ok: false, error: errorMessage(err) };
   }

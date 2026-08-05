@@ -36,6 +36,87 @@ export interface Provider {
   updated_at?: string;
 }
 
+/** Provider 风险审核记录（operator 内部评级）。 */
+export interface RiskReview {
+  id: string;
+  provider_id: string;
+  risk_score: number;
+  checks: Record<string, boolean>;
+  decision: "approved" | "rejected";
+  reason?: string;
+  reviewed_by: string;
+  reviewed_at?: string;
+  created_at?: string;
+}
+
+/** JIT 支持会话（operator 视图）。 */
+export interface SupportSession {
+  id: string;
+  provider_id: string;
+  environment_id: string;
+  access_type: "standard" | "emergency";
+  status: string;
+  requested_by: string;
+  reason: string;
+  requested_scopes: string[];
+  approved_by?: string;
+  second_approver?: string;
+  granted_at?: string;
+  expires_at?: string;
+  revoked_at?: string;
+  revoked_by?: string;
+  revoke_reason?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Cell 拓扑单元。 */
+export interface Cell {
+  id: string;
+  region_id: string;
+  code: string;
+  cell_type: "shared" | "dedicated";
+  status: "active" | "draining" | "inactive";
+  capacity_limits?: unknown;
+  created_at?: string;
+}
+
+/** Cell 故障切换（热备）。 */
+export interface CellFailover {
+  id: string;
+  provider_id: string;
+  from_cell_id: string;
+  to_cell_id: string;
+  status: string;
+  reason?: string;
+  initiated_by: string;
+  fencing_token?: string;
+  replayed_usage: number;
+  replayed_outbox: number;
+  started_at?: string;
+  completed_at?: string;
+}
+
+/** Cell 迁移任务。 */
+export interface CellMigration {
+  id: string;
+  provider_id: string;
+  from_cell_id: string;
+  to_cell_id: string;
+  status: string;
+  scheduled_at?: string;
+  precheck_passed: boolean;
+  data_integrity_hash?: string;
+  record_count: number;
+  reason?: string;
+  initiated_by: string;
+  started_at?: string;
+  completed_at?: string;
+  error_message?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 /** 环境（test / live 双环境模型）。 */
 export interface Environment {
   id: string;
