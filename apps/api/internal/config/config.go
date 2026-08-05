@@ -61,6 +61,12 @@ type Config struct {
 	// solely to decrypt ciphertext written before the last rotation; new
 	// credentials are always encrypted with PSPMasterKey.
 	PSPMasterKeyPrevious []string
+	// PortalTokenSecret is the HMAC secret used to sign customer portal
+	// tokens (PORTAL_TOKEN_SECRET). When empty, portal endpoints are disabled.
+	PortalTokenSecret string
+	// PortalTokenTTL controls how long a customer portal token stays valid
+	// (PORTAL_TOKEN_TTL, default 24h).
+	PortalTokenTTL time.Duration
 	// ZITADELURL is the base URL of the ZITADEL instance for OIDC
 	// verification (ZITADEL_URL). When empty, operator auth falls back
 	// to the simple OPERATOR_TOKEN comparison.
@@ -736,6 +742,11 @@ func Load() (Config, error) {
 	cfg.PSPMasterKey = os.Getenv("PSP_MASTER_KEY")
 	if v := os.Getenv("PSP_MASTER_KEY_PREVIOUS"); v != "" {
 		cfg.PSPMasterKeyPrevious = splitComma(v)
+	}
+	cfg.PortalTokenSecret = os.Getenv("PORTAL_TOKEN_SECRET")
+	cfg.PortalTokenTTL = 24 * time.Hour
+	if err := durationEnv("PORTAL_TOKEN_TTL", &cfg.PortalTokenTTL); err != nil {
+		return Config{}, err
 	}
 	cfg.ZITADELURL = os.Getenv("ZITADEL_URL")
 	cfg.ZITADELPAT = os.Getenv("ZITADEL_PAT")

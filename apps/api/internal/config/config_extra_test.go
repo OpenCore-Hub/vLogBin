@@ -1138,3 +1138,31 @@ func TestLoadAuditArchiveValidation(t *testing.T) {
 		t.Fatal("invalid AUDIT_ARCHIVE_S3_USE_SSL must be rejected")
 	}
 }
+
+func TestLoadPortalTokenConfig(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test")
+	t.Setenv("OPERATOR_TOKEN", "tok")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.PortalTokenTTL != 24*time.Hour {
+		t.Fatalf("PortalTokenTTL = %v, want 24h", cfg.PortalTokenTTL)
+	}
+
+	t.Setenv("PORTAL_TOKEN_SECRET", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	t.Setenv("PORTAL_TOKEN_TTL", "2h")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load override: %v", err)
+	}
+	if cfg.PortalTokenSecret == "" || cfg.PortalTokenTTL != 2*time.Hour {
+		t.Fatalf("portal config not applied: secret=%q ttl=%v", cfg.PortalTokenSecret, cfg.PortalTokenTTL)
+	}
+
+	t.Setenv("PORTAL_TOKEN_TTL", "not-a-duration")
+	if _, err := Load(); err == nil {
+		t.Fatal("invalid PORTAL_TOKEN_TTL must be rejected")
+	}
+}

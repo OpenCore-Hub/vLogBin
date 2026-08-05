@@ -15,11 +15,13 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/billing"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/crypto"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/domain"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/httpapi"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/portal"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/service"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/tenant"
@@ -163,6 +165,8 @@ func TestMain(m *testing.M) {
 	)
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	apiServer := httpapi.NewServer(appStore, svc, operatorToken, logger)
+	portalIssuer, _ := portal.NewIssuer("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", 24*time.Hour)
+	apiServer.SetPortalIssuer(portalIssuer)
 	apiServer.SetStartupComplete() // migrations + pool + service are ready
 	httpServer = httptest.NewServer(apiServer.Router())
 	defer httpServer.Close()

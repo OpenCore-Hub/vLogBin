@@ -22,6 +22,7 @@ import (
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/crypto"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/httpapi"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/outbox"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/portal"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/ratelimit"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/service"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
@@ -242,6 +243,15 @@ func main() {
 	apiServer := httpapi.NewServer(st, svc, cfg.OperatorToken, log)
 	apiServer.SetCORSOrigins(cfg.CORSAllowedOrigins)
 	apiServer.SetRateLimits(cfg.RateLimits)
+	if cfg.PortalTokenSecret != "" {
+		issuer, err := portal.NewIssuer(cfg.PortalTokenSecret, cfg.PortalTokenTTL)
+		if err != nil {
+			log.Error("invalid portal token secret", "error", err)
+			os.Exit(1)
+		}
+		apiServer.SetPortalIssuer(issuer)
+		log.Info("customer portal token signing enabled", "ttl", cfg.PortalTokenTTL)
+	}
 
 	// WORM audit archiver: publishes audit hash chain anchors to S3-compatible
 	// object storage (AUDIT_ARCHIVE_SWEEP_INTERVAL, default 0 = disabled).

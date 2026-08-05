@@ -15,6 +15,7 @@ import (
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/config"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/domain"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/metrics"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/portal"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/ratelimit"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/service"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
@@ -42,6 +43,7 @@ type Server struct {
 	startupComplete      atomic.Bool
 	slowRequestThreshold atomic.Int64 // nanoseconds
 	idempotencyTTL       time.Duration
+	portalIssuer         *portal.Issuer
 }
 
 func NewServer(st *store.Store, svc *service.Service, operatorToken string, log *slog.Logger) *Server {
@@ -128,6 +130,12 @@ func (s *Server) RateLimits() config.RateLimitConfig {
 // operator auth. When set, operator tokens are verified as JWTs.
 func (s *Server) SetOIDCVerifier(v *zitadel.Verifier) {
 	s.oidcVerifier = v
+}
+
+// SetPortalIssuer enables customer portal token endpoints. Must be called
+// before Router is built; nil disables the portal.
+func (s *Server) SetPortalIssuer(issuer *portal.Issuer) {
+	s.portalIssuer = issuer
 }
 
 // SetCORSOrigins configures the allowed CORS origins. May be called at any
@@ -230,6 +238,8 @@ func (s *Server) Router() chi.Router {
 			// Console Customers control plane (§8 M2), environment-scoped via ?env=.
 			r.Post("/providers/{id}/customers", s.operatorCreateCustomer)
 			r.Get("/providers/{id}/customers/{externalId}", s.operatorGetCustomer)
+			// Customer portal invite token (§8 M3).
+			r.Post("/providers/{id}/customers/{externalId}/portal-token", s.operatorIssuePortalToken)
 			r.Get("/providers/{id}/usage-events", s.operatorListUsageEvents)
 			r.Get("/providers/{id}/invoices", s.operatorListInvoices)
 			// Console Invoices control plane (§8 M2), environment-scoped via ?env=.
@@ -312,6 +322,15 @@ func (s *Server) Router() chi.Router {
 			r.Post("/workspaces/{id}/members", s.inviteWorkspaceMember)
 			r.Patch("/workspaces/{id}/members/{userSub}", s.updateWorkspaceMemberRole)
 			r.Delete("/workspaces/{id}/members/{userSub}", s.removeWorkspaceMember)
+		})
+		// Customer Portal (§8 M3): independent customer session, data domain
+		// isolated by portal token claims.
+		r.Route("/portal", func(r chi.Router) {
+			r.Post("/sessions", s.portalSession)
+			r.Group(func(r chi.Router) {
+				r.Use(s.portalAuthMiddleware)
+				r.Get("/dashboard", s.portalDashboard)
+			})
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(s.apiKeyAuth)
