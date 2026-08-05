@@ -372,6 +372,7 @@
 | 环境隔离端到端（M2 第 8 项） | test/live 隔离闭环验证：新增 `environmentHeaderMiddleware` 强制 `X-Environment` 契约（可选头，但传入必须匹配 API Key 绑定环境，否则 `400 environment_mismatch`）；集成测试覆盖「test 建套餐/客户/订阅/用量 → live 不可见 → live 可复用同 external_id → operator 控制面 ?env= 隔离」；E2E 通过 Console 环境切换器验证 Plans/Customers 数据互不可见；openapi 文档补充 Environment Isolation 契约 | ✅ 已完成（候选 41） |
 | DataTable + URL 筛选（M2 第 9 项） | 通用 `components/ui/data-table.tsx`（§7.4 / R16）：sticky 表头、行 hover、搜索/排序/分页/每页条数/可选状态筛选全部 URL 化（`?q=&sort=&dir=&page=&pageSize=&status=`），搜索 replace 防抖、离散操作 push 可回退；接入 Customers（搜索/排序/分页）、Invoices（状态筛选）、Plans（搜索/排序）；数值列右对齐 mono + tabular-nums | ✅ 已完成（候选 42） |
 | React Query 缓存 + hooks 扩充 | `@tanstack/react-query` 客户端缓存（全局 QueryClient + staleTime：事件流 30s / 审计 60s）；事件流与审计日志改用 `useInfiniteQuery`（keyset 分页 + keepPreviousData + RSC 首屏数据作 initialData）；`hooks/use-action-feedback.ts` 统一 useActionState 成功/失败回调与 toast，并落地到 API Key 吊销 / Webhook 删除与重放 | ✅ 已完成（候选 49） |
+| 交互体验与技术债收敛 | 环境切换成功/失败 toast + 失败回滚；First-Run 引导「跳过/恢复」入口（cookie 持久化，R18）；`ApiKeyCallout` 迁移到 token 色 + 中文品牌语音 + 复制反馈；API Key 创建/轮换未复制即关闭给一次性提醒 | ✅ 已完成（候选 50） |
 
 ## 四、Web 前端重构任务追踪（设计基线 v1.4）
 
@@ -384,7 +385,7 @@
 | M0 基座 | 目录 / tokens / 认证 / 官网 / Console 布局 / Ops 迁移 / 引导 | ✅ 已完成（静态验收，待提交） |
 | M1 控制面 API | `apps/api` 新增 Console 端点（最大前置依赖） | ✅ 已完成（候选 29-33） |
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
-| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 49） |
+| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 50） |
 
 ### M0 — 基座（✅ 已完成，待提交）
 
@@ -564,16 +565,22 @@
   - 事件流 / 审计日志迁移到 `useInfiniteQuery`：keyset 分页、加载更多、筛选自动重取、切换筛选时 `keepPreviousData` 保底，RSC 首屏数据作为 `initialData` 避免白闪
   - Server Action 查询桥改为对象入参 + zod 校验（`queryEventStreamAction` / `queryAuditPageAction`）
   - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **47/47 全绿** ✅
+- [x] 交互体验与技术债收敛 — 候选 50
+  - 环境切换 toast（§6.3）：`EnvProvider` 切换成功显示「已切换到生产/测试环境」，失败回滚本地状态并给错误 toast
+  - 引导跳过入口（R18）：`dismissOnboarding` / `restoreOnboarding` server actions + `vlb_onboarding_dismissed` cookie；首屏与引导条都有「跳过引导」，顶栏可随时「重新开始引导」
+  - `ApiKeyCallout` 迁移到新 UI 体系：brand token 色 + 中文品牌语音 + `CopyButton` 复制反馈；接入 API Keys 创建/轮换成功态
+  - 密钥未复制即离开提醒（§6.5.4）：创建/轮换成功态未复制即关闭弹窗，给一次性「API Key 尚未复制」toast
+  - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright 相关 E2E **7/7 全绿** ✅
 
 ### 技术债 / 结构偏差（M0 遗留，随里程碑消化）
 
 - [x] **环境标识色独立 token**（§7.1：`--color-env-test` 琥珀 / `--color-env-live` 红，不与状态色混用）——候选 35 已落地到 EnvSwitcher / Topbar / EnvBadge
-- [ ] 环境切换 toast 提示"已切换到 live 环境"（§6.3）未实现
-- [ ] 引导跳过入口（R18"跳过引导始终可见"）未落地；进度条步骤可点击回跳已在候选 40 完成（OnboardingStrip 步骤为 Link）
-- [ ] `api-key-callout.tsx` 为旧原型遗留（英文文案 + amber 硬编码色），需迁移到新 UI 体系（token 色 + 中文品牌语音 + 复制 toast）
+- [x] 环境切换 toast 提示"已切换到 live 环境"（§6.3）——候选 50 落地（成功 toast + 失败回滚）
+- [x] 引导跳过入口（R18"跳过引导始终可见"）——候选 50 落地（cookie 持久化 + 顶栏恢复入口；进度条步骤可点击回跳已在候选 40 完成）
+- [x] `api-key-callout.tsx` 旧原型遗留——候选 50 迁移到 token 色 + 中文品牌语音 + 复制反馈，并接入 API Keys 成功态
 - [ ] `lib/env/`、`lib/utils/`、`lib/validate/` 目录化（当前为单文件 `env.ts` / `utils.ts`，schemas 在 `lib/api/`）
 - [ ] UI 组件补齐：input / select / checkbox / card / drawer / tooltip / pagination / copy-button / DataTable（§7.2）
-- [ ] 密钥未复制即离开页面的提醒（§6.5.4）待实现
+- [x] 密钥未复制即离开页面的提醒（§6.5.4）——候选 50 落地（创建/轮换成功态关闭前给一次性 toast）
 
 ## 五、更新约定
 
