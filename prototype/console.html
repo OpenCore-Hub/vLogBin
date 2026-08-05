@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Overview · vLogBin Console</title>
+<link rel="stylesheet" href="assets/proto.css" />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;600&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+<div class="shell">
+  <!-- ================= B 全局侧边导航（7 大分组） ================= -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-mark">v</span>
+      <div>
+        <div style="font-size:0.85rem;font-weight:600">vLogBin</div>
+        <div style="font-size:0.68rem;color:var(--text-3)">Acme Cloud · Pro</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-group">
+        <div class="nav-group-label">工作区</div>
+        <a class="nav-item active" href="console.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+          Overview
+        </a>
+        <a class="nav-item has-sub" href="console-identity.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          Identity
+          <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </a>
+        <div class="nav-sub" style="display:none;padding-left:16px">
+          <a class="nav-item" href="console-identity.html">Applications</a>
+          <a class="nav-item" href="#">Users</a>
+          <a class="nav-item" href="#">Policies</a>
+        </div>
+        <a class="nav-item has-sub" href="console-billing.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M14.8 9.2c-.4-.9-1.3-1.5-2.8-1.5-1.8 0-3 .9-3 2.3 0 3 6 1.6 6 4.6 0 1.4-1.2 2.3-3 2.3-1.5 0-2.4-.6-2.8-1.5"/></svg>
+          Billing
+          <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </a>
+        <div class="nav-sub" style="display:none;padding-left:16px">
+          <a class="nav-item" href="console-billing.html">Dashboard</a>
+          <a class="nav-item" href="#">Customers</a>
+          <a class="nav-item" href="#">Plans</a>
+          <a class="nav-item" href="#">Invoices</a>
+          <a class="nav-item" href="#">Integrations</a>
+        </div>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">产品</div>
+        <a class="nav-item" href="#">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          Catalog
+        </a>
+        <a class="nav-item" href="#">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Environments
+        </a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">开发者</div>
+        <a class="nav-item" href="#">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 6-6 6 6 6M16 6l6 6-6 6"/></svg>
+          Developers
+        </a>
+        <a class="nav-item" href="#">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-9.3-5.2A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+          Webhooks
+        </a>
+        <a class="nav-item" href="#">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Settings
+        </a>
+      </div>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="flex items-center gap-3" style="padding:8px 10px">
+        <span class="avatar initials">林晓</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:0.8rem;font-weight:500">林 晓</div>
+          <div style="font-size:0.7rem;color:var(--text-3)">linxiao@acme.dev</div>
+        </div>
+        <button class="btn-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ================= 主区域 ================= -->
+  <div class="main">
+    <!-- 顶栏：环境切换 + 搜索 + 通知 + 用户 -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="flex items-center gap-2">
+            <span style="font-size:0.9rem;font-weight:600">Overview</span>
+            <span class="env-marker badge badge-accent mono" style="font-size:0.65rem">test</span>
+          </div>
+        </div>
+        <div class="env-switch">
+          <button class="active" data-env="test">test</button>
+          <button data-env="live">live</button>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div style="position:relative">
+          <input data-global-search placeholder="搜索应用 / 客户 / 套餐…  ( / )" style="padding:7px 14px 7px 34px;border:1px solid var(--border);border-radius:8px;font-size:0.8rem;width:260px;background:var(--surface-2);outline:none" />
+          <svg style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--text-3)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        </div>
+        <button class="btn-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+        <span class="avatar initials" style="width:32px;height:32px">林晓</span>
+      </div>
+    </div>
+
+    <!-- 页面内容 -->
+    <div class="page">
+      <div class="page-head">
+        <div>
+          <h1 class="page-title">工作区总览</h1>
+          <p class="page-sub">环境 <span class="env-marker mono">test</span> · 最后同步 2 分钟前</p>
+        </div>
+        <div class="flex gap-2">
+          <a class="btn btn-ghost" href="console-identity.html">+ 新建应用</a>
+          <a class="btn btn-primary" href="console-billing.html">+ 新建套餐</a>
+        </div>
+      </div>
+
+      <!-- B1 指标卡 -->
+      <div class="metrics">
+        <div class="metric">
+          <div class="label">本月 MRR</div>
+          <div class="value">$8,420</div>
+          <div class="delta delta-up">▲ 12.4% · 较上月</div>
+        </div>
+        <div class="metric">
+          <div class="label">活跃客户</div>
+          <div class="value">186</div>
+          <div class="delta delta-up">▲ 8 · 本周新增</div>
+        </div>
+        <div class="metric">
+          <div class="label">用量事件 / 月</div>
+          <div class="value">2.4M</div>
+          <div class="delta delta-up">▲ 3.1% · 正常</div>
+        </div>
+        <div class="metric">
+          <div class="label">待支付发票</div>
+          <div class="value">$1,210</div>
+          <div class="delta delta-down">▼ 5.2% · 5 张</div>
+        </div>
+      </div>
+
+      <div class="grid-2" style="grid-template-columns:2fr 1fr">
+        <!-- 营收趋势 -->
+        <div class="card card-pad">
+          <div class="flex justify-between items-center" style="margin-bottom:18px">
+            <div>
+              <div style="font-size:0.95rem;font-weight:600">营收趋势</div>
+              <div class="t3" style="font-size:0.75rem">近 30 天 · MRR + 一次性</div>
+            </div>
+            <span class="badge badge-accent"><span class="dot"></span>实时</span>
+          </div>
+          <!-- 简化 SVG 图表 -->
+          <svg viewBox="0 0 520 180" style="width:100%;height:auto">
+            <defs>
+              <linearGradient id="area" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#0d9488" stop-opacity="0.18"/>
+                <stop offset="100%" stop-color="#0d9488" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <g stroke="#e4e4e7">
+              <line x1="0" y1="36" x2="520" y2="36"/><line x1="0" y1="72" x2="520" y2="72"/>
+              <line x1="0" y1="108" x2="520" y2="108"/><line x1="0" y1="144" x2="520" y2="144"/>
+            </g>
+            <path d="M0 130 C40 124 60 132 90 118 S 150 96 180 104 S 240 78 270 86 S 330 60 360 66 S 430 40 460 44 S 500 28 520 22 L520 180 L0 180 Z" fill="url(#area)"/>
+            <path d="M0 130 C40 124 60 132 90 118 S 150 96 180 104 S 240 78 270 86 S 330 60 360 66 S 430 40 460 44 S 500 28 520 22" fill="none" stroke="#0d9488" stroke-width="2.5" stroke-linecap="round"/>
+            <circle cx="460" cy="44" r="4" fill="#0d9488"/><circle cx="460" cy="44" r="8" fill="#0d9488" opacity="0.2"/>
+          </svg>
+          <div class="flex justify-between" style="margin-top:6px">
+            <span class="t3 mono" style="font-size:0.68rem">07/01</span>
+            <span class="t3 mono" style="font-size:0.68rem">07/08</span>
+            <span class="t3 mono" style="font-size:0.68rem">07/15</span>
+            <span class="t3 mono" style="font-size:0.68rem">07/22</span>
+            <span class="t3 mono" style="font-size:0.68rem">07/29</span>
+          </div>
+        </div>
+
+        <!-- 最近活动 -->
+        <div class="card" style="border-radius:16px">
+          <div style="padding:18px 20px 12px">
+            <div style="font-size:0.95rem;font-weight:600">最近活动</div>
+          </div>
+          <div style="padding:0 20px 16px">
+            <div style="display:flex;flex-direction:column">
+              <div style="display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)">
+                <span style="width:26px;height:26px;border-radius:7px;background:var(--accent-soft);color:var(--accent-strong);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:0.8rem"><strong>发票已生成</strong> INV-2026-0842</div>
+                  <div class="t3" style="font-size:0.7rem">10 分钟前 · $249.00</div>
+                </div>
+              </div>
+              <div style="display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)">
+                <span style="width:26px;height:26px;border-radius:7px;background:var(--accent-soft);color:var(--accent-strong);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:0.8rem"><strong>新客户加入</strong> Aurora Labs</div>
+                  <div class="t3" style="font-size:0.7rem">1 小时前 · Pro 套餐</div>
+                </div>
+              </div>
+              <div style="display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)">
+                <span style="width:26px;height:26px;border-radius:7px;background:#fef3c7;color:#b45309;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:0.8rem"><strong>Webhook 重试</strong> usage.reported</div>
+                  <div class="t3" style="font-size:0.7rem">2 小时前 · 第 2 次重试</div>
+                </div>
+              </div>
+              <div style="display:flex;gap:12px;padding:11px 0">
+                <span style="width:26px;height:26px;border-radius:7px;background:#dcfce7;color:#15803d;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg></span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:0.8rem"><strong>订阅续订</strong> Meridian Stack · $499</div>
+                  <div class="t3" style="font-size:0.7rem">昨天 · 自动续订成功</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 环境状态 + 快捷操作 -->
+      <div class="grid-3" style="margin-top:20px">
+        <div class="card card-pad">
+          <div class="caption" style="margin-bottom:12px">引擎状态</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div class="flex items-center justify-between"><span style="font-size:0.82rem">身份引擎</span><span class="badge badge-ok"><span class="dot"></span>运行中</span></div>
+            <div class="flex items-center justify-between"><span style="font-size:0.82rem">计费引擎</span><span class="badge badge-ok"><span class="dot"></span>运行中</span></div>
+            <div class="flex items-center justify-between"><span style="font-size:0.82rem">事件管道</span><span class="badge badge-warn"><span class="dot"></span>轻微积压</span></div>
+            <div class="flex items-center justify-between"><span style="font-size:0.82rem">Webhook 投递</span><span class="badge badge-ok"><span class="dot"></span>99.2%</span></div>
+          </div>
+        </div>
+        <div class="card card-pad" style="grid-column:span 2">
+          <div class="caption" style="margin-bottom:12px">快捷操作</div>
+          <div class="flex gap-2" style="flex-wrap:wrap">
+            <a class="btn btn-soft btn-sm" href="console-identity.html">注册 OIDC 应用</a>
+            <a class="btn btn-soft btn-sm" href="console-billing.html">创建订阅套餐</a>
+            <a class="btn btn-soft btn-sm" href="#">邀请客户成员</a>
+            <a class="btn btn-soft btn-sm" href="#">配置 Webhook</a>
+            <a class="btn btn-soft btn-sm" href="#">上报用量事件</a>
+            <a class="btn btn-soft btn-sm" href="#">品牌设置</a>
+          </div>
+          <div class="t3" style="font-size:0.75rem;margin-top:14px">环境隔离已生效：当前所有操作作用于 <span class="env-marker mono">test</span> 环境。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="assets/proto.js"></script>
+</body>
+</html>

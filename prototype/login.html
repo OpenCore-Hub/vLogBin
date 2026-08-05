@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>登录 · vLogBin</title>
+<link rel="stylesheet" href="assets/proto.css" />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;600&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+<!-- ================= E 白标登录域 ================= -->
+<div class="login-wrap">
+  <!-- 左：品牌叙述区 -->
+  <aside class="login-left">
+    <a class="brand" href="index.html" style="color:#fafafa">
+      <span class="brand-mark">v</span> vLogBin
+    </a>
+    <div>
+      <h2 style="font-size:1.6rem;font-weight:600;letter-spacing:-0.02em;line-height:1.2">
+        统一登录你的<br/>客户 SaaS 工作区
+      </h2>
+      <p style="color:#a1a1aa;margin-top:14px;font-size:0.9rem;max-width:36ch">
+        一个账户，登录所有已接入 vLogBin 身份引擎的客户应用。
+      </p>
+      <div style="display:flex;gap:10px;margin-top:26px">
+        <span class="badge" style="background:#141416;border-color:#26262a;color:#d4d4d8"><span class="dot" style="background:#34d399"></span>SSO 就绪</span>
+        <span class="badge" style="background:#141416;border-color:#26262a;color:#d4d4d8"><span class="dot" style="background:#34d399"></span>MFA 保护</span>
+      </div>
+    </div>
+    <p class="caption" style="color:#52525b">© 2026 vLogBin · 身份基础设施</p>
+  </aside>
+
+  <!-- 右：登录面板 -->
+  <main class="login-right">
+    <div class="login-panel">
+      <div style="text-align:center;margin-bottom:28px">
+        <div style="width:52px;height:52px;border-radius:14px;margin:0 auto 16px;background:linear-gradient(135deg,#0d9488,#134e4a);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:1.2rem">v</div>
+        <h1 style="font-size:1.35rem;font-weight:600;letter-spacing:-0.02em;color:#fafafa">登录 vLogBin</h1>
+        <p style="font-size:0.82rem;color:#71717a;margin-top:6px">进入你的 Provider 控制台</p>
+      </div>
+
+      <!-- 登录名步骤（Login V2 loginname 路由） -->
+      <div id="step-loginname" class="field" style="gap:10px">
+        <input type="email" placeholder="you@company.com" style="padding:13px 14px;background:#141416;border-color:#3f3f46;color:#fafafa" />
+        <button class="btn btn-primary btn-lg w-full" onclick="goStep('password')">继续</button>
+        <button class="btn btn-ghost btn-lg w-full" style="border-color:#3f3f46;color:#d4d4d8" onclick="goStep('idp')">使用企业 SSO 登录</button>
+        <div style="text-align:center;margin-top:10px">
+          <a href="login.html?mode=register" style="font-size:0.82rem;color:#5eead4">还没有账户？创建新账户</a>
+        </div>
+      </div>
+
+      <!-- 密码步骤（Login V2 password 路由） -->
+      <div id="step-password" class="field" style="gap:10px;display:none">
+        <label style="color:#d4d4d8">密码</label>
+        <input type="password" placeholder="••••••••" style="padding:13px 14px;background:#141416;border-color:#3f3f46;color:#fafafa" />
+        <button class="btn btn-primary btn-lg w-full" onclick="window.location.href='console.html'">登录</button>
+        <div class="flex justify-between" style="margin-top:4px">
+          <a href="#" style="font-size:0.78rem;color:#71717a">忘记密码？</a>
+          <a href="#" style="font-size:0.78rem;color:#5eead4" onclick="goStep('mfa')">使用验证器应用</a>
+        </div>
+      </div>
+
+      <!-- MFA 步骤 -->
+      <div id="step-mfa" class="field" style="gap:10px;display:none">
+        <label style="color:#d4d4d8">MFA 验证码</label>
+        <input placeholder="6 位数字" style="padding:13px 14px;background:#141416;border-color:#3f3f46;color:#fafafa;font-family:var(--font-mono);letter-spacing:0.3em" />
+        <button class="btn btn-primary btn-lg w-full" onclick="window.location.href='console.html'">验证并登录</button>
+        <a href="#" style="font-size:0.78rem;color:#71717a;text-align:center" onclick="goStep('password')">返回</a>
+      </div>
+
+      <!-- IdP 步骤 -->
+      <div id="step-idp" style="display:none">
+        <button class="btn btn-ghost btn-lg w-full" style="border-color:#3f3f46;color:#d4d4d8;margin-bottom:10px" onclick="window.location.href='console.html'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81z"/></svg>
+          Google
+        </button>
+        <button class="btn btn-ghost btn-lg w-full" style="border-color:#3f3f46;color:#d4d4d8" onclick="window.location.href='console.html'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02a9.56 9.56 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85V21c0 .27.18.58.69.48A10 10 0 0 0 12 2z"/></svg>
+          GitHub
+        </button>
+        <a href="#" style="font-size:0.78rem;color:#71717a;text-align:center;display:block;margin-top:12px" onclick="goStep('loginname')">使用邮箱登录</a>
+      </div>
+
+      <!-- 注册步骤 -->
+      <div id="step-register" class="field" style="gap:10px;display:none">
+        <label style="color:#d4d4d8">公司邮箱</label>
+        <input type="email" placeholder="you@company.com" style="padding:13px 14px;background:#141416;border-color:#3f3f46;color:#fafafa" />
+        <label style="color:#d4d4d8">姓名</label>
+        <input type="text" placeholder="林 晓" style="padding:13px 14px;background:#141416;border-color:#3f3f46;color:#fafafa" />
+        <label style="color:#d4d4d8">密码</label>
+        <input type="password" placeholder="至少 12 位" style="padding:13px 14px;background:#141416;border-color:#3f3f46;color:#fafafa" />
+        <button class="btn btn-primary btn-lg w-full" onclick="window.location.href='console.html'">创建账户</button>
+        <a href="#" style="font-size:0.78rem;color:#71717a;text-align:center" onclick="goStep('loginname')">已有账户？直接登录</a>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+function goStep(name) {
+  var steps = { loginname: 'step-loginname', password: 'step-password', mfa: 'step-mfa', idp: 'step-idp', register: 'step-register' };
+  Object.keys(steps).forEach(function (k) {
+    document.getElementById(steps[k]).style.display = (k === name) ? '' : 'none';
+  });
+}
+var params = new URLSearchParams(window.location.search);
+if (params.get('mode') === 'register') goStep('register');
+</script>
+</body>
+</html>

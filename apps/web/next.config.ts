@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: import.meta.dirname,
   },
+  // Emit a self-contained server bundle so the runtime image only needs
+  // node + the standalone output (no node_modules install at runtime).
+  output: "standalone",
 };
 
 export default nextConfig;

@@ -1,0 +1,9 @@
+export type Env = "test" | "live";
+
+export const ENV_COOKIE = "vlb_env";
+
+/** 会话 cookie 名（edge 中间件与服务端共用）。 */
+export const SESSION_COOKIE = "vlb_session";
+
+/** 会话最长有效期（秒），中间件滑动续期时使用。 */
+export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;

@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Identity · Applications · vLogBin Console</title>
+<link rel="stylesheet" href="assets/proto.css" />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;600&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+<div class="shell">
+  <!-- ================= 侧边导航（同 console.html） ================= -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-mark">v</span>
+      <div>
+        <div style="font-size:0.85rem;font-weight:600">vLogBin</div>
+        <div style="font-size:0.68rem;color:var(--text-3)">Acme Cloud · Pro</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-group">
+        <div class="nav-group-label">工作区</div>
+        <a class="nav-item" href="console.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+          Overview
+        </a>
+        <a class="nav-item active has-sub" href="console-identity.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          Identity
+          <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </a>
+        <div class="nav-sub" style="display:block;padding-left:16px">
+          <a class="nav-item active" href="console-identity.html">Applications</a>
+          <a class="nav-item" href="#">Users</a>
+          <a class="nav-item" href="#">Policies</a>
+        </div>
+        <a class="nav-item has-sub" href="console-billing.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M14.8 9.2c-.4-.9-1.3-1.5-2.8-1.5-1.8 0-3 .9-3 2.3 0 3 6 1.6 6 4.6 0 1.4-1.2 2.3-3 2.3-1.5 0-2.4-.6-2.8-1.5"/></svg>
+          Billing
+          <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </a>
+        <div class="nav-sub" style="display:none;padding-left:16px">
+          <a class="nav-item" href="console-billing.html">Dashboard</a>
+          <a class="nav-item" href="#">Customers</a>
+          <a class="nav-item" href="#">Plans</a>
+          <a class="nav-item" href="#">Invoices</a>
+          <a class="nav-item" href="#">Integrations</a>
+        </div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">产品</div>
+        <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Catalog</a>
+        <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Environments</a>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">开发者</div>
+        <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 6-6 6 6 6M16 6l6 6-6 6"/></svg>Developers</a>
+        <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-9.3-5.2A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>Webhooks</a>
+        <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings</a>
+      </div>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="flex items-center gap-3" style="padding:8px 10px">
+        <span class="avatar initials">林晓</span>
+        <div style="flex:1;min-width:0"><div style="font-size:0.8rem;font-weight:500">林 晓</div><div style="font-size:0.7rem;color:var(--text-3)">linxiao@acme.dev</div></div>
+        <button class="btn-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ================= 主区域 ================= -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="flex items-center gap-2">
+            <span style="font-size:0.9rem;font-weight:600">Identity · Applications</span>
+            <span class="env-marker badge badge-accent mono" style="font-size:0.65rem">test</span>
+          </div>
+        </div>
+        <div class="env-switch">
+          <button class="active" data-env="test">test</button>
+          <button data-env="live">live</button>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div style="position:relative">
+          <input data-global-search placeholder="搜索应用 / 客户 / 套餐…  ( / )" style="padding:7px 14px 7px 34px;border:1px solid var(--border);border-radius:8px;font-size:0.8rem;width:260px;background:var(--surface-2);outline:none" />
+          <svg style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--text-3)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        </div>
+        <button class="btn-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+        <span class="avatar initials" style="width:32px;height:32px">林晓</span>
+      </div>
+    </div>
+
+    <div class="page">
+      <div class="page-head">
+        <div>
+          <h1 class="page-title">Applications</h1>
+          <p class="page-sub">OIDC / OAuth 应用注册 · 环境 <span class="env-marker mono">test</span> · 3 个应用</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-ghost">导入配置</button>
+          <button class="btn btn-primary">+ 新建应用</button>
+        </div>
+      </div>
+
+      <!-- 列表 -->
+      <div class="card" style="overflow:hidden;border-radius:16px">
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="width:28px"><input type="checkbox" /></th>
+              <th>应用</th>
+              <th>类型</th>
+              <th>Client ID</th>
+              <th>状态</th>
+              <th>回调 URI</th>
+              <th>创建时间</th>
+              <th style="width:120px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td><strong>Acme Dashboard</strong></td>
+              <td><span class="badge">OIDC · Web</span></td>
+              <td class="mono">2439…8f2a</td>
+              <td><span class="badge badge-ok"><span class="dot"></span>活跃</span></td>
+              <td class="mono" style="font-size:0.72rem">2</td>
+              <td class="mono">2026-07-12</td>
+              <td class="text-right">
+                <button class="btn-icon" title="详情">⋯</button>
+              </td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td><strong>Mobile App (iOS)</strong></td>
+              <td><span class="badge">OIDC · Native</span></td>
+              <td class="mono">81c4…0de3</td>
+              <td><span class="badge badge-ok"><span class="dot"></span>活跃</span></td>
+              <td class="mono" style="font-size:0.72rem">3</td>
+              <td class="mono">2026-06-28</td>
+              <td class="text-right"><button class="btn-icon">⋯</button></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td><strong>Billing Service</strong></td>
+              <td><span class="badge">OAuth · M2M</span></td>
+              <td class="mono">5a90…c7b1</td>
+              <td><span class="badge badge-warn"><span class="dot"></span>密钥过期</span></td>
+              <td class="mono" style="font-size:0.72rem">—</td>
+              <td class="mono">2026-05-09</td>
+              <td class="text-right"><button class="btn-icon">⋯</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 空状态示例（隐藏，演示 loading） -->
+      <!-- 详情区：选中第一行展开（演示 Tab 结构） -->
+      <div style="margin-top:24px">
+        <div class="flex items-center justify-between" style="margin-bottom:12px">
+          <div>
+            <div style="font-size:0.95rem;font-weight:600">Acme Dashboard</div>
+            <div class="t3 mono" style="font-size:0.72rem">2439…8f2a</div>
+          </div>
+          <span class="badge badge-accent"><span class="dot"></span>OIDC 握手正常</span>
+        </div>
+        <div class="card" style="border-radius:16px">
+          <div class="tabs" data-tabs style="padding:0 20px">
+            <button class="tab active" data-tab="overview">概览</button>
+            <button class="tab" data-tab="creds">凭证</button>
+            <button class="tab" data-tab="callbacks">回调配置</button>
+            <button class="tab" data-tab="authz">授权</button>
+            <button class="tab" data-tab="code">集成代码</button>
+          </div>
+          <!-- 概览 -->
+          <div data-pane="overview" style="padding:0 24px 24px">
+            <div class="grid-2" style="grid-template-columns:repeat(3,1fr)">
+              <div class="field"><label>应用名称</label><input value="Acme Dashboard" /></div>
+              <div class="field"><label>类型</label><select><option>OIDC · Web 应用</option></select></div>
+              <div class="field"><label>环境</label><select><option>test</option><option>live</option></select></div>
+              <div class="field"><label>Logo URL</label><input value="https://acme.dev/logo.png" /></div>
+              <div class="field"><label>描述</label><input value="主管理后台" /></div>
+              <div class="field"><label>状态</label><select><option>活跃</option></select></div>
+            </div>
+          </div>
+          <!-- 凭证 -->
+          <div data-pane="creds" style="padding:0 24px 24px;display:none">
+            <div class="card" style="border-radius:12px;padding:18px;background:var(--surface-2);border-style:dashed">
+              <div class="caption" style="margin-bottom:10px">Client Secret</div>
+              <div class="flex items-center gap-3">
+                <code class="mono" style="font-size:0.8rem;background:#18181b;color:#5eead4;padding:9px 14px;border-radius:8px;flex:1">z_s3cr3t_•••••••••••••••••••••</code>
+                <button class="btn btn-ghost btn-sm">复制</button>
+                <button class="btn btn-ghost btn-sm">重置</button>
+              </div>
+              <div class="help" style="font-size:0.72rem;color:var(--text-3);margin-top:8px">重置将立即吊销旧密钥，客户端需在 24h 内更新。</div>
+            </div>
+            <div class="grid-2" style="grid-template-columns:repeat(2,1fr);margin-top:14px">
+              <div class="field"><label>Token 有效期</label><input value="3600 秒" /></div>
+              <div class="field"><label>刷新令牌有效期</label><input value="30 天" /></div>
+            </div>
+          </div>
+          <!-- 回调 -->
+          <div data-pane="callbacks" style="padding:0 24px 24px;display:none">
+            <div style="font-size:0.8rem;font-weight:600;margin-bottom:10px">回调 URI</div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+              <div class="mono" style="font-size:0.78rem;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:9px 12px">https://app.acme.dev/auth/callback</div>
+              <div class="mono" style="font-size:0.78rem;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:9px 12px">https://app.acme.dev/auth/mobile-callback</div>
+            </div>
+            <button class="btn btn-soft btn-sm">+ 添加回调 URI</button>
+            <div style="font-size:0.8rem;font-weight:600;margin:18px 0 10px">附加源（Additional Origins）</div>
+            <div class="mono" style="font-size:0.78rem;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;max-width:420px">https://cdn.acme.dev</div>
+          </div>
+          <!-- 授权 -->
+          <div data-pane="authz" style="padding:0 24px 24px;display:none">
+            <div class="caption" style="margin-bottom:10px">授权类型</div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <label class="flex items-center gap-2" style="font-size:0.85rem"><input type="checkbox" checked /> Authorization Code + PKCE</label>
+              <label class="flex items-center gap-2" style="font-size:0.85rem"><input type="checkbox" /> Implicit</label>
+              <label class="flex items-center gap-2" style="font-size:0.85rem"><input type="checkbox" /> Client Credentials</label>
+            </div>
+            <div class="grid-2" style="grid-template-columns:repeat(2,1fr);margin-top:16px">
+              <div class="field"><label>作用域</label><input value="openid profile email" /></div>
+              <div class="field"><label>签名算法</label><select><option>RS256</option></select></div>
+            </div>
+          </div>
+          <!-- 集成代码 -->
+          <div data-pane="code" style="padding:0 24px 24px;display:none">
+            <div class="flex gap-2" style="margin-bottom:10px">
+              <button class="btn btn-soft btn-sm active">Node.js</button>
+              <button class="btn btn-soft btn-sm">Python</button>
+              <button class="btn btn-soft btn-sm">Go</button>
+              <button class="btn btn-soft btn-sm">curl</button>
+            </div>
+            <div class="mono" style="font-size:0.76rem;line-height:1.7;background:#0c0c0d;color:#d4d4d8;border-radius:10px;padding:16px;overflow-x:auto">
+              import { createClient } from '@vlogbin/node';<br/><br/>
+              export const auth = createClient({<br/>
+              &nbsp;&nbsp;issuer: 'https://auth.vlogbin.dev',<br/>
+              &nbsp;&nbsp;clientId: '2439…8f2a',<br/>
+              &nbsp;&nbsp;redirectUri: 'https://app.acme.dev/auth/callback',<br/>
+              &nbsp;&nbsp;environment: 'test'<br/>
+              });
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="assets/proto.js"></script>
+</body>
+</html>

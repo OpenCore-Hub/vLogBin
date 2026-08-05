@@ -1,5 +1,8 @@
 "use client";
 
+import { Alert } from "@/components/ui/feedback";
+import { Button } from "@/components/ui/button";
+
 export default function GlobalError({
   error,
   reset,
@@ -8,19 +11,20 @@ export default function GlobalError({
   reset: () => void;
 }) {
   return (
-    <div
-      role="alert"
-      className="rounded-md border border-red-300 bg-red-50 p-6"
-    >
-      <h2 className="text-sm font-semibold text-red-900">Something went wrong</h2>
-      <p className="mt-1 text-sm text-red-800">{error.message}</p>
-      <button
-        type="button"
-        onClick={reset}
-        className="mt-4 rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-900 hover:bg-red-100"
-      >
-        Try again
-      </button>
+    <div className="flex min-h-dvh items-center justify-center bg-canvas px-4">
+      <div className="w-full max-w-md">
+        <Alert variant="danger" title="页面出错了">
+          <div className="space-y-3">
+            <p>处理请求时发生未预期的错误。若问题持续出现，请提供下方错误标识以便排查。</p>
+            {error.digest && (
+              <p className="font-mono text-xs">错误标识：{error.digest}</p>
+            )}
+            <Button type="button" variant="outline" onClick={reset}>
+              重试
+            </Button>
+          </div>
+        </Alert>
+      </div>
     </div>
   );
 }

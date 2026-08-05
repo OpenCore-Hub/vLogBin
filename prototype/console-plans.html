@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Plans · vLogBin Console</title>
+<link rel="stylesheet" href="assets/proto.css" />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<style>
+  .tier-row{display:grid;grid-template-columns:1fr 110px 100px 70px;gap:10px;align-items:center}
+  .price-calc{background:var(--surface-2);border:1px dashed var(--border-strong);border-radius:var(--radius-md);padding:16px}
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <!-- 侧边导航 -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-mark">v</span>
+      <div><div style="font-size:0.85rem;font-weight:600">vLogBin</div><div style="font-size:0.68rem;color:var(--text-3)">Acme Cloud · Pro</div></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-group">
+        <div class="nav-group-label">工作区</div>
+        <a class="nav-item" href="console.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>Overview</a>
+        <a class="nav-item has-sub" href="console-identity.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Identity<svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></a>
+        <div class="nav-sub" style="display:none;padding-left:16px">
+          <a class="nav-item" href="console-identity.html">Applications</a><a class="nav-item" href="#">Users</a><a class="nav-item" href="#">Policies</a>
+        </div>
+        <a class="nav-item has-sub" href="console-billing.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M14.8 9.2c-.4-.9-1.3-1.5-2.8-1.5-1.8 0-3 .9-3 2.3 0 3 6 1.6 6 4.6 0 1.4-1.2 2.3-3 2.3-1.5 0-2.4-.6-2.8-1.5"/></svg>Billing<svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></a>
+        <div class="nav-sub" style="display:block;padding-left:16px">
+          <a class="nav-item" href="console-billing.html">Dashboard</a><a class="nav-item" href="console-billing.html">Customers</a><a class="nav-item active" href="console-plans.html">Plans</a><a class="nav-item" href="console-invoices.html">Invoices</a><a class="nav-item" href="#">Integrations</a>
+        </div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">产品</div>
+        <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Catalog</a>
+        <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Environments</a>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">开发者</div>
+        <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m8 6-6 6 6 6M16 6l6 6-6 6"/></svg>Developers</a>
+        <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-9.3-5.2A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>Webhooks</a>
+        <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings</a>
+      </div>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="flex items-center gap-3" style="padding:8px 10px">
+        <span class="avatar initials">林晓</span>
+        <div style="flex:1;min-width:0"><div style="font-size:0.8rem;font-weight:500">林 晓</div><div style="font-size:0.7rem;color:var(--text-3)">linxiao@acme.dev</div></div>
+        <button class="btn-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 15-6-6-6 6"/></svg></button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 主区域 -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div><div class="flex items-center gap-2"><span style="font-size:0.9rem;font-weight:600">Billing · Plans</span><span class="env-marker badge badge-accent mono" style="font-size:0.65rem">test</span></div></div>
+        <div class="env-switch"><button class="active" data-env="test">test</button><button data-env="live">live</button></div>
+      </div>
+      <div class="topbar-right">
+        <div style="position:relative">
+          <input data-global-search placeholder="搜索应用 / 客户 / 套餐…  ( / )" style="padding:7px 14px 7px 34px;border:1px solid var(--border);border-radius:8px;font-size:0.8rem;width:260px;background:var(--surface-2);outline:none" />
+          <svg style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--text-3)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        </div>
+        <button class="btn-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+        <span class="avatar initials" style="width:32px;height:32px">林晓</span>
+      </div>
+    </div>
+
+    <div class="page">
+      <div class="page-head">
+        <div>
+          <h1 class="page-title">套餐与定价</h1>
+          <p class="page-sub">环境 <span class="env-marker mono">test</span> · Plans / 计量指标 / 附加项 / 优惠券</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-ghost" onclick="document.getElementById('create-plan').scrollIntoView({behavior:'smooth'})">+ 新建计量指标</button>
+          <button class="btn btn-primary" onclick="document.getElementById('create-plan').scrollIntoView({behavior:'smooth'})">+ 新建套餐</button>
+        </div>
+      </div>
+
+      <!-- 主 Tab -->
+      <div class="tabs" data-tabs>
+        <button class="tab active" data-tab="plans">套餐</button>
+        <button class="tab" data-tab="metrics">计量指标</button>
+        <button class="tab" data-tab="addons">附加项</button>
+        <button class="tab" data-tab="coupons">优惠券</button>
+      </div>
+
+      <!-- 套餐列表 -->
+      <div data-pane="plans">
+        <div class="card" style="overflow:hidden;border-radius:16px">
+          <table class="table">
+            <thead><tr><th style="width:28px"><input type="checkbox" /></th><th>套餐</th><th>价格</th><th>周期</th><th>计量指标</th><th>状态</th><th>订阅数</th><th style="width:110px"></th></tr></thead>
+            <tbody>
+              <tr><td><input type="checkbox" /></td><td><div class="flex items-center gap-2"><span style="width:30px;height:30px;border-radius:8px;background:var(--accent-soft);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:600">St</span><div><strong>Starter</strong><div class="t3" style="font-size:0.7rem">小型团队</div></div></div></td><td class="mono">$29.00</td><td>月付</td><td>2</td><td><span class="badge badge-ok"><span class="dot"></span>启用</span></td><td class="mono">84</td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+              <tr><td><input type="checkbox" /></td><td><div class="flex items-center gap-2"><span style="width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#0d9488,#134e4a);color:#fff;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:600">Pr</span><div><strong>Pro</strong><div class="t3" style="font-size:0.7rem">增长团队首选</div></div></div></td><td class="mono">$249.00</td><td>月付</td><td>4</td><td><span class="badge badge-ok"><span class="dot"></span>启用</span></td><td class="mono">186</td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+              <tr><td><input type="checkbox" /></td><td><div class="flex items-center gap-2"><span style="width:30px;height:30px;border-radius:8px;background:#18181b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:600">En</span><div><strong>Enterprise</strong><div class="t3" style="font-size:0.7rem">定制 + 年付</div></div></div></td><td class="mono">$4,990.00</td><td>年付</td><td>6</td><td><span class="badge badge-ok"><span class="dot"></span>启用</span></td><td class="mono">23</td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+              <tr><td><input type="checkbox" /></td><td><div class="flex items-center gap-2"><span style="width:30px;height:30px;border-radius:8px;background:var(--surface-2);color:var(--text-3);display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:600">Le</span><div><strong>Legacy Basic</strong><div class="t3" style="font-size:0.7rem">已归档</div></div></div></td><td class="mono">$19.00</td><td>月付</td><td>1</td><td><span class="badge">已归档</span></td><td class="mono">12</td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pro 详情：子 Tab -->
+        <div class="card mt-6" style="padding:24px">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <span style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#0d9488,#134e4a);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600">Pr</span>
+              <div><div style="font-size:1.05rem;font-weight:600">Pro</div><div class="t3" style="font-size:0.75rem">plan_pro_2026 · 版本 v3</div></div>
+            </div>
+            <div class="flex gap-2"><button class="btn btn-ghost btn-sm">复制</button><button class="btn btn-ghost btn-sm">归档</button><button class="btn btn-primary btn-sm">编辑</button></div>
+          </div>
+          <div class="tabs" data-tabs>
+            <button class="tab active" data-tab="pricing">定价</button>
+            <button class="tab" data-tab="binding">计量绑定</button>
+            <button class="tab" data-tab="preview">价格预览</button>
+          </div>
+
+          <div data-pane="pricing">
+            <div class="grid-2">
+              <div class="field"><label>月费（税前）</label><input value="$249.00" /></div>
+              <div class="field"><label>币种</label><select><option>USD — 美元</option><option>EUR — 欧元</option><option>CNY — 人民币</option></select></div>
+              <div class="field"><label>计费周期</label><select><option>按月</option><option>按年</option><option>按用量</option></select></div>
+              <div class="field"><label>价格是否含税</label><select><option>不含税</option><option>含税</option></select></div>
+            </div>
+          </div>
+
+          <div data-pane="binding" style="display:none">
+            <table class="table">
+              <thead><tr><th>计量指标</th><th>事件代码</th><th>聚合方式</th><th>计费模型</th><th>用量 / 月</th><th></th></tr></thead>
+              <tbody>
+                <tr><td><strong>API 调用次数</strong></td><td class="mono">api_requests</td><td><span class="badge badge-accent">sum · 总和</span></td><td>阶梯定价</td><td class="mono">1.2M</td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+                <tr><td><strong>活跃席位</strong></td><td class="mono">active_seats</td><td><span class="badge badge-accent">count · 计数</span></td><td>按席位计价</td><td class="mono">186</td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+                <tr><td><strong>存储 GB</strong></td><td class="mono">storage_gb</td><td><span class="badge badge-accent">recurring · 累积</span></td><td>标准单价</td><td class="mono">4.2K</td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div data-pane="preview" style="display:none">
+            <div class="grid-2">
+              <div class="price-calc">
+                <div class="caption mb-4">试算器 · 模拟订单金额</div>
+                <div class="field mb-4"><label>预计月 API 调用（次）</label><input type="range" min="0" max="5000000" step="100000" value="1200000" style="width:100%" oninput="document.getElementById('calc-usage-v').textContent=Number(this.value).toLocaleString();document.getElementById('calc-total').textContent='$'+((Number(this.value)>1000000?Math.round((Number(this.value)-1000000)*0.0003*100)/100+249:249)).toFixed(2)" /></div>
+                <div class="flex justify-between mono" style="font-size:0.85rem"><span>用量：<span id="calc-usage-v">1,200,000</span></span><span>预估月费：<span id="calc-total" style="color:var(--accent-strong);font-weight:600">$309.00</span></span></div>
+              </div>
+              <div class="price-calc">
+                <div class="caption mb-4">阶梯定价表（api_requests）</div>
+                <div class="tier-row" style="font-size:0.8rem;color:var(--text-3);margin-bottom:8px"><span>区间</span><span>单价</span><span>累计</span><span></span></div>
+                <div class="tier-row" style="padding:6px 0;border-top:1px solid var(--border)"><span>0 – 100 万</span><span class="mono">$0.00</span><span class="mono">含</span><span class="badge badge-ok">免费</span></div>
+                <div class="tier-row" style="padding:6px 0;border-top:1px solid var(--border)"><span>100 万 – 500 万</span><span class="mono">$0.0003</span><span class="mono">超出计费</span><span></span></div>
+                <div class="tier-row" style="padding:6px 0;border-top:1px solid var(--border)"><span>&gt; 500 万</span><span class="mono">$0.0002</span><span class="mono">超出计费</span><span></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 计量指标 -->
+      <div data-pane="metrics" style="display:none">
+        <div class="card" style="overflow:hidden;border-radius:16px">
+          <table class="table">
+            <thead><tr><th>名称</th><th>事件代码</th><th>聚合方式</th><th>单位</th><th>被套餐引用</th><th>状态</th><th style="width:110px"></th></tr></thead>
+            <tbody>
+              <tr><td><strong>API 调用次数</strong></td><td class="mono">api_requests</td><td><span class="badge badge-accent">sum</span></td><td>次</td><td>Starter / Pro / Enterprise</td><td><span class="badge badge-ok"><span class="dot"></span>启用</span></td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+              <tr><td><strong>活跃席位</strong></td><td class="mono">active_seats</td><td><span class="badge badge-accent">count</span></td><td>席</td><td>Pro / Enterprise</td><td><span class="badge badge-ok"><span class="dot"></span>启用</span></td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+              <tr><td><strong>存储 GB</strong></td><td class="mono">storage_gb</td><td><span class="badge badge-accent">recurring</span></td><td>GB</td><td>Enterprise</td><td><span class="badge badge-ok"><span class="dot"></span>启用</span></td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+              <tr><td><strong>SSO 登录数</strong></td><td class="mono">sso_logins</td><td><span class="badge badge-accent">unique</span></td><td>次</td><td>—</td><td><span class="badge badge-warn"><span class="dot"></span>未绑定</span></td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 附加项 -->
+      <div data-pane="addons" style="display:none">
+        <div class="card" style="overflow:hidden;border-radius:16px">
+          <table class="table">
+            <thead><tr><th>名称</th><th>类型</th><th>价格</th><th>被引用套餐</th><th>状态</th><th style="width:110px"></th></tr></thead>
+            <tbody>
+              <tr><td><strong>专属客服</strong></td><td>一次性费用</td><td class="mono">$99.00</td><td>Enterprise</td><td><span class="badge badge-ok"><span class="dot"></span>启用</span></td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+              <tr><td><strong>数据导出</strong></td><td>一次性费用</td><td class="mono">$49.00</td><td>Pro / Enterprise</td><td><span class="badge badge-ok"><span class="dot"></span>启用</span></td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+              <tr><td><strong>额外存储 100GB</strong></td><td>按量</td><td class="mono">$10.00</td><td>全部</td><td><span class="badge badge-warn"><span class="dot"></span>草稿</span></td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 优惠券 -->
+      <div data-pane="coupons" style="display:none">
+        <div class="card" style="overflow:hidden;border-radius:16px">
+          <table class="table">
+            <thead><tr><th>代码</th><th>类型</th><th>折扣</th><th>有效期</th><th>已用 / 限额</th><th>状态</th><th style="width:110px"></th></tr></thead>
+            <tbody>
+              <tr><td class="mono"><strong>LAUNCH20</strong></td><td>百分比</td><td>20%</td><td>2026-01-01 → 2026-03-31</td><td class="mono">342 / 500</td><td><span class="badge badge-ok"><span class="dot"></span>生效中</span></td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+              <tr><td class="mono"><strong>YEARLY50</strong></td><td>固定金额</td><td>$50</td><td>长期</td><td class="mono">28 / ∞</td><td><span class="badge badge-ok"><span class="dot"></span>生效中</span></td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+              <tr><td class="mono"><strong>BETA_FREE</strong></td><td>百分比</td><td>100%</td><td>已过期</td><td class="mono">1,204 / 2,000</td><td><span class="badge">已过期</span></td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 新建套餐向导（5 步表单） -->
+      <div class="card mt-8" id="create-plan" style="padding:28px">
+        <div class="h3 mb-2">新建套餐向导</div>
+        <p class="t2" style="font-size:0.85rem;margin-bottom:20px">步骤 1 / 5 — 基础信息 · 之后依次为：定价与周期 → 计量绑定与阶梯 → 附加项 → 预览发布</p>
+        <div class="grid-3">
+          <div class="field"><label>套餐名称</label><input placeholder="例如：Growth" /></div>
+          <div class="field"><label>展示描述</label><input placeholder="面向成长期团队" /></div>
+          <div class="field"><label>内部代号</label><input class="mono" placeholder="plan_growth_2026" /></div>
+        </div>
+        <div class="grid-3 mt-4">
+          <div class="field"><label>基准价格</label><input class="mono" value="$99.00" /></div>
+          <div class="field"><label>计费周期</label><select><option>按月</option><option>按年</option></select></div>
+          <div class="field"><label>发布环境</label><select><option>test</option><option>live</option></select></div>
+        </div>
+        <div class="flex gap-2 mt-6">
+          <button class="btn btn-ghost">上一步</button>
+          <button class="btn btn-primary">下一步：定价与周期</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="assets/proto.js"></script>
+</body>
+</html>

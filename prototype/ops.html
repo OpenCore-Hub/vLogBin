@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Platform Ops · vLogBin</title>
+<link rel="stylesheet" href="assets/proto.css" />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<style>
+  .health-light{width:9px;height:9px;border-radius:999px;background:var(--ok);box-shadow:0 0 0 3px rgba(22,163,74,.15)}
+  .health-warn{background:var(--warn);box-shadow:0 0 0 3px rgba(217,119,6,.15)}
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <!-- P-0 运营侧边导航 -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-mark" style="background:linear-gradient(135deg,#18181b,#3f3f46)">◆</span>
+      <div><div style="font-size:0.85rem;font-weight:600">Platform Ops</div><div style="font-size:0.68rem;color:var(--text-3)">vLogBin 运营控制台</div></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-group">
+        <div class="nav-group-label">运营</div>
+        <a class="nav-item active" href="ops.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>Providers</a>
+        <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg>准入队列 <span class="badge badge-danger" style="margin-left:auto">3</span></a>
+        <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>风控中心</a>
+        <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M14.8 9.2c-.4-.9-1.3-1.5-2.8-1.5-1.8 0-3 .9-3 2.3 0 3 6 1.6 6 4.6 0 1.4-1.2 2.3-3 2.3-1.5 0-2.4-.6-2.8-1.5"/></svg>平台计费</a>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">平台</div>
+        <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>系统监控</a>
+        <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2M7 2v20M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3zm0 0v7"/></svg>内部工具</a>
+      </div>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="flex items-center gap-3" style="padding:8px 10px">
+        <span class="avatar" style="background:linear-gradient(135deg,#18181b,#3f3f46)">运</span>
+        <div style="flex:1;min-width:0"><div style="font-size:0.8rem;font-weight:500">平台运营组</div><div style="font-size:0.7rem;color:var(--text-3)">ops@vlogbin.dev</div></div>
+        <button class="btn-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 15-6-6-6 6"/></svg></button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 主区域 -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div><div class="flex items-center gap-2"><span class="health-light"></span><span style="font-size:0.9rem;font-weight:600">Providers</span><span class="badge badge-accent mono" style="font-size:0.65rem">平台 · 全部环境</span></div></div>
+      </div>
+      <div class="topbar-right">
+        <div style="position:relative">
+          <input placeholder="搜索 Provider / 组织 / 邮箱…  ( / )" style="padding:7px 14px 7px 34px;border:1px solid var(--border);border-radius:8px;font-size:0.8rem;width:280px;background:var(--surface-2);outline:none" />
+          <svg style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--text-3)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        </div>
+        <button class="btn-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+        <span class="avatar initials" style="width:32px;height:32px">运</span>
+      </div>
+    </div>
+
+    <div class="page">
+      <div class="page-head">
+        <div>
+          <h1 class="page-title">Provider 管理</h1>
+          <p class="page-sub">入驻平台的全部 SaaS Provider · 生命周期状态机 PROPOSED / ACTIVE / RESTRICTED / SUSPENDED / RETIRED</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-ghost">导出 CSV</button>
+          <button class="btn btn-primary" onclick="document.getElementById('onboard-queue').scrollIntoView({behavior:'smooth'})">处理准入队列</button>
+        </div>
+      </div>
+
+      <!-- 平台指标 -->
+      <div class="metrics">
+        <div class="metric"><div class="label">Provider 总数</div><div class="value">128</div><div class="delta delta-up">▲ 6 · 本月新增</div></div>
+        <div class="metric"><div class="label">平台 MRR（平台费）</div><div class="value">$86,420</div><div class="delta delta-up">▲ 14.2%</div></div>
+        <div class="metric"><div class="label">活跃环境</div><div class="value">214</div><div class="delta delta-up">▲ 11</div></div>
+        <div class="metric"><div class="label">待收款（平台费）</div><div class="value">$12,830</div><div class="delta delta-down">7 家逾期</div></div>
+      </div>
+
+      <!-- Provider 列表 -->
+      <div class="flex items-center gap-2 mb-4">
+        <select style="padding:7px 12px;border:1px solid var(--border-strong);border-radius:8px;font-size:0.8rem;background:var(--surface)"><option>全部状态</option><option>PROPOSED</option><option>ACTIVE</option><option>RESTRICTED</option><option>SUSPENDED</option><option>RETIRED</option></select>
+        <span class="t3" style="font-size:0.78rem;margin-left:auto">共 128 · 显示 8</span>
+      </div>
+      <div class="card" style="overflow:hidden;border-radius:16px">
+        <table class="table">
+          <thead><tr><th style="width:28px"><input type="checkbox" /></th><th>Provider</th><th>状态</th><th>环境数</th><th>客户数</th><th>平台 MRR</th><th>上次活跃</th><th style="width:140px"></th></tr></thead>
+          <tbody>
+            <tr><td><input type="checkbox" /></td><td><div class="flex items-center gap-2"><span class="avatar" style="background:linear-gradient(135deg,#0ea5e9,#155e75)">Ac</span><div><strong>Acme Cloud</strong><div class="t3" style="font-size:0.7rem">acme.dev · 2026-03 入驻</div></div></div></td><td><span class="badge badge-ok"><span class="dot"></span>ACTIVE</span></td><td class="mono">2</td><td class="mono">186</td><td class="mono">$1,240</td><td>2 分钟前</td><td class="text-right"><div class="flex gap-1 justify-end"><button class="btn btn-ghost btn-sm">详情</button><button class="btn-icon">⋯</button></div></td></tr>
+            <tr><td><input type="checkbox" /></td><td><div class="flex items-center gap-2"><span class="avatar" style="background:linear-gradient(135deg,#8b5cf6,#4c1d95)">Me</span><div><strong>Meridian Stack</strong><div class="t3" style="font-size:0.7rem">meridian.io · 2026-01 入驻</div></div></div></td><td><span class="badge badge-ok"><span class="dot"></span>ACTIVE</span></td><td class="mono">2</td><td class="mono">312</td><td class="mono">$2,480</td><td>15 分钟前</td><td class="text-right"><div class="flex gap-1 justify-end"><button class="btn btn-ghost btn-sm">详情</button><button class="btn-icon">⋯</button></div></td></tr>
+            <tr><td><input type="checkbox" /></td><td><div class="flex items-center gap-2"><span class="avatar" style="background:linear-gradient(135deg,#f59e0b,#78350f)">No</span><div><strong>Northwind Systems</strong><div class="t3" style="font-size:0.7rem">northwind.sys · 2026-04 入驻</div></div></div></td><td><span class="badge badge-warn"><span class="dot"></span>RESTRICTED</span></td><td class="mono">1</td><td class="mono">58</td><td class="mono">$310</td><td>3 天前</td><td class="text-right"><div class="flex gap-1 justify-end"><button class="btn btn-ghost btn-sm">详情</button><button class="btn-icon">⋯</button></div></td></tr>
+            <tr><td><input type="checkbox" /></td><td><div class="flex items-center gap-2"><span class="avatar" style="background:linear-gradient(135deg,#ef4444,#7f1d1d)">Du</span><div><strong>Duskware</strong><div class="t3" style="font-size:0.7rem">duskware.app · 2026-05 入驻</div></div></div></td><td><span class="badge badge-danger"><span class="dot"></span>SUSPENDED</span></td><td class="mono">1</td><td class="mono">12</td><td class="mono">$0</td><td>6 天前</td><td class="text-right"><div class="flex gap-1 justify-end"><button class="btn btn-ghost btn-sm">详情</button><button class="btn-icon">⋯</button></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 准入队列 -->
+      <div class="card mt-6" id="onboard-queue" style="padding:24px">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <div class="h3">准入队列</div>
+            <p class="t3" style="font-size:0.78rem">新注册 Provider 审核 · 通过后触发 PROPOSED → ACTIVE</p>
+          </div>
+          <span class="badge badge-danger"><span class="dot"></span>3 待审核</span>
+        </div>
+        <div class="grid-3">
+          <div class="card" style="padding:16px;box-shadow:none">
+            <div class="flex items-center gap-2 mb-3"><span class="avatar" style="background:linear-gradient(135deg,#10b981,#064e3b)">Or</span><div><div style="font-weight:600;font-size:0.9rem">Orbit Labs</div><div class="t3" style="font-size:0.72rem">orbit.dev · KYC 已提交</div></div></div>
+            <div class="flex gap-2"><button class="btn btn-primary btn-sm">通过</button><button class="btn btn-ghost btn-sm">查看资料</button><button class="btn btn-danger-soft btn-sm">拒绝</button></div>
+          </div>
+          <div class="card" style="padding:16px;box-shadow:none">
+            <div class="flex items-center gap-2 mb-3"><span class="avatar" style="background:linear-gradient(135deg,#3b82f6,#1e3a8a)">Hl</span><div><div style="font-weight:600;font-size:0.9rem">Helio Stack</div><div class="t3" style="font-size:0.72rem">helio.io · 待补 KYC</div></div></div>
+            <div class="flex gap-2"><button class="btn btn-primary btn-sm">通过</button><button class="btn btn-ghost btn-sm">查看资料</button><button class="btn btn-danger-soft btn-sm">拒绝</button></div>
+          </div>
+          <div class="card" style="padding:16px;box-shadow:none">
+            <div class="flex items-center gap-2 mb-3"><span class="avatar" style="background:linear-gradient(135deg,#ec4899,#831843)">Pn</span><div><div style="font-weight:600;font-size:0.9rem">Pulse Node</div><div class="t3" style="font-size:0.72rem">pulsenode.dev · 风控标记</div></div></div>
+            <div class="flex gap-2"><button class="btn btn-ghost btn-sm">查看资料</button><button class="btn btn-danger-soft btn-sm">拒绝</button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Acme Cloud 详情 -->
+      <div class="card mt-6" style="padding:24px">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <div class="h3">Acme Cloud 详情</div>
+            <p class="t3" style="font-size:0.78rem">运营视图 · 生命周期 / 环境 / 平台账单 / 身份与计费映射</p>
+          </div>
+          <div class="flex gap-2">
+            <button class="btn btn-ghost btn-sm">接管支持（只读）</button>
+            <button class="btn btn-danger-soft btn-sm">SUSPEND</button>
+          </div>
+        </div>
+        <div class="tabs" data-tabs>
+          <button class="tab active" data-tab="ov">概览</button>
+          <button class="tab" data-tab="env">环境</button>
+          <button class="tab" data-tab="billing">平台账单</button>
+          <button class="tab" data-tab="deep">引擎映射</button>
+        </div>
+
+        <div data-pane="ov">
+          <div class="grid-3">
+            <div class="field"><label>组织名称</label><input value="Acme Cloud" /></div>
+            <div class="field"><label>状态</label><select><option>ACTIVE</option><option>RESTRICTED</option><option>SUSPENDED</option><option>RETIRED</option></select></div>
+            <div class="field"><label>健康评分</label><input value="98 / 100" /></div>
+          </div>
+          <div class="flex items-center gap-2 mt-4" style="font-size:0.82rem;color:var(--text-2)">
+            <span>生命周期事件：</span>
+            <span class="badge badge-ok">2026-03-02 入驻</span>
+            <span class="badge badge-ok">2026-03-05 通过准入</span>
+            <span class="badge badge-ok">2026-04-01 开通 live</span>
+            <span class="badge badge-accent">2026-06-18 续费 Pro 平台套餐</span>
+          </div>
+        </div>
+
+        <div data-pane="env" style="display:none">
+          <div class="grid-2">
+            <div class="card" style="padding:16px;box-shadow:none"><div class="flex justify-between"><strong>test</strong><span class="badge badge-ok"><span class="dot"></span>健康</span></div><div class="t2 mt-2" style="font-size:0.8rem">API 调用 1.2M/月 · 事件 2.4M · 配额 62%</div></div>
+            <div class="card" style="padding:16px;box-shadow:none"><div class="flex justify-between"><strong>live</strong><span class="badge badge-ok"><span class="dot"></span>健康</span></div><div class="t2 mt-2" style="font-size:0.8rem">API 调用 8.4M/月 · 事件 14.1M · 配额 84%</div></div>
+          </div>
+        </div>
+
+        <div data-pane="billing" style="display:none">
+          <table class="table">
+            <thead><tr><th>账单号</th><th>周期</th><th>项目</th><th class="text-right">金额</th><th>支付状态</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">PB-2026-07</td><td>2026-07-01 → 07-31</td><td>Pro 平台套餐 + 超额事件费</td><td class="text-right mono">$1,240.00</td><td><span class="badge badge-ok">已支付</span></td></tr>
+              <tr><td class="mono">PB-2026-06</td><td>2026-06-01 → 06-30</td><td>Pro 平台套餐</td><td class="text-right mono">$990.00</td><td><span class="badge badge-ok">已支付</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div data-pane="deep" style="display:none">
+          <div class="grid-2">
+            <div class="card" style="padding:16px;box-shadow:none">
+              <div class="caption mb-2">身份引擎映射</div>
+              <div class="mono" style="font-size:0.8rem">ZITADEL Org: acme-cloud<br />Identity Project: prj_acme_live<br />应用数: 6 · 用户数: 1,204</div>
+            </div>
+            <div class="card" style="padding:16px;box-shadow:none">
+              <div class="caption mb-2">计费引擎映射</div>
+              <div class="mono" style="font-size:0.8rem">Lago Org: acme-commerce<br />客户数: 186 · 套餐数: 4<br />待同步事件: 0</div>
+            </div>
+          </div>
+          <div class="flex gap-2 mt-4">
+            <button class="btn btn-ghost btn-sm">→ 打开 ZITADEL Console（内部）</button>
+            <button class="btn btn-ghost btn-sm">→ 打开 Lago Front（内部）</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="assets/proto.js"></script>
+</body>
+</html>

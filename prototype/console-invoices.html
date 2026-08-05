@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Invoices · vLogBin Console</title>
+<link rel="stylesheet" href="assets/proto.css" />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;600&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+<div class="shell">
+  <!-- 侧边导航 -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-mark">v</span>
+      <div><div style="font-size:0.85rem;font-weight:600">vLogBin</div><div style="font-size:0.68rem;color:var(--text-3)">Acme Cloud · Pro</div></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-group">
+        <div class="nav-group-label">工作区</div>
+        <a class="nav-item" href="console.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>Overview</a>
+        <a class="nav-item has-sub" href="console-identity.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Identity<svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></a>
+        <div class="nav-sub" style="display:none;padding-left:16px">
+          <a class="nav-item" href="console-identity.html">Applications</a><a class="nav-item" href="#">Users</a><a class="nav-item" href="#">Policies</a>
+        </div>
+        <a class="nav-item has-sub" href="console-billing.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M14.8 9.2c-.4-.9-1.3-1.5-2.8-1.5-1.8 0-3 .9-3 2.3 0 3 6 1.6 6 4.6 0 1.4-1.2 2.3-3 2.3-1.5 0-2.4-.6-2.8-1.5"/></svg>Billing<svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></a>
+        <div class="nav-sub" style="display:block;padding-left:16px">
+          <a class="nav-item" href="console-billing.html">Dashboard</a><a class="nav-item" href="console-billing.html">Customers</a><a class="nav-item" href="console-plans.html">Plans</a><a class="nav-item active" href="console-invoices.html">Invoices</a><a class="nav-item" href="#">Integrations</a>
+        </div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">产品</div>
+        <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Catalog</a>
+        <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Environments</a>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">开发者</div>
+        <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m8 6-6 6 6 6M16 6l6 6-6 6"/></svg>Developers</a>
+        <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-9.3-5.2A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>Webhooks</a>
+        <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings</a>
+      </div>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="flex items-center gap-3" style="padding:8px 10px">
+        <span class="avatar initials">林晓</span>
+        <div style="flex:1;min-width:0"><div style="font-size:0.8rem;font-weight:500">林 晓</div><div style="font-size:0.7rem;color:var(--text-3)">linxiao@acme.dev</div></div>
+        <button class="btn-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 15-6-6-6 6"/></svg></button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 主区域 -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div><div class="flex items-center gap-2"><span style="font-size:0.9rem;font-weight:600">Billing · Invoices</span><span class="env-marker badge badge-accent mono" style="font-size:0.65rem">test</span></div></div>
+        <div class="env-switch"><button class="active" data-env="test">test</button><button data-env="live">live</button></div>
+      </div>
+      <div class="topbar-right">
+        <div style="position:relative">
+          <input data-global-search placeholder="搜索应用 / 客户 / 套餐…  ( / )" style="padding:7px 14px 7px 34px;border:1px solid var(--border);border-radius:8px;font-size:0.8rem;width:260px;background:var(--surface-2);outline:none" />
+          <svg style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--text-3)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        </div>
+        <button class="btn-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+        <span class="avatar initials" style="width:32px;height:32px">林晓</span>
+      </div>
+    </div>
+
+    <div class="page">
+      <div class="page-head">
+        <div>
+          <h1 class="page-title">发票中心</h1>
+          <p class="page-sub">环境 <span class="env-marker mono">test</span> · Invoices / 信用票据 / 收款记录</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-ghost">导出 CSV</button>
+          <button class="btn btn-primary">+ 手动开票</button>
+        </div>
+      </div>
+
+      <!-- 指标行 -->
+      <div class="metrics">
+        <div class="metric"><div class="label">本月开票金额</div><div class="value">$46,238</div><div class="delta delta-up">▲ 8.9% · 较上月</div></div>
+        <div class="metric"><div class="label">待支付</div><div class="value">$6,412</div><div class="delta delta-down">14 张逾期</div></div>
+        <div class="metric"><div class="label">本月发票数</div><div class="value">327</div><div class="delta delta-up">▲ 5.2%</div></div>
+        <div class="metric"><div class="label">退款 / 信用票据</div><div class="value">$1,890</div><div class="delta delta-down">12 张</div></div>
+      </div>
+
+      <!-- 主 Tab -->
+      <div class="tabs" data-tabs>
+        <button class="tab active" data-tab="inv">发票</button>
+        <button class="tab" data-tab="cn">信用票据</button>
+        <button class="tab" data-tab="pay">收款记录</button>
+      </div>
+
+      <!-- 发票列表 -->
+      <div data-pane="inv">
+        <div class="flex items-center gap-2 mb-4">
+          <select style="padding:7px 12px;border:1px solid var(--border-strong);border-radius:8px;font-size:0.8rem;background:var(--surface)"><option>全部状态</option><option>草稿</option><option>已定稿</option><option>已作废</option></select>
+          <select style="padding:7px 12px;border:1px solid var(--border-strong);border-radius:8px;font-size:0.8rem;background:var(--surface)"><option>全部客户</option><option>Aurora Labs</option><option>Meridian Stack</option></select>
+          <input placeholder="日期范围" style="padding:7px 12px;border:1px solid var(--border-strong);border-radius:8px;font-size:0.8rem;background:var(--surface);outline:none" />
+          <span class="t3" style="font-size:0.78rem;margin-left:auto">共 327 · 显示 8</span>
+        </div>
+        <div class="card" style="overflow:hidden;border-radius:16px">
+          <table class="table">
+            <thead><tr><th style="width:28px"><input type="checkbox" /></th><th>发票号</th><th>客户</th><th>金额</th><th>状态</th><th>支付状态</th><th>出账日</th><th style="width:110px"></th></tr></thead>
+            <tbody>
+              <tr><td><input type="checkbox" /></td><td class="mono"><strong>INV-2026-0842</strong></td><td>Aurora Labs</td><td class="mono">$249.00</td><td><span class="badge badge-accent"><span class="dot"></span>已定稿</span></td><td><span class="badge badge-ok">已支付</span></td><td>2026-07-01</td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+              <tr><td><input type="checkbox" /></td><td class="mono"><strong>INV-2026-0843</strong></td><td>Meridian Stack</td><td class="mono">$4,990.00</td><td><span class="badge badge-accent"><span class="dot"></span>已定稿</span></td><td><span class="badge badge-warn"><span class="dot"></span>待支付</span></td><td>2026-07-01</td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+              <tr><td><input type="checkbox" /></td><td class="mono"><strong>INV-2026-0844</strong></td><td>Northwind Systems</td><td class="mono">$129.00</td><td><span class="badge badge-accent"><span class="dot"></span>已定稿</span></td><td><span class="badge badge-danger">逾期 12 天</span></td><td>2026-06-20</td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+              <tr><td><input type="checkbox" /></td><td class="mono"><strong>INV-2026-0845</strong></td><td>Particle Systems</td><td class="mono">$59.00</td><td><span class="badge">草稿</span></td><td><span class="badge">未出账</span></td><td>2026-07-02</td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+              <tr><td><input type="checkbox" /></td><td class="mono"><strong>INV-2026-0836</strong></td><td>Quantum Devices</td><td class="mono">$398.00</td><td><span class="badge">已作废</span></td><td><span class="badge">—</span></td><td>2026-06-25</td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 发票详情 -->
+        <div class="card mt-6" style="padding:24px">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <div style="font-size:1.05rem;font-weight:600">INV-2026-0843 · Meridian Stack</div>
+              <div class="t3" style="font-size:0.75rem">账单周期 2026-06-01 → 2026-06-30 · Enterprise 年付 · 第 6 期</div>
+            </div>
+            <div class="flex gap-2"><button class="btn btn-ghost btn-sm">下载 PDF</button><button class="btn btn-ghost btn-sm">重发邮件</button><button class="btn btn-primary btn-sm">记录收款</button></div>
+          </div>
+          <table class="table">
+            <thead><tr><th>行项目</th><th>说明</th><th class="text-right">数量</th><th class="text-right">单价</th><th class="text-right">金额</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Enterprise 订阅</strong></td><td>年付 2026-07 → 2027-06</td><td class="text-right">1</td><td class="text-right mono">$4,990.00</td><td class="text-right mono">$4,990.00</td></tr>
+              <tr><td><strong>API 超额用量</strong></td><td>超出 500 万次部分 × $0.0002</td><td class="text-right mono">240,000</td><td class="text-right mono">$0.0002</td><td class="text-right mono">$48.00</td></tr>
+              <tr><td><strong>专属客服 Add-on</strong></td><td>一次性</td><td class="text-right">1</td><td class="text-right mono">$99.00</td><td class="text-right mono">$99.00</td></tr>
+            </tbody>
+          </table>
+          <div class="flex justify-between mt-4" style="max-width:320px;margin-left:auto;font-size:0.85rem">
+            <div>
+              <div class="flex justify-between"><span class="t2">小计</span><span class="mono">$5,137.00</span></div>
+              <div class="flex justify-between"><span class="t2">税（10%）</span><span class="mono">$513.70</span></div>
+              <div class="flex justify-between" style="font-weight:600;margin-top:6px"><span>合计</span><span class="mono">$5,650.70</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 信用票据 -->
+      <div data-pane="cn" style="display:none">
+        <div class="card" style="overflow:hidden;border-radius:16px">
+          <table class="table">
+            <thead><tr><th>票据号</th><th>关联发票</th><th>客户</th><th>金额</th><th>原因</th><th>状态</th><th style="width:110px"></th></tr></thead>
+            <tbody>
+              <tr><td class="mono"><strong>CN-2026-0112</strong></td><td class="mono">INV-2026-0798</td><td>Quantum Devices</td><td class="mono">$398.00</td><td>服务调整</td><td><span class="badge badge-ok"><span class="dot"></span>已应用</span></td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+              <tr><td class="mono"><strong>CN-2026-0113</strong></td><td class="mono">INV-2026-0812</td><td>Aurora Labs</td><td class="mono">$49.00</td><td>部分退款</td><td><span class="badge badge-ok"><span class="dot"></span>已应用</span></td><td class="text-right"><button class="btn-icon">⋯</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <button class="btn btn-primary mt-4">+ 新建信用票据</button>
+      </div>
+
+      <!-- 收款记录 -->
+      <div data-pane="pay" style="display:none">
+        <div class="card" style="overflow:hidden;border-radius:16px">
+          <table class="table">
+            <thead><tr><th>交易 ID</th><th>客户</th><th>渠道</th><th>金额</th><th>状态</th><th>失败原因</th><th>时间</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">pay_8f2k…9a1</td><td>Aurora Labs</td><td>Stripe · 卡</td><td class="mono">$249.00</td><td><span class="badge badge-ok"><span class="dot"></span>成功</span></td><td>—</td><td>2026-07-01 09:12</td></tr>
+              <tr><td class="mono">pay_8f2k…9a2</td><td>Meridian Stack</td><td>Adyen · SEPA</td><td class="mono">$5,650.70</td><td><span class="badge badge-warn"><span class="dot"></span>处理中</span></td><td>—</td><td>2026-07-01 10:03</td></tr>
+              <tr><td class="mono">pay_8f2k…9a3</td><td>Northwind Systems</td><td>Stripe · 卡</td><td class="mono">$129.00</td><td><span class="badge badge-danger">失败</span></td><td>insufficient_funds</td><td>2026-07-01 08:44</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="assets/proto.js"></script>
+</body>
+</html>
