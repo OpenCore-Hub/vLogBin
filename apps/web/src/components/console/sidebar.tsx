@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { LogoCompact } from "@/components/brand/logo";
+import { Drawer } from "@/components/ui/drawer";
 import {
   ActivityIcon,
   AppIcon,
@@ -18,7 +19,6 @@ import {
   ShieldIcon,
   UsersIcon,
   WebhookIcon,
-  XIcon,
 } from "@/components/ui/icons";
 
 type NavItem = {
@@ -157,51 +157,26 @@ export function Sidebar() {
         aria-label="打开导航菜单"
         aria-expanded={drawerOpen}
         onClick={() => setDrawerOpen(true)}
-        className="fixed left-3 top-3 z-30 inline-flex size-9 items-center justify-center rounded-md border border-border bg-surface-1 text-muted-foreground transition-colors hover:text-foreground lg:hidden"
+        className="fixed left-3 top-3 z-40 inline-flex size-9 items-center justify-center rounded-md border border-border bg-surface-1 text-muted-foreground transition-colors hover:text-foreground lg:hidden"
       >
         <MenuIcon size={18} />
       </button>
 
-      {/* 窄屏：抽屉 */}
-      {drawerOpen && (
-        <div
-          className="fixed inset-0 z-40 lg:hidden"
-          role="dialog"
-          aria-modal="true"
-          aria-label="导航菜单"
+      {/* 窄屏：抽屉（R21，选择后自动收起） */}
+      <Drawer
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        title="导航菜单"
+        description="vLogBin 控制台"
+        className="lg:hidden"
+      >
+        <nav
+          className="space-y-6 px-3 py-5"
+          onClick={() => setDrawerOpen(false)}
         >
-          <div
-            className="absolute inset-0 bg-neutral-950/45 animate-fade-in"
-            onClick={() => setDrawerOpen(false)}
-            aria-hidden="true"
-          />
-          <div className="absolute inset-y-0 left-0 flex w-64 flex-col border-r border-border bg-surface-1 shadow-lg animate-slide-up">
-            <div className="flex h-16 items-center justify-between border-b border-border px-4">
-              <Link
-                href="/console"
-                aria-label="vLogBin 控制台"
-                onClick={() => setDrawerOpen(false)}
-              >
-                <LogoCompact />
-              </Link>
-              <button
-                type="button"
-                aria-label="关闭导航菜单"
-                onClick={() => setDrawerOpen(false)}
-                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
-              >
-                <XIcon size={18} />
-              </button>
-            </div>
-            <nav
-              className="flex-1 space-y-6 overflow-y-auto px-3 py-5"
-              onClick={() => setDrawerOpen(false)}
-            >
-              <NavLinks pathname={pathname} />
-            </nav>
-          </div>
-        </div>
-      )}
+          <NavLinks pathname={pathname} />
+        </nav>
+      </Drawer>
     </>
   );
 }

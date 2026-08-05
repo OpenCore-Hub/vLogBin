@@ -10,12 +10,10 @@ import {
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Button } from "./button";
 import { Select } from "./field";
+import { Pagination } from "./pagination";
 import {
   ChevronDownIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
   SearchIcon,
   XIcon,
 } from "./icons";
@@ -325,30 +323,13 @@ export function DataTable<T>({
             <p className="text-xs text-muted-foreground">
               第 {currentPage} / {totalPages} 页
             </p>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage <= 1}
-                onClick={() =>
-                  updateParams({ page: String(currentPage - 1) }, "push")
-                }
-              >
-                <ChevronLeftIcon size={14} aria-hidden="true" />
-                上一页
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage >= totalPages}
-                onClick={() =>
-                  updateParams({ page: String(currentPage + 1) }, "push")
-                }
-              >
-                下一页
-                <ChevronRightIcon size={14} aria-hidden="true" />
-              </Button>
-            </div>
+            <Pagination
+              page={currentPage}
+              totalPages={totalPages}
+              onPageChange={(nextPage) =>
+                updateParams({ page: String(nextPage) }, "push")
+              }
+            />
           </div>
         </>
       )}

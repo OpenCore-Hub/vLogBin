@@ -12,6 +12,7 @@ import type {
 import { formatDateTime } from "@/lib/format";
 import { consoleQueryKeys, QUERY_STALE_TIME } from "@/hooks/query-keys";
 import { Button, LinkButton } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
 import { Alert, EmptyState, ErrorState } from "@/components/ui/feedback";
 import { Badge } from "@/components/ui/badge";
@@ -320,11 +321,11 @@ function ChainPanel({
 function StatsPanel({ stats }: { stats: AuditStats }) {
   return (
     <section className="grid gap-4 sm:grid-cols-3">
-      <div className="surface-premium rounded-2xl p-5">
+      <Card premium className="p-5">
         <p className="text-xs text-muted-foreground">近 7 天事件</p>
         <p className="mt-2 font-mono text-2xl font-semibold tabular-nums">{stats.total}</p>
-      </div>
-      <div className="surface-premium rounded-2xl p-5">
+      </Card>
+      <Card premium className="p-5">
         <p className="text-xs text-muted-foreground">高频动作</p>
         <div className="mt-3 space-y-1.5">
           {stats.by_action.slice(0, 3).map((row) => (
@@ -334,8 +335,8 @@ function StatsPanel({ stats }: { stats: AuditStats }) {
             </div>
           ))}
         </div>
-      </div>
-      <div className="surface-premium rounded-2xl p-5">
+      </Card>
+      <Card premium className="p-5">
         <p className="text-xs text-muted-foreground">执行者类型</p>
         <div className="mt-3 space-y-1.5">
           {stats.by_actor_type.slice(0, 3).map((row) => (
@@ -345,7 +346,7 @@ function StatsPanel({ stats }: { stats: AuditStats }) {
             </div>
           ))}
         </div>
-      </div>
+      </Card>
     </section>
   );
 }

@@ -57,4 +57,19 @@ test.describe("Console navigation", () => {
 
     await expect(page.getByRole("menuitem", { name: /退出登录/ })).toBeVisible();
   });
+
+  test("narrow viewport opens the navigation drawer and navigates", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/console");
+
+    await page.getByRole("button", { name: "打开导航菜单" }).click();
+    await expect(
+      page.getByRole("dialog", { name: "导航菜单" }),
+    ).toBeVisible();
+
+    await page.getByRole("link", { name: "运营商台" }).click();
+    await expect(page).toHaveURL("/ops");
+  });
 });

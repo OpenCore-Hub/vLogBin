@@ -109,6 +109,20 @@
     animation: vlb-slide-up 0.5s var(--ease-premium) both;
   }
 
+  @keyframes vlb-slide-in-left {
+    from {
+      opacity: 0.4;
+      transform: translateX(-100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  .animate-slide-in-left {
+    animation: vlb-slide-in-left 0.4s var(--ease-premium) both;
+  }
+
   /* 入场揭示：重感 fade-up + 轻微模糊 */
   @keyframes vlb-reveal {
     from {
