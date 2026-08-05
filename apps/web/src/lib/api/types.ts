@@ -168,6 +168,31 @@ export interface Invoice {
   environment_kind: string; // "test" | "live"
 }
 
+/** 发票行明细（Console 发票详情视图）。 */
+export interface InvoiceLine {
+  id: string;
+  lago_fee_id: string;
+  metric_code?: string;
+  item_type: string;
+  item_name: string;
+  units: string;
+  precise_unit_amount: string;
+  amount_cents: number;
+  taxes_amount_cents: number;
+  total_amount_cents: number;
+  currency: string;
+  event_transaction_id?: string;
+  from_date?: string;
+  to_date?: string;
+  created_at?: string;
+}
+
+/** 发票详情（发票 + 行明细）。 */
+export interface InvoiceDetail {
+  invoice: Invoice;
+  lines: InvoiceLine[];
+}
+
 /** Catalog 指标。 */
 export interface Metric {
   id: string;

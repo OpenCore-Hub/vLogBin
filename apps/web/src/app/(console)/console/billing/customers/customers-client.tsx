@@ -12,6 +12,7 @@ import { Field, Input, Select } from "@/components/ui/field";
 import { Dialog } from "@/components/ui/overlay";
 import { EmptyState, ErrorState, Alert, SuccessPanel } from "@/components/ui/feedback";
 import { Badge, EnvBadge } from "@/components/ui/badge";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { useEnv } from "@/components/console/env-provider";
 import {
   ArrowRightIcon,
@@ -107,54 +108,7 @@ export function CustomersClient({
           }
         />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-surface-1">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-surface-2 text-left text-xs font-medium text-muted-foreground">
-                <th className="px-4 py-3 font-medium">客户</th>
-                <th className="px-4 py-3 font-medium">类型</th>
-                <th className="px-4 py-3 font-medium">环境</th>
-                <th className="px-4 py-3 font-medium">创建时间</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {customers.map((c) => (
-                <tr key={c.id} className="transition-colors hover:bg-surface-2/60">
-                  <td className="px-4 py-3">
-                    <Link
-                      href={`/console/billing/customers/${encodeURIComponent(c.external_id)}`}
-                      prefetch={false}
-                      className="group flex items-center gap-2"
-                    >
-                      <span className="font-medium text-foreground group-hover:text-brand-700 dark:group-hover:text-brand-400">
-                        {c.display_name}
-                      </span>
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {c.external_id}
-                      </span>
-                      <ArrowRightIcon
-                        size={14}
-                        className="text-muted-foreground transition-transform group-hover:translate-x-0.5"
-                        aria-hidden="true"
-                      />
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge variant={c.account_type === "business" ? "brand" : "info"}>
-                      {c.account_type === "business" ? "企业" : "个人"}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <EnvBadge env={env} />
-                  </td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground tabular-nums">
-                    {formatDate(c.created_at)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <CustomerTable customers={customers} env={env} />
       )}
 
       {providerId && (
@@ -167,6 +121,79 @@ export function CustomersClient({
         />
       )}
     </div>
+  );
+}
+
+/* ---------------- 客户列表（DataTable + URL 筛选） ---------------- */
+function CustomerTable({
+  customers,
+  env,
+}: {
+  customers: Customer[];
+  env: Env;
+}) {
+  const columns: DataTableColumn<Customer>[] = [
+    {
+      key: "name",
+      header: "客户",
+      sortable: true,
+      sortValue: (c) => c.display_name,
+      cell: (c) => (
+        <Link
+          href={`/console/billing/customers/${encodeURIComponent(c.external_id)}`}
+          prefetch={false}
+          className="group flex items-center gap-2"
+        >
+          <span className="font-medium text-foreground group-hover:text-brand-700 dark:group-hover:text-brand-400">
+            {c.display_name}
+          </span>
+          <span className="font-mono text-xs text-muted-foreground">
+            {c.external_id}
+          </span>
+          <ArrowRightIcon
+            size={14}
+            className="text-muted-foreground transition-transform group-hover:translate-x-0.5"
+            aria-hidden="true"
+          />
+        </Link>
+      ),
+    },
+    {
+      key: "account_type",
+      header: "类型",
+      cell: (c) => (
+        <Badge variant={c.account_type === "business" ? "brand" : "info"}>
+          {c.account_type === "business" ? "企业" : "个人"}
+        </Badge>
+      ),
+    },
+    {
+      key: "environment",
+      header: "环境",
+      cell: () => <EnvBadge env={env} />,
+    },
+    {
+      key: "created_at",
+      header: "创建时间",
+      sortable: true,
+      sortValue: (c) => c.created_at ?? "",
+      cell: (c) => (
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {formatDate(c.created_at)}
+        </span>
+      ),
+    },
+  ];
+
+  return (
+    <DataTable
+      data={customers}
+      columns={columns}
+      rowKey={(c) => c.id}
+      searchKeys={(c) => [c.display_name, c.external_id, c.account_type]}
+      defaultSort={{ key: "created_at", dir: "desc" }}
+      emptyLabel="暂无客户"
+    />
   );
 }
 

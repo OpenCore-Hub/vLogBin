@@ -1,6 +1,14 @@
 import Link from "next/link";
 import { requireAuth } from "@/lib/auth/rbac";
-import { listProviders, getOverviewStats } from "@/lib/api/operator";
+import { resolveEnv } from "@/lib/env";
+import {
+  getOverviewStats,
+  listCatalogPlans,
+  listCustomers,
+  listHostedAuthApps,
+  listProviders,
+  listUsageEvents,
+} from "@/lib/api/operator";
 import type { OverviewStats, Provider } from "@/lib/api/operator";
 import { getOnboardingState, type OnboardingState } from "@/lib/onboarding";
 import { formatMoney, formatDate } from "@/lib/format";
@@ -9,6 +17,8 @@ import { LinkButton } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { AreaChart } from "@/components/charts/area-chart";
 import { BarChart } from "@/components/charts/bar-chart";
+import { DonutChart } from "@/components/charts/donut-chart";
+import { Sparkline } from "@/components/charts/sparkline";
 import {
   ArrowRightIcon,
   BoxIcon,
@@ -30,6 +40,14 @@ async function safeList<T>(fn: () => Promise<T[]>): Promise<T[]> {
   }
 }
 
+async function safeGet<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await fn();
+  } catch {
+    return fallback;
+  }
+}
+
 const EMPTY_STATS: OverviewStats = {
   published_versions: 0,
   active_subscriptions: 0,
@@ -48,9 +66,10 @@ async function safeGetOverviewStats() {
 
 export default async function ConsolePage() {
   const session = await requireAuth();
+  const env = await resolveEnv(session);
   const providers = await safeList(() => listProviders());
+  const provider = providers[0] ?? null;
 
-  let publishedVersions = 0;
   let activeSubscriptions = 0;
   let customers = 0;
   let revenueCents = 0;
@@ -58,39 +77,50 @@ export default async function ConsolePage() {
   // R29：概览统计改为单请求聚合接口（API 端 SQL 聚合），
   // 彻底消除 web 端 N+1 扇出（一次 200 请求打爆 credential 限流桶的历史问题）。
   const overview = await safeGetOverviewStats();
-  publishedVersions = overview.published_versions;
   activeSubscriptions = overview.active_subscriptions;
   customers = overview.customers;
   revenueCents = overview.revenue_cents;
 
-  const liveActiveCount = providers.filter(
-    (p) => p.lifecycle_state === "LIVE_ACTIVE",
-  ).length;
-  // 已激活（TEST_ACTIVE 及以上有效状态）即视为完成第一步；
-  // 终态 OFFBOARDING 不计入，避免完成度随下架回退。
-  const ACTIVATED_STATES = [
-    "TEST_ACTIVE",
-    "LIVE_REVIEW",
-    "LIVE_ACTIVE",
-    "RESTRICTED",
-    "SUSPENDED",
-  ];
-  const activatedProviderCount = providers.filter((p) =>
-    ACTIVATED_STATES.includes(p.lifecycle_state),
-  ).length;
-
+  // §2.2 四步引导：应用 / 套餐取当前 workspace 对应环境，客户与用量用
+  // 对应环境读取（首 provider 1:1 映射，多 workspace 切换落地后替换）。
+  let appCount = 0;
+  let planCount = 0;
+  let customerCount = 0;
+  let usageEventCount = 0;
+  if (provider) {
+    [appCount, planCount, customerCount, usageEventCount] = await Promise.all([
+      safeGet(() => listHostedAuthApps(provider.id, env), []).then(
+        (apps) => apps.length,
+      ),
+      safeGet(
+        () => listCatalogPlans(provider.id, env),
+        { plans: [], metrics: [] },
+      ).then((p) => p.plans.length),
+      safeGet(() => listCustomers(provider.id, env), []).then(
+        (cs) => cs.length,
+      ),
+      safeGet(() => listUsageEvents(provider.id), []).then(
+        (events) => events.length,
+      ),
+    ]);
+  }
   const onboarding = getOnboardingState({
-    providerCount: providers.length,
-    activatedProviderCount,
-    publishedVersionCount: publishedVersions,
-    liveActiveCount,
+    appCount,
+    planCount,
+    customerCount,
+    usageEventCount,
   });
 
   const stats = [
     { label: "Providers", value: String(providers.length), icon: <BoxIcon size={18} aria-hidden="true" /> },
     { label: "活跃订阅", value: String(activeSubscriptions), icon: <LayersIcon size={18} aria-hidden="true" /> },
     { label: "客户", value: String(customers), icon: <UsersIcon size={18} aria-hidden="true" /> },
-    { label: "账单收入", value: formatMoney(revenueCents), icon: <CreditCardIcon size={18} aria-hidden="true" /> },
+    {
+      label: "账单收入",
+      value: formatMoney(revenueCents),
+      icon: <CreditCardIcon size={18} aria-hidden="true" />,
+      spark: overview.trends.revenue,
+    },
   ];
 
   return (
@@ -121,6 +151,11 @@ export default async function ConsolePage() {
                   {s.icon}
                 </div>
                 <p className="mt-2 text-2xl font-semibold tabular-nums">{s.value}</p>
+                {"spark" in s && s.spark ? (
+                  <div className="mt-2">
+                    <Sparkline data={s.spark} height={36} format="money" />
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>
@@ -128,6 +163,8 @@ export default async function ConsolePage() {
           {/* M2：自绘 SVG 趋势图（§7.5）——收入按出票日汇总 finalized 发票，
               用量事件按入库日计数 ingestion 事件；后端已补零为连续 30 天日轴。 */}
           <TrendSection overview={overview} />
+
+          <ProviderStatusSection providers={providers} />
 
           <RecentProviders providers={providers} />
         </>
@@ -146,7 +183,7 @@ function FirstRunPanel({ onboarding }: { onboarding: OnboardingState }) {
         </div>
         <h2 className="mt-4 text-xl font-semibold tracking-tight">欢迎来到 vLogBin</h2>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          三步开启首个计费闭环：创建 Provider、发布目录版本、上线生产环境。
+          四步开启首个计费闭环：创建应用、套餐、客户并上报用量。
           全程沙箱先行，随时可在测试与生产环境间切换。
         </p>
 
@@ -158,8 +195,18 @@ function FirstRunPanel({ onboarding }: { onboarding: OnboardingState }) {
                 prefetch={false}
                 className="group flex items-start gap-3 rounded-lg border border-border bg-surface-2/60 px-4 py-3 transition-colors hover:border-brand-300 hover:bg-surface-2 dark:hover:border-brand-700"
               >
-                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-semibold text-white">
-                  {i + 1}
+                <span
+                  className={
+                    step.done
+                      ? "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-success-soft text-success"
+                      : "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-semibold text-white"
+                  }
+                >
+                  {step.done ? (
+                    <CheckIcon size={13} aria-hidden="true" />
+                  ) : (
+                    i + 1
+                  )}
                 </span>
                 <span className="min-w-0">
                   <span className="block text-sm font-medium">{step.title}</span>
@@ -189,6 +236,7 @@ function FirstRunPanel({ onboarding }: { onboarding: OnboardingState }) {
 /* ---------------- 未完成引导条 ---------------- */
 function OnboardingStrip({ onboarding }: { onboarding: OnboardingState }) {
   const doneCount = onboarding.steps.filter((s) => s.done).length;
+  const next = onboarding.steps.find((s) => !s.done) ?? onboarding.steps[0];
   return (
     <div className="rounded-xl border border-border bg-surface-1 p-4">
       <div className="flex flex-wrap items-center gap-4">
@@ -203,25 +251,51 @@ function OnboardingStrip({ onboarding }: { onboarding: OnboardingState }) {
         </div>
         <div className="flex items-center gap-2">
           {onboarding.steps.map((s) => (
-            <span
+            <Link
               key={s.id}
+              href={s.href}
+              prefetch={false}
               title={s.title}
-              className="flex h-7 w-7 items-center justify-center rounded-full border text-xs"
-              aria-hidden="true"
+              aria-label={s.title}
+              className="flex h-7 w-7 items-center justify-center rounded-full border bg-surface-1 text-xs transition-colors hover:border-brand-500 hover:text-brand-600"
             >
               {s.done ? (
                 <CheckIcon size={13} className="text-success" />
               ) : (
                 <span className="text-muted-foreground">·</span>
               )}
-            </span>
+            </Link>
           ))}
         </div>
-        <LinkButton href="/ops" variant="outline" size="sm" prefetch={false}>
-          继续配置
+        <LinkButton href={next.href} variant="outline" size="sm" prefetch={false}>
+          继续引导
         </LinkButton>
       </div>
     </div>
+  );
+}
+
+/* ---------------- Provider 状态分布（M2 图表变体） ---------------- */
+function ProviderStatusSection({ providers }: { providers: Provider[] }) {
+  const counts = providers.reduce<Record<string, number>>((acc, p) => {
+    acc[p.lifecycle_state] = (acc[p.lifecycle_state] ?? 0) + 1;
+    return acc;
+  }, {});
+  const data = Object.entries(counts).map(([label, value]) => ({ label, value }));
+
+  return (
+    <section>
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-semibold">Provider 状态分布</h2>
+      </div>
+      <div className="rounded-xl border border-border bg-surface-1 p-4">
+        <DonutChart
+          data={data}
+          centerLabel="Provider"
+          centerValue={String(providers.length)}
+        />
+      </div>
+    </section>
   );
 }
 

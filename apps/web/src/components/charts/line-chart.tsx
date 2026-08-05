@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useState } from "react";
 import type { TrendPoint } from "@/lib/api/types";
 import { formatMoney } from "@/lib/format";
 import {
@@ -17,47 +17,42 @@ import {
 } from "./chart-base";
 
 /**
- * 自绘 SVG 面积图（§7.5）：墨青渐变（brand-500 → transparent，0.25 → 0）
- * 面积 + 主色折线 + 端点圆点，hover 显示十字线 + tooltip。纯 SVG 零依赖。
+ * 自绘 SVG 折线图（§7.5）：主色折线 + 网格线 + 首/中/尾日期标签，hover 显示
+ * 十字线 + tooltip。单点数据也渲染端点圆点（客户用量等稀疏数据可见）。纯 SVG 零依赖。
  */
-export function AreaChart({
+export function LineChart({
   data,
   height = 220,
-  format = "money",
+  format = "count",
   formatDate = shortDate,
   emptyLabel = "暂无趋势数据",
 }: {
   data: TrendPoint[];
   height?: number;
-  /** 数值格式（可序列化；图表内部完成格式化）。 */
   format?: "money" | "count";
   formatDate?: (date: string) => string;
   emptyLabel?: string;
 }) {
   const { ref, width } = useMeasure<HTMLDivElement>();
-  const gradId = useId();
   const [hover, setHover] = useState<number | null>(null);
 
   const n = data.length;
-  const valid = n >= 2 && trendMax(data) > 0;
-
-  const { line, area } = useMemo(() => {
-    if (!valid || width === 0) return { line: "", area: "" };
-    const max = trendMax(data);
-    const pts = data.map((p, i) => ({
-      x: chartX(n, i, width),
-      y: chartY(p.value, max, height),
-    }));
-    const baseY = height - CHART_PAD.bottom;
-    const smooth = smoothPath(pts);
-    return {
-      line: smooth,
-      area: `${smooth} L ${pts[pts.length - 1].x.toFixed(2)} ${baseY} L ${pts[0].x.toFixed(2)} ${baseY} Z`,
-    };
-  }, [data, n, width, height, valid]);
-
+  const max = trendMax(data);
+  const valid = n > 0;
   const plotH = height - CHART_PAD.top - CHART_PAD.bottom;
   const baseY = height - CHART_PAD.bottom;
+  const formatValue = (v: number) =>
+    format === "money" ? formatMoney(v) : `${v.toLocaleString("zh-CN")} 次`;
+
+  const line =
+    valid && width > 0
+      ? smoothPath(
+          data.map((p, i) => ({
+            x: chartX(n, i, width),
+            y: chartY(p.value, max, height),
+          })),
+        )
+      : "";
 
   const handleMove = (e: React.MouseEvent<SVGRectElement>) => {
     if (!valid || width === 0) return;
@@ -71,8 +66,6 @@ export function AreaChart({
 
   const hoverP = valid && hover !== null ? data[hover] : null;
   const gridYs = [0.25, 0.5, 0.75];
-  const formatValue = (v: number) =>
-    format === "money" ? formatMoney(v) : `${v.toLocaleString("zh-CN")} 次`;
 
   return (
     <ChartFrame measureRef={ref} width={width} height={height}>
@@ -83,16 +76,9 @@ export function AreaChart({
               width={width}
               height={height}
               role="img"
-              aria-label={`趋势图（${n} 天）`}
+              aria-label={`折线图（${n} 天）`}
               className="block"
             >
-              <defs>
-                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#14b8a6" stopOpacity="0.25" />
-                  <stop offset="100%" stopColor="#14b8a6" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-
               {gridYs.map((f) => {
                 const y = CHART_PAD.top + (1 - f) * plotH;
                 return (
@@ -108,7 +94,6 @@ export function AreaChart({
                 );
               })}
 
-              {/* 首/中/尾日期标签 */}
               {[0, Math.floor((n - 1) / 2), n - 1].map((idx, k) => (
                 <text
                   key={k}
@@ -121,7 +106,6 @@ export function AreaChart({
                 </text>
               ))}
 
-              <path d={area} fill={`url(#${gradId})`} />
               <path
                 d={line}
                 fill="none"
@@ -131,7 +115,18 @@ export function AreaChart({
                 strokeLinejoin="round"
               />
 
-              {/* hover 高亮 */}
+              {data.map((p, i) => (
+                <circle
+                  key={`${p.date}-${i}`}
+                  cx={chartX(n, i, width)}
+                  cy={chartY(p.value, max, height)}
+                  r={n === 1 ? 3.5 : 2}
+                  fill="#14b8a6"
+                  className="stroke-surface-1"
+                  strokeWidth="1.5"
+                />
+              ))}
+
               {hoverP && hover !== null && (
                 <g>
                   <line
@@ -145,32 +140,14 @@ export function AreaChart({
                   />
                   <circle
                     cx={chartX(n, hover, width)}
-                    cy={chartY(hoverP.value, trendMax(data), height)}
-                    r="3.5"
+                    cy={chartY(hoverP.value, max, height)}
+                    r="4"
                     fill="#14b8a6"
                     className="stroke-surface-1"
                     strokeWidth="2"
                   />
                 </g>
               )}
-
-              {/* 端点圆点 */}
-              <circle
-                cx={chartX(n, 0, width)}
-                cy={chartY(data[0].value, trendMax(data), height)}
-                r="3"
-                fill="#14b8a6"
-                className="stroke-surface-1"
-                strokeWidth="2"
-              />
-              <circle
-                cx={chartX(n, n - 1, width)}
-                cy={chartY(data[n - 1].value, trendMax(data), height)}
-                r="3"
-                fill="#14b8a6"
-                className="stroke-surface-1"
-                strokeWidth="2"
-              />
 
               <rect
                 x={CHART_PAD.left}
@@ -187,7 +164,7 @@ export function AreaChart({
             {hoverP && hover !== null && (
               <ChartTooltip
                 left={chartX(n, hover, width)}
-                top={chartY(hoverP.value, trendMax(data), height) - 12}
+                top={chartY(hoverP.value, max, height) - 12}
               >
                 <div className="text-muted-foreground">
                   {shortDate(hoverP.date)}

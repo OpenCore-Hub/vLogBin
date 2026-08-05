@@ -30,6 +30,8 @@ import type {
   AuditEvent,
   Credential,
   Invoice,
+  InvoiceLine,
+  InvoiceDetail,
   Metric,
   Plan,
   PlanDetail,
@@ -72,6 +74,8 @@ export type {
   AuditEvent,
   Credential,
   Invoice,
+  InvoiceLine,
+  InvoiceDetail,
   Metric,
   Plan,
   PlanDetail,
@@ -534,6 +538,46 @@ function asInvoice(value: unknown): Invoice | null {
   };
 }
 
+function asInvoiceLine(value: unknown): InvoiceLine | null {
+  const rec = asRecord(value);
+  if (!rec) return null;
+  return {
+    id: typeof rec.id === "string" ? rec.id : "",
+    lago_fee_id: typeof rec.lago_fee_id === "string" ? rec.lago_fee_id : "",
+    metric_code:
+      typeof rec.metric_code === "string" ? rec.metric_code : undefined,
+    item_type: typeof rec.item_type === "string" ? rec.item_type : "",
+    item_name: typeof rec.item_name === "string" ? rec.item_name : "",
+    units: typeof rec.units === "string" ? rec.units : "",
+    precise_unit_amount:
+      typeof rec.precise_unit_amount === "string"
+        ? rec.precise_unit_amount
+        : "",
+    amount_cents: asNumber(rec.amount_cents),
+    taxes_amount_cents: asNumber(rec.taxes_amount_cents),
+    total_amount_cents: asNumber(rec.total_amount_cents),
+    currency: typeof rec.currency === "string" ? rec.currency : "",
+    event_transaction_id:
+      typeof rec.event_transaction_id === "string"
+        ? rec.event_transaction_id
+        : undefined,
+    from_date: typeof rec.from_date === "string" ? rec.from_date : undefined,
+    to_date: typeof rec.to_date === "string" ? rec.to_date : undefined,
+    created_at: typeof rec.created_at === "string" ? rec.created_at : undefined,
+  };
+}
+
+function asInvoiceDetail(value: unknown): InvoiceDetail | null {
+  const rec = asRecord(value);
+  if (!rec) return null;
+  const invoice = asInvoice(rec.invoice);
+  if (!invoice) return null;
+  const lines = Array.isArray(rec.lines)
+    ? rec.lines.map(asInvoiceLine).filter((l): l is InvoiceLine => l !== null)
+    : [];
+  return { invoice, lines };
+}
+
 function asMetric(value: unknown): Metric | null {
   const rec = asRecord(value);
   if (!rec) return null;
@@ -930,14 +974,28 @@ export async function revokeCredential(
 
 export async function listInvoices(
   providerId: string,
+  env?: "test" | "live",
 ): Promise<Invoice[]> {
+  const qs = env ? `?env=${env}` : "";
   const data = await request<{ invoices?: unknown }>(
-    `/v1/operator/providers/${encodeURIComponent(providerId)}/invoices`,
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/invoices${qs}`,
   );
   if (!Array.isArray(data.invoices)) return [];
   return data.invoices
     .map(asInvoice)
     .filter((i): i is Invoice => i !== null);
+}
+
+/** 发票详情：一次请求返回发票 + 行明细（同环境）。 */
+export async function getInvoiceDetail(
+  providerId: string,
+  env: "test" | "live",
+  invoiceId: string,
+): Promise<InvoiceDetail | null> {
+  const data = await request<Partial<InvoiceDetail>>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/invoices/${encodeURIComponent(invoiceId)}?env=${env}`,
+  );
+  return asInvoiceDetail(data);
 }
 
 function asCapability(value: unknown): Capability | null {

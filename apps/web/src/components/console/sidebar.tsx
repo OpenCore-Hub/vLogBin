@@ -8,6 +8,7 @@ import { LogoCompact } from "@/components/brand/logo";
 import {
   AppIcon,
   BoxIcon,
+  CreditCardIcon,
   HomeIcon,
   MenuIcon,
   PackageIcon,
@@ -51,6 +52,11 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
         href: "/console/billing/customers",
         label: "客户",
         icon: UsersIcon,
+      },
+      {
+        href: "/console/billing/invoices",
+        label: "账单",
+        icon: CreditCardIcon,
       },
     ],
   },

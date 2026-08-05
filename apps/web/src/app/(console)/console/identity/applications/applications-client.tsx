@@ -349,12 +349,12 @@ function CreateAppDialog({
               返回应用列表
             </Button>
             <LinkButton
-              href="/console"
+              href="/console/billing/plans"
               variant="primary"
               prefetch={false}
               onClick={() => onOpenChange(false)}
             >
-              返回概览
+              继续创建套餐
               <ArrowRightIcon size={16} aria-hidden="true" />
             </LinkButton>
           </div>

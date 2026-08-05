@@ -14,37 +14,43 @@ export interface OnboardingState {
 
 /**
  * First-Run 引导：基于真实数据推断使用进度。
- * 数据不足时引导用户完成首个价值闭环（创建 → 发布 → 上线）。
+ * §2.2 四步模型（M2 回填）：创建应用 → 创建套餐 → 创建客户 → 上报用量，
+ * 全部完成后“10 分钟上线”的计费闭环打通。
  */
 export function getOnboardingState(input: {
-  providerCount: number;
-  activatedProviderCount: number;
-  publishedVersionCount: number;
-  liveActiveCount: number;
+  appCount: number;
+  planCount: number;
+  customerCount: number;
+  usageEventCount: number;
 }): OnboardingState {
   const steps: OnboardingStep[] = [
     {
-      id: "provider",
-      title: "创建并激活 Provider",
-      description:
-        "创建服务提供商后分配区域并激活，获得测试环境与 API Key。",
-      // 已有 Provider（REGISTERED 未激活）时引导去详情页激活，否则去新建。
-      href: input.providerCount > 0 ? "/ops" : "/ops/new",
-      done: input.activatedProviderCount > 0,
+      id: "application",
+      title: "创建第一个应用",
+      description: "配置 OIDC 回调地址，为你的产品接入身份认证。",
+      href: "/console/identity/applications",
+      done: input.appCount > 0,
     },
     {
-      id: "catalog",
-      title: "发布目录版本",
-      description: "定义指标（Metrics）与套餐（Plans），形成可订阅的目录版本。",
-      href: "/ops",
-      done: input.publishedVersionCount > 0,
+      id: "plan",
+      title: "创建第一个套餐",
+      description: "定义订阅价格模型，形成可发布目录版本。",
+      href: "/console/billing/plans",
+      done: input.planCount > 0,
     },
     {
-      id: "live",
-      title: "上线生产环境",
-      description: "发起生命周期审核，将 Provider 推进至生产环境。",
-      href: "/ops",
-      done: input.liveActiveCount > 0,
+      id: "customer",
+      title: "创建第一个客户",
+      description: "创建终端客户，准备进入订阅与计费。",
+      href: "/console/billing/customers",
+      done: input.customerCount > 0,
+    },
+    {
+      id: "usage",
+      title: "上报第一条用量事件",
+      description: "通过 SDK / API 上报计量事件，打通“应用→套餐→客户→用量”闭环。",
+      href: "/console",
+      done: input.usageEventCount > 0,
     },
   ];
 

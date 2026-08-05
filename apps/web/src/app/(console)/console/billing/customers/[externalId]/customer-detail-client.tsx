@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { TabPanel, Tabs } from "@/components/ui/tabs";
 import { Badge, EnvBadge } from "@/components/ui/badge";
 import { EmptyState, ErrorState } from "@/components/ui/feedback";
+import { LineChart } from "@/components/charts/line-chart";
 import {
   ActivityIcon,
   ArrowLeftIcon,
@@ -201,6 +202,15 @@ function SubscriptionsTab({ subscriptions }: { subscriptions: Subscription[] }) 
 
 /* ---------------- 用量 ---------------- */
 function UsageTab({ events }: { events: UsageEvent[] }) {
+  const byDay = new Map<string, number>();
+  for (const e of events) {
+    const day = e.event_timestamp?.slice(0, 10);
+    if (day) byDay.set(day, (byDay.get(day) ?? 0) + 1);
+  }
+  const points = [...byDay.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, value]) => ({ date, value }));
+
   return events.length === 0 ? (
     <EmptyState
       icon={<ActivityIcon size={20} aria-hidden="true" />}
@@ -208,29 +218,39 @@ function UsageTab({ events }: { events: UsageEvent[] }) {
       description="通过 API 上报的用量事件会显示在这里。"
     />
   ) : (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border text-left text-xs font-medium text-muted-foreground">
-            <th className="px-3 py-2 font-medium">事件</th>
-            <th className="px-3 py-2 font-medium">类型</th>
-            <th className="px-3 py-2 font-medium">指标</th>
-            <th className="px-3 py-2 font-medium">事件时间</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {events.map((e) => (
-            <tr key={e.id}>
-              <td className="px-3 py-2.5 font-mono text-xs">{e.transaction_id}</td>
-              <td className="px-3 py-2.5 text-xs text-muted-foreground">{e.kind}</td>
-              <td className="px-3 py-2.5 font-mono text-xs">{e.metric_code}</td>
-              <td className="px-3 py-2.5 text-xs text-muted-foreground">
-                {formatDateTime(e.event_timestamp)}
-              </td>
+    <div className="space-y-4">
+      <div>
+        <h3 className="mb-2 text-xs font-medium text-muted-foreground">
+          用量趋势（按天）
+        </h3>
+        <div className="rounded-lg border border-border bg-surface-2/40 p-3">
+          <LineChart data={points} height={160} format="count" />
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-xs font-medium text-muted-foreground">
+              <th className="px-3 py-2 font-medium">事件</th>
+              <th className="px-3 py-2 font-medium">类型</th>
+              <th className="px-3 py-2 font-medium">指标</th>
+              <th className="px-3 py-2 font-medium">事件时间</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {events.map((e) => (
+              <tr key={e.id}>
+                <td className="px-3 py-2.5 font-mono text-xs">{e.transaction_id}</td>
+                <td className="px-3 py-2.5 text-xs text-muted-foreground">{e.kind}</td>
+                <td className="px-3 py-2.5 font-mono text-xs">{e.metric_code}</td>
+                <td className="px-3 py-2.5 text-xs text-muted-foreground">
+                  {formatDateTime(e.event_timestamp)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

@@ -23,6 +23,7 @@ import { Field, Input, Select } from "@/components/ui/field";
 import { Dialog, DropdownMenu, ConfirmDialog } from "@/components/ui/overlay";
 import { EmptyState, ErrorState, Alert, SuccessPanel } from "@/components/ui/feedback";
 import { Badge, EnvBadge } from "@/components/ui/badge";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { useEnv } from "@/components/console/env-provider";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -364,87 +365,12 @@ export function PlansClient({
           }
         />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-surface-1">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-surface-2 text-left text-xs font-medium text-muted-foreground">
-                <th className="px-4 py-3 font-medium">套餐</th>
-                <th className="px-4 py-3 font-medium">价格</th>
-                <th className="px-4 py-3 font-medium">计费周期</th>
-                <th className="px-4 py-3 font-medium">货币</th>
-                <th className="px-4 py-3 font-medium" aria-label="操作" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {collection.plans.map((detail) => (
-                <tr key={detail.plan.id} className="transition-colors hover:bg-surface-2/60">
-                  <td className="px-4 py-3">
-                    <span className="block font-medium text-foreground">
-                      {detail.plan.name}
-                    </span>
-                    <span className="block font-mono text-xs text-muted-foreground">
-                      {detail.plan.code}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="font-mono text-xs text-foreground tabular-nums">
-                      {priceSummary(detail)}
-                    </span>
-                    {detail.prices.length > 1 && (
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        +{detail.prices.length - 1} 项
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge variant="brand">
-                      {INTERVAL_LABEL[detail.plan.interval as Interval] ?? detail.plan.interval}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                    {detail.plan.currency}
-                    <EnvBadge env={env} />
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <DropdownMenu
-                      align="end"
-                      triggerLabel={`${detail.plan.name} 操作`}
-                      trigger={
-                        <span className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground">
-                          <KebabIcon size={16} />
-                        </span>
-                      }
-                      items={[
-                        {
-                          type: "item",
-                          label: (
-                            <span className="inline-flex items-center gap-2">
-                              <EditIcon size={14} aria-hidden="true" />
-                              编辑套餐
-                            </span>
-                          ),
-                          onSelect: () => setEditing(detail),
-                        },
-                        { type: "separator" },
-                        {
-                          type: "item",
-                          label: (
-                            <span className="inline-flex items-center gap-2">
-                              <TrashIcon size={14} aria-hidden="true" />
-                              删除套餐
-                            </span>
-                          ),
-                          danger: true,
-                          onSelect: () => setDeleting(detail),
-                        },
-                      ]}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <PlanTable
+          plans={collection.plans}
+          env={env}
+          onEdit={setEditing}
+          onDelete={setDeleting}
+        />
       )}
 
       {providerId && (
@@ -489,6 +415,124 @@ export function PlansClient({
         </>
       )}
     </div>
+  );
+}
+
+/* ---------------- 套餐列表（DataTable + URL 筛选） ---------------- */
+function PlanTable({
+  plans,
+  env,
+  onEdit,
+  onDelete,
+}: {
+  plans: PlanDetail[];
+  env: Env;
+  onEdit: (plan: PlanDetail) => void;
+  onDelete: (plan: PlanDetail) => void;
+}) {
+  const columns: DataTableColumn<PlanDetail>[] = [
+    {
+      key: "name",
+      header: "套餐",
+      sortable: true,
+      sortValue: (d) => d.plan.name,
+      cell: (d) => (
+        <span>
+          <span className="block font-medium text-foreground">{d.plan.name}</span>
+          <span className="block font-mono text-xs text-muted-foreground">
+            {d.plan.code}
+          </span>
+        </span>
+      ),
+    },
+    {
+      key: "price",
+      header: "价格",
+      cell: (d) => (
+        <span>
+          <span className="font-mono text-xs text-foreground tabular-nums">
+            {priceSummary(d)}
+          </span>
+          {d.prices.length > 1 && (
+            <span className="ml-2 text-xs text-muted-foreground">
+              +{d.prices.length - 1} 项
+            </span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: "interval",
+      header: "计费周期",
+      cell: (d) => (
+        <Badge variant="brand">
+          {INTERVAL_LABEL[d.plan.interval as Interval] ?? d.plan.interval}
+        </Badge>
+      ),
+    },
+    {
+      key: "currency",
+      header: "货币",
+      cell: (d) => (
+        <span>
+          <span className="font-mono text-xs text-muted-foreground">
+            {d.plan.currency}
+          </span>
+          <EnvBadge env={env} />
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "",
+      className: "text-right",
+      cell: (d) => (
+        <DropdownMenu
+          align="end"
+          triggerLabel={`${d.plan.name} 操作`}
+          trigger={
+            <span className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground">
+              <KebabIcon size={16} />
+            </span>
+          }
+          items={[
+            {
+              type: "item",
+              label: (
+                <span className="inline-flex items-center gap-2">
+                  <EditIcon size={14} aria-hidden="true" />
+                  编辑套餐
+                </span>
+              ),
+              onSelect: () => onEdit(d),
+            },
+            { type: "separator" },
+            {
+              type: "item",
+              label: (
+                <span className="inline-flex items-center gap-2">
+                  <TrashIcon size={14} aria-hidden="true" />
+                  删除套餐
+                </span>
+              ),
+              danger: true,
+              onSelect: () => onDelete(d),
+            },
+          ]}
+        />
+      ),
+    },
+  ];
+
+  return (
+    <DataTable
+      data={plans}
+      columns={columns}
+      rowKey={(d) => d.plan.id}
+      searchKeys={(d) => [d.plan.name, d.plan.code, d.plan.currency]}
+      defaultSort={{ key: "name", dir: "asc" }}
+      emptyLabel="暂无套餐"
+    />
   );
 }
 
@@ -571,12 +615,12 @@ function PlanFormDialog({
               返回套餐列表
             </Button>
             <LinkButton
-              href="/console"
+              href="/console/billing/customers"
               variant="primary"
               prefetch={false}
               onClick={() => onOpenChange(false)}
             >
-              返回概览
+              继续创建客户
               <ArrowRightIcon size={16} aria-hidden="true" />
             </LinkButton>
           </div>
