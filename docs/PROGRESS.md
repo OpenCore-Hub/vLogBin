@@ -383,7 +383,7 @@
 | M0 基座 | 目录 / tokens / 认证 / 官网 / Console 布局 / Ops 迁移 / 引导 | ✅ 已完成（静态验收，待提交） |
 | M1 控制面 API | `apps/api` 新增 Console 端点（最大前置依赖） | ✅ 已完成（候选 29-33） |
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
-| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | ⬜ 待办 |
+| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 43） |
 
 ### M0 — 基座（✅ 已完成，待提交）
 
@@ -496,9 +496,23 @@
   - 接入 Customers（名称/ID 搜索、创建时间排序、分页）、Invoices（账单号/客户搜索、金额/开票日期排序、状态筛选）、Plans（名称/代码搜索、名称排序）
   - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **37/37 全绿** ✅（新增 `14-data-table.spec.ts`：搜索 URL 化、排序回退、分页 URL 驱动）
 
-### M3 — 完善面（⬜ 待办）
+- [x] Developers：API Keys / Webhooks / Events 页面（§8 表标 M2，推进以 §9 路线图为准，依赖 M1 端点）— 候选 43
+  - API（operator 控制面，全部 `?env=test|live` 显式解析 + operator 审计 + outbox）：
+    - `GET /v1/operator/providers/{id}/credentials`（新增可选 `?env=` 单环境视图）
+    - `POST .../credentials`（创建，明文 api_key 只返回一次，未来过期时间校验）
+    - `POST .../credentials/{credentialId}/rotate`（**原子轮换**：同事务新建 + 吊销旧密钥，旧密钥立即失效）
+    - `GET .../webhooks`（新增可选 `?env=` 单环境视图；列表 **永不返回签名 secret**）
+    - `POST .../webhooks`（创建，签名 secret 只返回一次）
+    - `DELETE .../webhooks/{webhookId}`（删除，带 audit + outbox）
+    - `GET .../events`（cursor 分页事件流，payload 解码为 JSON，支持 type / aggregate_type / limit）
+  - 服务层：`operator_developers.go` —— `CreateProviderCredential` / `RotateProviderCredential` / `CreateWebhookEndpointByProvider` / `DeleteWebhookEndpointByProvider` / `StreamEventsByProvider`；凭证与 Webhook 全部 actor_type=operator + 审计 actor 可传
+  - 前端：侧边栏新增「开发者」分组；`/console/developers/api-keys`（创建 / 轮换 / 吊销，权限多选、过期可选、明文一次 + 复制）；`/console/developers/webhooks`（端点 / 投递记录两个页签，创建 / 删除 / 重放）；`/console/developers/events`（事件流筛选 + 加载更多 + payload 详情）
+  - §11：openapi.yaml 新增 `CredentialCreateInput` / `CreatedCredentialResult` / `WebhookCreateInput` / `PlatformEvent` / `PlatformEventStream` schemas + 6 处 operator paths 扩展
+  - 验证：集成测试 `operator_developers_test.go` +3（密钥生命周期 / Webhook 生命周期含 secret 不泄露 / 事件流分页+筛选）✅；Go build / vet ✅；tsc 0 错误 ✅；eslint 0 错误 ✅
 
-- [ ] Developers：API Keys / Webhooks / Events 页面（§8 表标 M2，推进以 §9 路线图为准，依赖 M1 端点）
+### M3 — 完善面（🔄 进行中）
+
+- [x] Developers：API Keys / Webhooks / Events 页面（§8 表标 M2，推进以 §9 路线图为准，依赖 M1 端点）— 候选 43
 - [ ] Settings 页面（§6.6.2 按心智分组：基础 / 安全 / 高级）
 - [ ] 运营商台增强：审核队列、风险、Cell 运维（`/ops` M3）
 - [ ] 客户门户 Portal（§8.2：账单 / 用量 / 支付；客户级 token 数据域隔离；独立客户会话）
