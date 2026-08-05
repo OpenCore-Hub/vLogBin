@@ -175,7 +175,7 @@ export function DataTable<T>({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-xl border border-border bg-surface-1",
+        "overflow-hidden rounded-2xl border border-border bg-surface-1 shadow-[var(--shadow-premium)]",
         className,
       )}
     >
@@ -264,7 +264,7 @@ export function DataTable<T>({
         <>
           <div className="max-h-[600px] overflow-auto">
             <table className="w-full text-sm">
-              <thead className="sticky top-0 z-10 bg-surface-2 shadow-[inset_0_-1px_0_theme(colors.border)]">
+              <thead className="sticky top-0 z-10 bg-surface-2/90 backdrop-blur-sm shadow-[inset_0_-1px_0_theme(colors.border)]">
                 <tr className="text-left text-xs font-medium text-muted-foreground">
                   {columns.map((col) => (
                     <th key={col.key} className="px-4 py-3 font-medium">

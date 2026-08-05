@@ -67,32 +67,32 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-dvh bg-canvas">
-      {/* 顶部导航 */}
-      <header className="sticky top-0 z-40 border-b border-border bg-canvas/85 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+      {/* 悬浮玻璃导航岛 */}
+      <header className="sticky top-0 z-40 px-4 pt-4">
+        <div className="mx-auto flex max-w-5xl items-center justify-between rounded-full border border-border bg-surface-1/85 py-2 pl-5 pr-2 shadow-[var(--shadow-premium)] backdrop-blur-md">
           <Link href="/" aria-label="vLogBin 首页">
             <Logo />
           </Link>
-          <nav className="hidden items-center gap-6 text-sm text-muted-foreground sm:flex">
-            <Link href="#features" className="transition-colors hover:text-foreground">
+          <nav className="hidden items-center gap-1 text-sm text-muted-foreground sm:flex">
+            <Link href="#features" className="rounded-full px-3 py-1.5 transition-colors hover:bg-surface-2 hover:text-foreground">
               能力
             </Link>
-            <Link href="#how" className="transition-colors hover:text-foreground">
+            <Link href="#how" className="rounded-full px-3 py-1.5 transition-colors hover:bg-surface-2 hover:text-foreground">
               工作方式
             </Link>
-            <Link href="#cta" className="transition-colors hover:text-foreground">
+            <Link href="#cta" className="rounded-full px-3 py-1.5 transition-colors hover:bg-surface-2 hover:text-foreground">
               开始使用
             </Link>
           </nav>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {session ? (
               <LinkButton href="/console">进入控制台</LinkButton>
             ) : (
               <>
-                <LinkButton href="/login" variant="ghost">
+                <LinkButton href="/login" variant="ghost" className="rounded-full px-4">
                   登录
                 </LinkButton>
-                <LinkButton href="/signup" variant="primary">
+                <LinkButton href="/signup" variant="primary" className="px-5">
                   免费开始
                 </LinkButton>
               </>
@@ -101,24 +101,24 @@ export default async function HomePage() {
         </div>
       </header>
 
-      {/* Hero */}
-      <section className="mx-auto max-w-6xl px-6 pt-20 pb-16 sm:pt-28">
-        <div className="grid items-center gap-12 lg:grid-cols-2">
-          <div className="space-y-6">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700">
+      {/* Hero：非对称编辑式布局 */}
+      <section className="mx-auto max-w-7xl px-6 pb-28 pt-24 sm:pt-32">
+        <div className="grid items-center gap-14 lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="space-y-8">
+            <span className="animate-reveal inline-flex items-center gap-2 rounded-full border border-border bg-surface-1 px-4 py-1.5 text-[11px] font-medium uppercase tracking-[0.2em] text-brand-700 shadow-[var(--shadow-sm)]">
               <TerminalIcon size={13} />
               计费即代码 · Billing as Code
             </span>
-            <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl lg:text-[3.4rem] lg:leading-[1.1]">
+            <h1 className="animate-reveal-delay-1 text-balance text-[2.75rem] font-semibold leading-[1.04] tracking-[-0.035em] text-foreground sm:text-6xl lg:text-[4.5rem]">
               用量、套餐、账单，
               <br />
-              <span className="text-brand-600">一次 API 全部搞定</span>
+              <span className="text-brand-700">一次 API 全部搞定</span>
             </h1>
-            <p className="max-w-lg text-base leading-relaxed text-muted-foreground">
+            <p className="animate-reveal-delay-2 max-w-lg text-lg leading-relaxed text-muted-foreground">
               vLogBin 为云原生服务提供计量计费基础设施：用量上报、套餐目录、
               订阅与账单自动化。开发者只关心业务，计费交给 vLogBin。
             </p>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="animate-reveal-delay-2 flex flex-wrap items-center gap-3">
               <LinkButton href="/signup" size="lg">
                 免费开始
               </LinkButton>
@@ -126,95 +126,134 @@ export default async function HomePage() {
                 查看演示
               </LinkButton>
             </div>
-            <ul className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
+            <ul className="animate-reveal-delay-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
               {["30 秒接入", "test / live 隔离", "OIDC 原生"].map((t) => (
-                <li key={t} className="flex items-center gap-1.5">
-                  <CheckIcon size={14} className="text-success" />
+                <li key={t} className="flex items-center gap-2">
+                  <span className="flex size-5 items-center justify-center rounded-full bg-success-soft">
+                    <CheckIcon size={12} className="text-success" />
+                  </span>
                   {t}
                 </li>
               ))}
             </ul>
           </div>
-          <TerminalHero />
+          <div className="animate-reveal-delay-2">
+            <TerminalHero />
+          </div>
         </div>
       </section>
 
-      {/* 能力 */}
-      <section id="features" className="border-t border-border bg-surface-1">
-        <div className="mx-auto max-w-6xl px-6 py-20">
-          <div className="mb-12 max-w-2xl">
-            <h2 className="text-2xl font-semibold text-foreground sm:text-3xl">
+      {/* 能力：非对称 Bento */}
+      <section id="features" className="relative border-t border-border bg-surface-1">
+        <div className="mx-auto max-w-7xl px-6 py-28">
+          <div className="mb-16 max-w-2xl">
+            <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+              Platform
+            </p>
+            <h2 className="text-balance text-3xl font-semibold tracking-[-0.025em] text-foreground sm:text-4xl">
               计量、计费、治理，一个平台
             </h2>
-            <p className="mt-3 text-muted-foreground">
+            <p className="mt-4 max-w-xl text-base leading-relaxed text-muted-foreground">
               从第一笔用量到年终账单，每个环节都可观测、可审计、可回滚。
             </p>
           </div>
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {FEATURES.map((f) => (
-              <div
-                key={f.title}
-                className="rounded-lg border border-border bg-surface-1 p-5 transition-shadow hover:shadow-md"
-              >
-                <span className="mb-3 inline-flex size-9 items-center justify-center rounded-md bg-brand-50 text-brand-600">
-                  {f.icon}
-                </span>
-                <h3 className="text-sm font-semibold text-foreground">
-                  {f.title}
-                </h3>
-                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                  {f.description}
-                </p>
-              </div>
-            ))}
+          <div className="grid gap-4 md:grid-cols-6">
+            {FEATURES.map((f, i) => {
+              const spans = [
+                "md:col-span-3 lg:col-span-2",
+                "md:col-span-3 lg:col-span-2",
+                "md:col-span-3 lg:col-span-1",
+                "md:col-span-3 lg:col-span-1",
+              ];
+              return (
+                <div
+                  key={f.title}
+                  className={`group rounded-2xl bg-surface-2 p-1.5 transition-transform duration-700 ease-[var(--ease-premium)] hover:-translate-y-1 ${spans[i]}`}
+                >
+                  <div className="surface-premium h-full rounded-[1.25rem] p-6">
+                    <span className="mb-5 inline-flex size-10 items-center justify-center rounded-full bg-brand-700 text-white shadow-[var(--shadow-premium)] transition-transform duration-500 ease-[var(--ease-premium)] group-hover:scale-105">
+                      {f.icon}
+                    </span>
+                    <h3 className="text-base font-semibold text-foreground">
+                      {f.title}
+                    </h3>
+                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                      {f.description}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
 
-      {/* 工作方式 */}
-      <section id="how" className="mx-auto max-w-6xl px-6 py-20">
-        <div className="mb-12 flex items-center gap-3">
-          <span className="flex size-9 items-center justify-center rounded-md bg-terminal-bg text-terminal-fg">
-            <BoxIcon size={17} />
+      {/* 工作方式：编辑式分割 */}
+      <section id="how" className="mx-auto max-w-7xl px-6 py-28">
+        <div className="mb-16 flex items-end justify-between gap-6">
+          <div>
+            <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+              Workflow
+            </p>
+            <h2 className="text-3xl font-semibold tracking-[-0.025em] text-foreground sm:text-4xl">
+              三步接入
+            </h2>
+          </div>
+          <span className="hidden size-12 items-center justify-center rounded-full bg-terminal-bg text-terminal-fg shadow-[var(--shadow-premium)] sm:flex">
+            <BoxIcon size={20} />
           </span>
-          <h2 className="text-2xl font-semibold text-foreground sm:text-3xl">
-            三步接入
-          </h2>
         </div>
-        <div className="grid gap-6 sm:grid-cols-3">
+        <div className="grid gap-5 md:grid-cols-3">
           {STEPS.map((s) => (
-            <div key={s.n} className="relative rounded-lg border border-border p-6">
-              <span className="font-mono text-sm text-brand-600">{s.n}</span>
-              <h3 className="mt-2 text-base font-semibold text-foreground">
-                {s.title}
-              </h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                {s.description}
-              </p>
+            <div key={s.n} className="group rounded-2xl bg-surface-2 p-1.5 transition-transform duration-700 ease-[var(--ease-premium)] hover:-translate-y-1">
+              <div className="surface-premium relative overflow-hidden rounded-[1.25rem] p-7">
+                <span className="pointer-events-none absolute -right-2 -top-6 font-mono text-[7rem] font-semibold leading-none text-brand-700/10">
+                  {s.n}
+                </span>
+                <span className="relative inline-flex h-8 items-center rounded-full border border-border bg-surface-2 px-3 font-mono text-xs text-brand-700">
+                  {s.n}
+                </span>
+                <h3 className="relative mt-6 text-lg font-semibold text-foreground">
+                  {s.title}
+                </h3>
+                <p className="relative mt-2 text-sm leading-relaxed text-muted-foreground">
+                  {s.description}
+                </p>
+              </div>
             </div>
           ))}
         </div>
       </section>
 
       {/* CTA */}
-      <section id="cta" className="border-t border-border bg-terminal-bg">
-        <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 px-6 py-20 text-center">
-          <GlobeIcon size={28} className="text-terminal-dim" />
-          <h2 className="max-w-2xl text-2xl font-semibold text-terminal-fg sm:text-3xl">
-            开始你的第一个计费闭环
-          </h2>
-          <p className="max-w-xl text-sm text-terminal-muted">
-            无需信用卡。注册后即可获得隔离的 test 环境，30 秒完成首次用量上报。
-          </p>
-          <LinkButton href="/signup" size="lg" className="bg-terminal-fg text-terminal-bg hover:bg-terminal-fg/90">
-            创建工作空间
-          </LinkButton>
+      <section id="cta" className="px-4 pb-28">
+        <div className="mx-auto max-w-7xl">
+          <div className="relative overflow-hidden rounded-2xl bg-terminal-bg p-1.5 shadow-[0_32px_96px_-32px_rgba(0,0,0,0.55)] ring-1 ring-white/10">
+            <div className="flex flex-col items-center gap-6 rounded-2xl border border-white/10 bg-terminal-bg px-6 py-20 text-center">
+              <span className="flex size-14 items-center justify-center rounded-full bg-white/5 text-terminal-fg ring-1 ring-white/10">
+                <GlobeIcon size={24} />
+              </span>
+              <h2 className="max-w-2xl text-balance text-3xl font-semibold tracking-[-0.02em] text-terminal-fg sm:text-4xl">
+                开始你的第一个计费闭环
+              </h2>
+              <p className="max-w-xl text-base text-terminal-muted">
+                无需信用卡。注册后即可获得隔离的 test 环境，30 秒完成首次用量上报。
+              </p>
+              <LinkButton
+                href="/signup"
+                size="lg"
+                className="rounded-full bg-terminal-fg px-7 text-terminal-bg shadow-[0_12px_40px_-12px_rgba(94,234,212,0.55)] hover:bg-white"
+              >
+                创建工作空间
+              </LinkButton>
+            </div>
+          </div>
         </div>
       </section>
 
       {/* 页脚 */}
       <footer className="border-t border-border bg-surface-1">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-8 sm:flex-row">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-6 py-10 sm:flex-row">
           <Logo size={18} />
           <p className="text-xs text-muted-foreground">
             © {new Date().getFullYear()} vLogBin · Billing as Code

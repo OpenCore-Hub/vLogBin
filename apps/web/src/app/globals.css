@@ -17,6 +17,17 @@
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 
+  /* 细颗粒质感：固定叠加，不随滚动容器重绘 */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+  }
+
   ::selection {
     background-color: var(--brand-500);
     color: #ffffff;
@@ -47,8 +58,8 @@
 
   /* 焦点可见性：统一品牌色 ring */
   :focus-visible {
-    outline: 2px solid var(--ring);
-    outline-offset: 2px;
+    outline: 2px solid color-mix(in srgb, var(--ring) 72%, transparent);
+    outline-offset: 3px;
   }
 
   /* 骨架屏闪烁 */
@@ -68,7 +79,7 @@
       var(--surface-2) 75%
     );
     background-size: 800px 100%;
-    animation: vlb-shimmer 1.4s ease-in-out infinite;
+    animation: vlb-shimmer 1.8s var(--ease-premium) infinite;
   }
 
   /* 弹入 */
@@ -81,7 +92,7 @@
     }
   }
   .animate-fade-in {
-    animation: vlb-fade-in 0.18s ease-out both;
+    animation: vlb-fade-in 0.4s var(--ease-premium) both;
   }
 
   @keyframes vlb-slide-up {
@@ -95,7 +106,57 @@
     }
   }
   .animate-slide-up {
-    animation: vlb-slide-up 0.22s ease-out both;
+    animation: vlb-slide-up 0.5s var(--ease-premium) both;
+  }
+
+  /* 入场揭示：重感 fade-up + 轻微模糊 */
+  @keyframes vlb-reveal {
+    from {
+      opacity: 0;
+      transform: translateY(28px) scale(0.985);
+      filter: blur(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+  }
+  .animate-reveal {
+    animation: vlb-reveal 0.8s var(--ease-premium) both;
+  }
+  .animate-reveal-delay-1 {
+    animation: vlb-reveal 0.8s 0.1s var(--ease-premium) both;
+  }
+  .animate-reveal-delay-2 {
+    animation: vlb-reveal 0.8s 0.2s var(--ease-premium) both;
+  }
+  .animate-reveal-delay-3 {
+    animation: vlb-reveal 0.8s 0.3s var(--ease-premium) both;
+  }
+
+  /* 高端面板：内高光 + 低饱和品牌投影 */
+  .surface-premium {
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--surface-1) 94%, transparent), var(--surface-1)),
+      var(--surface-1);
+    box-shadow: var(--shadow-premium), var(--shadow-inset-highlight);
+    border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  }
+
+  /* 磁性按钮按压反馈 */
+  .pressable {
+    transition:
+      transform 0.5s var(--ease-premium),
+      box-shadow 0.5s var(--ease-premium),
+      background-color 0.35s var(--ease-premium),
+      color 0.35s var(--ease-premium);
+  }
+  .pressable:hover {
+    transform: translateY(-1px);
+  }
+  .pressable:active {
+    transform: translateY(0) scale(0.98);
   }
 
   /* 终端光标闪烁 */

@@ -46,7 +46,7 @@ export default async function LoginPage({
       <main className="flex flex-1 items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm">
           <div className="mb-8 flex flex-col items-center gap-3 text-center">
-            <span className="flex size-12 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+            <span className="flex size-14 items-center justify-center rounded-2xl bg-brand-700 text-white shadow-[var(--shadow-premium)]">
               <LockIcon size={22} />
             </span>
             <div>

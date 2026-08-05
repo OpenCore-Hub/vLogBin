@@ -73,7 +73,7 @@ export function Topbar({ user }: { user: TopbarUser }) {
   );
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-border bg-canvas/85 pl-12 pr-4 backdrop-blur sm:pr-6 lg:pl-6">
+    <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-border bg-canvas/80 pl-12 pr-4 shadow-[var(--shadow-sm)] backdrop-blur-md sm:pr-6 lg:pl-6">
       <div className="flex items-center gap-2">
         {/* 窄屏常驻环境徽标（R21：live 徽标仍常驻可见） */}
         <span

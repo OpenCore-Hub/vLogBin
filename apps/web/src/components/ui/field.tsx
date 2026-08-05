@@ -27,10 +27,11 @@ export function Label({
 }
 
 const CONTROL_BASE = cn(
-  "w-full rounded-md border border-border bg-surface-1 px-3 text-sm text-foreground",
+  "w-full rounded-xl border border-border bg-surface-1 px-3 text-sm text-foreground",
   "placeholder:text-muted-foreground/70",
-  "transition-colors duration-150",
-  "focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30",
+  "shadow-[var(--shadow-inset-highlight)]",
+  "transition-all duration-300 ease-[var(--ease-premium)]",
+  "focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:shadow-[var(--shadow-premium)]",
   "disabled:cursor-not-allowed disabled:opacity-55",
 );
 

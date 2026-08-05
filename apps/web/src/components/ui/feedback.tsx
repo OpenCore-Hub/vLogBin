@@ -58,7 +58,7 @@ export function Alert({
     <div
       role="alert"
       className={cn(
-        "flex items-start gap-2.5 rounded-lg border px-3.5 py-3 text-sm animate-fade-in",
+        "flex items-start gap-2.5 rounded-2xl border px-4 py-3.5 text-sm animate-fade-in shadow-[var(--shadow-sm)]",
         styles.wrap,
         className,
       )}
@@ -89,7 +89,7 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center rounded-xl border border-dashed border-border-strong px-6 py-12 text-center",
+        "surface-premium flex flex-col items-center justify-center rounded-2xl border border-dashed border-border-strong px-6 py-14 text-center",
         className,
       )}
     >
@@ -144,7 +144,7 @@ export function SuccessPanel({
   return (
     <div
       className={cn(
-        "rounded-xl border border-success/25 bg-success-soft p-4 animate-fade-in",
+        "rounded-2xl border border-success/25 bg-success-soft p-4 animate-fade-in shadow-[var(--shadow-inset-highlight)]",
         className,
       )}
     >

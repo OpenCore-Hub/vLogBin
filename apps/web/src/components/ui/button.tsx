@@ -21,11 +21,11 @@ export type ButtonSize = "sm" | "md" | "lg" | "icon";
 
 const VARIANTS: Record<ButtonVariant, string> = {
   primary:
-    "bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800 shadow-sm",
+    "bg-brand-700 text-white hover:bg-brand-800 shadow-[var(--shadow-premium)]",
   secondary:
-    "bg-surface-1 text-foreground border border-border hover:bg-surface-2 active:bg-surface-3 shadow-sm",
+    "bg-surface-1 text-foreground border border-border hover:bg-surface-2 shadow-[var(--shadow-inset-highlight)]",
   outline:
-    "bg-transparent text-foreground border border-border-strong hover:border-brand-500 hover:text-brand-600",
+    "bg-transparent text-foreground border border-border-strong hover:border-brand-500 hover:text-brand-700 hover:bg-brand-50/40",
   ghost: "bg-transparent text-muted-foreground hover:bg-surface-2 hover:text-foreground",
   danger: "bg-danger text-white hover:bg-danger/90 active:bg-danger/80 shadow-sm",
   "danger-outline":
@@ -41,8 +41,8 @@ const SIZES: Record<ButtonSize, string> = {
 
 function baseClasses(variant: ButtonVariant, size: ButtonSize) {
   return cn(
-    "inline-flex shrink-0 items-center justify-center rounded-md font-medium",
-    "transition-colors duration-150 select-none whitespace-nowrap",
+    "inline-flex shrink-0 items-center justify-center rounded-full font-medium",
+    "pressable select-none whitespace-nowrap will-change-transform",
     "disabled:pointer-events-none disabled:opacity-55",
     VARIANTS[variant],
     SIZES[size],

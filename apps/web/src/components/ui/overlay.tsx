@@ -66,7 +66,7 @@ export function Dialog({
         aria-labelledby="vlb-dialog-title"
         tabIndex={-1}
         className={cn(
-          "relative z-10 w-full rounded-xl border border-border bg-surface-1 shadow-lg outline-none animate-slide-up",
+          "surface-premium relative z-10 w-full rounded-2xl outline-none animate-slide-up",
           sizes[size],
         )}
       >

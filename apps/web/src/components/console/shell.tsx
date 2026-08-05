@@ -25,7 +25,7 @@ export function AppShell({
       <div className="flex min-h-dvh flex-col lg:pl-60">
         <EnvProvider initialEnv={env} onChange={onEnvChange}>
           <Topbar user={user} />
-          <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
+          <main className="mx-auto w-full max-w-7xl flex-1 px-5 py-9 sm:px-8">
             {children}
           </main>
         </EnvProvider>

@@ -17,7 +17,7 @@ export function PortalLoginClient({ initialToken = "" }: { initialToken?: string
         <div className="flex justify-center">
           <LogoCompact />
         </div>
-        <div className="rounded-xl border border-border bg-surface-1 p-6">
+        <div className="surface-premium rounded-2xl p-7">
           <h1 className="text-xl font-semibold tracking-tight">客户门户</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             使用邀请链接中的 Token 登录，仅可查看自己的账单与用量。
