@@ -371,6 +371,7 @@
 | 4 步引导回填（M2 第 7 项） | §2.2 四步模型端到端：`lib/onboarding.ts` 从 3 步（Provider→发布→上线）改为 4 步（应用→套餐→客户→用量），基于当前 workspace 真实数据推断进度；Overview FirstRunPanel 文案/步骤更新，OnboardingStrip 步骤改为可点击链接 + 「继续引导」指向首个未完成步骤；创建应用/套餐成功面板双出口改为指向下一步（套餐/客户） | ✅ 已完成（候选 40） |
 | 环境隔离端到端（M2 第 8 项） | test/live 隔离闭环验证：新增 `environmentHeaderMiddleware` 强制 `X-Environment` 契约（可选头，但传入必须匹配 API Key 绑定环境，否则 `400 environment_mismatch`）；集成测试覆盖「test 建套餐/客户/订阅/用量 → live 不可见 → live 可复用同 external_id → operator 控制面 ?env= 隔离」；E2E 通过 Console 环境切换器验证 Plans/Customers 数据互不可见；openapi 文档补充 Environment Isolation 契约 | ✅ 已完成（候选 41） |
 | DataTable + URL 筛选（M2 第 9 项） | 通用 `components/ui/data-table.tsx`（§7.4 / R16）：sticky 表头、行 hover、搜索/排序/分页/每页条数/可选状态筛选全部 URL 化（`?q=&sort=&dir=&page=&pageSize=&status=`），搜索 replace 防抖、离散操作 push 可回退；接入 Customers（搜索/排序/分页）、Invoices（状态筛选）、Plans（搜索/排序）；数值列右对齐 mono + tabular-nums | ✅ 已完成（候选 42） |
+| React Query 缓存 + hooks 扩充 | `@tanstack/react-query` 客户端缓存（全局 QueryClient + staleTime：事件流 30s / 审计 60s）；事件流与审计日志改用 `useInfiniteQuery`（keyset 分页 + keepPreviousData + RSC 首屏数据作 initialData）；`hooks/use-action-feedback.ts` 统一 useActionState 成功/失败回调与 toast，并落地到 API Key 吊销 / Webhook 删除与重放 | ✅ 已完成（候选 49） |
 
 ## 四、Web 前端重构任务追踪（设计基线 v1.4）
 
@@ -383,7 +384,7 @@
 | M0 基座 | 目录 / tokens / 认证 / 官网 / Console 布局 / Ops 迁移 / 引导 | ✅ 已完成（静态验收，待提交） |
 | M1 控制面 API | `apps/api` 新增 Console 端点（最大前置依赖） | ✅ 已完成（候选 29-33） |
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
-| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 48） |
+| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 49） |
 
 ### M0 — 基座（✅ 已完成，待提交）
 
@@ -556,8 +557,13 @@
 - [x] 客户门户 Portal（§8.2：账单 / 用量 / 支付；客户级 token 数据域隔离；独立客户会话）— 候选 46
 - [x] 全球视觉天花板：去模版化 + 高端质感 + 品牌动效 — 候选 47
 - [x] E2E 全量 + 暗色主题打磨 + 审计日志前端 — 候选 48
-- [ ] E2E 全量 + 暗色主题打磨 + 审计日志前端
-- [ ] 客户端 React Query 缓存（staleTime）+ `hooks/` 扩充（useActionState 封装）
+- [x] 客户端 React Query 缓存（staleTime）+ `hooks/` 扩充（useActionState 封装）— 候选 49
+  - `components/query-provider.tsx`：全局 QueryClient（staleTime 30s / gcTime 5min / retry 1 / refetchOnWindowFocus false）
+  - `hooks/query-keys.ts`：统一 console 查询键与 staleTime（事件流 30s、审计 60s）
+  - `hooks/use-action-feedback.ts`：useActionState 统一成功/失败回调 + 可选 toast；接入 API Key 吊销、Webhook 删除与重放
+  - 事件流 / 审计日志迁移到 `useInfiniteQuery`：keyset 分页、加载更多、筛选自动重取、切换筛选时 `keepPreviousData` 保底，RSC 首屏数据作为 `initialData` 避免白闪
+  - Server Action 查询桥改为对象入参 + zod 校验（`queryEventStreamAction` / `queryAuditPageAction`）
+  - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **47/47 全绿** ✅
 
 ### 技术债 / 结构偏差（M0 遗留，随里程碑消化）
 
