@@ -375,6 +375,7 @@
 | 交互体验与技术债收敛 | 环境切换成功/失败 toast + 失败回滚；First-Run 引导「跳过/恢复」入口（cookie 持久化，R18）；`ApiKeyCallout` 迁移到 token 色 + 中文品牌语音 + 复制反馈；API Key 创建/轮换未复制即关闭给一次性提醒 | ✅ 已完成（候选 50） |
 | lib 目录化（env/utils/validate） | `lib/env/`（shared/server/index）+ 根 `env-shared.ts` barrel；`lib/utils/`（index + format）+ 根 `format.ts` barrel；schemas 迁至 `lib/validate/` 并全量更新导入，删除 `lib/api/schemas.ts` | ✅ 已完成（候选 51） |
 | UI 组件补齐（Card/Drawer/Pagination） | 新增 `Card` 家族（CardHeader/Title/Content/Footer）、`Drawer`（Esc 关闭 + 焦点管理 + 滚动锁 + 左右侧开）、`Pagination`（页码 + 省略号 + URL 驱动）；接入审计统计卡 / 窄屏侧边栏 / DataTable 分页；修复移动端汉堡按钮被顶栏遮挡的 z-index 问题 | ✅ 已完成（候选 52） |
+| Policies 控制面 | M1 候选 31 的前端落地：operator 3 端点（list/set/delete plan entitlements，`?env=` 显式解析）+ openapi 3 paths；前端 `/console/identity/policies` 套餐选择 + 权益 CRUD + live/删除 type-to-confirm；集成测试 `operator_catalog_policies_test.go` + E2E `20-policies.spec.ts` | ✅ 已完成（候选 53） |
 
 ## 四、Web 前端重构任务追踪（设计基线 v1.4）
 
@@ -387,7 +388,7 @@
 | M0 基座 | 目录 / tokens / 认证 / 官网 / Console 布局 / Ops 迁移 / 引导 | ✅ 已完成（静态验收，待提交） |
 | M1 控制面 API | `apps/api` 新增 Console 端点（最大前置依赖） | ✅ 已完成（候选 29-33） |
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
-| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 52） |
+| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 53） |
 
 ### M0 — 基座（✅ 已完成，待提交）
 
@@ -584,6 +585,13 @@
   - `components/ui/pagination.tsx`：上一页/下一页 + 页码 + 省略号；接入 DataTable 分页脚，URL 契约不变
   - Sidebar 窄屏抽屉改用 Drawer；审计统计卡改用 Card；修复移动端汉堡按钮 z-index
   - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **48/48 全绿** ✅（新增窄屏抽屉用例）
+- [x] Policies 控制面 — 候选 53
+  - API：`GET/PUT/DELETE /v1/operator/providers/{id}/catalog/plans/{code}/entitlements[/{key}]?env=`，operator 会话上下文复用现有 service，不新增业务逻辑
+  - openapi：新增 2 个 operator paths（list / set+delete），引用完整性通过（63 paths / 74 schemas，missing=[]）
+  - 前端：`/console/identity/policies` 套餐选择、权益 CRUD、boolean/numeric/period 值表单、删除 type-to-confirm；React Query 缓存与 mutation 失效；侧边栏新增 Policies
+  - 集成测试：`TestOperatorCatalogPoliciesLifecycle`（list → upsert → immutable key 400 → delete → 404 → 环境校验）
+  - E2E：`20-policies.spec.ts`（种子权益 → 添加 → 编辑 → 删除）
+  - 验证：Go build/vet ✅；相关集成回归全绿 ✅；tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright 全量 48/49 + Portal 单跑通过（唯一失败为登录 429 限流偶发，非代码回归）
 
 ### 技术债 / 结构偏差（M0 遗留，随里程碑消化）
 
