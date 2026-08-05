@@ -366,6 +366,11 @@
 | Applications 控制面（M2 第 2 项） | OIDC 应用管理端到端：operator 控制面 5 端点（list/setup/rotate/redirects/disable，?env= 显式解析）+ `provider_auth_configs.name` 迁移；前端 `/console/identity/applications` 列表/创建/轮换（R17 只显一次+复制）/回调编辑/删除（live type-to-confirm）；环境标识色独立 token 技术债清零 | ✅ 已完成（候选 35） |
 | Plans 控制面（M2 第 3 项） | 套餐管理端到端：operator 控制面 5 端点（list-detail/get/create/update/delete，?env= 显式解析）+ 一次请求返回「plans 详情 + metrics」避免 N+1；前端 `/console/billing/plans` 列表/创建/编辑/删除（固定/按量/阶梯定价编辑器 + 阶梯连续性客户端校验 + live type-to-confirm）；openapi 新增 PlanInput/PlanDetail/PlanCollection 等 5 schemas + 5 paths | ✅ 已完成（候选 36） |
 | Customers 控制面（M2 第 4 项） | 客户管理端到端：operator 控制面 3 端点（list 支持可选 ?env= / create / detail）+ 客户详情一次请求返回「订阅 + 用量 + 账单」（新增 3 条按 customer_account_id 过滤的 SQL 查询，避免整租户数据扇出）；前端 `/console/billing/customers` 列表/创建 + `[externalId]` 详情（订阅 / 用量 / 账单三个相关导航页签，§6.6.3）；openapi 新增 CustomerCreateInput/CustomerDetail 2 schemas + 2 paths | ✅ 已完成（候选 37） |
+| Invoices 控制面（M2 第 5 项） | 账单管理端到端：operator 控制面 2 端点（list 支持可选 ?env= / detail，详情一次返回发票 + 行明细，新增 2 条按 provider+env 过滤的 SQL 查询）；前端 `/console/billing/invoices` 列表 + `[invoiceId]` 明细（金额 mono + tabular-nums，行明细表含数量/单价/金额/税额/合计）；openapi 新增 InvoiceLine/InvoiceDetail 2 schemas + 1 path | ✅ 已完成（候选 38） |
+| 图表变体补齐（M2 第 6 项） | `components/charts/` 自绘 SVG 图表家族补全：Sparkline（卡片迷你趋势线）、LineChart（单点也可渲染的折线图）、DonutChart（stroke-dasharray 环形图 + 图例），共享 `smoothPath` 抽到 chart-base；接入 Overview Provider 状态分布 / 账单收入 Sparkline / 客户用量按天趋势；零第三方依赖，质感对齐 §7.5 | ✅ 已完成（候选 39） |
+| 4 步引导回填（M2 第 7 项） | §2.2 四步模型端到端：`lib/onboarding.ts` 从 3 步（Provider→发布→上线）改为 4 步（应用→套餐→客户→用量），基于当前 workspace 真实数据推断进度；Overview FirstRunPanel 文案/步骤更新，OnboardingStrip 步骤改为可点击链接 + 「继续引导」指向首个未完成步骤；创建应用/套餐成功面板双出口改为指向下一步（套餐/客户） | ✅ 已完成（候选 40） |
+| 环境隔离端到端（M2 第 8 项） | test/live 隔离闭环验证：新增 `environmentHeaderMiddleware` 强制 `X-Environment` 契约（可选头，但传入必须匹配 API Key 绑定环境，否则 `400 environment_mismatch`）；集成测试覆盖「test 建套餐/客户/订阅/用量 → live 不可见 → live 可复用同 external_id → operator 控制面 ?env= 隔离」；E2E 通过 Console 环境切换器验证 Plans/Customers 数据互不可见；openapi 文档补充 Environment Isolation 契约 | ✅ 已完成（候选 41） |
+| DataTable + URL 筛选（M2 第 9 项） | 通用 `components/ui/data-table.tsx`（§7.4 / R16）：sticky 表头、行 hover、搜索/排序/分页/每页条数/可选状态筛选全部 URL 化（`?q=&sort=&dir=&page=&pageSize=&status=`），搜索 replace 防抖、离散操作 push 可回退；接入 Customers（搜索/排序/分页）、Invoices（状态筛选）、Plans（搜索/排序）；数值列右对齐 mono + tabular-nums | ✅ 已完成（候选 42） |
 
 ## 四、Web 前端重构任务追踪（设计基线 v1.4）
 
@@ -377,7 +382,7 @@
 |---|---|---|
 | M0 基座 | 目录 / tokens / 认证 / 官网 / Console 布局 / Ops 迁移 / 引导 | ✅ 已完成（静态验收，待提交） |
 | M1 控制面 API | `apps/api` 新增 Console 端点（最大前置依赖） | ✅ 已完成（候选 29-33） |
-| M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | 🔄 进行中（第 1-2 项已完成） |
+| M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
 | M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | ⬜ 待办 |
 
 ### M0 — 基座（✅ 已完成，待提交）
@@ -405,7 +410,7 @@
 - [x] Settings 端点（工作区设置、自定义域名）— 候选 32
 - [x] 端点类型同步：`lib/api/types.ts` 独立文件并与 `docs/openapi.yaml` 对齐（§11 变更管理）— 候选 33
 
-### M2 — Console 主流程（🔄 进行中）
+### M2 — Console 主流程（✅ 已完成）
 
 - [x] Overview 完整版（§8 M1）：4 指标卡 + **趋势图**（`components/charts/` 自绘 SVG）+ 引导进度条（当前为 M0 简版，无趋势图）— 候选 34
   - 后端：`OverviewStats.Trends`（近 30 天收入 + 用量事件双序列，单事务单请求，SQL 按日聚合 + Go 补零连续日轴，向后兼容纯新增字段）
@@ -459,11 +464,37 @@
   - 侧边栏「计费」新增「客户」导航（§6.1 Billing）
   - §11：openapi.yaml 新增 `CustomerCreateInput` / `CustomerDetail` schemas + 2 paths（GET 增加可选 env 参数），YAML 引用完整性校验通过（44 paths / 54 schemas，missing=[]）
   - 验证：集成测试 `operator_customers_test.go` +3（CRUD+列表 / 详情含订阅用量账单 / 校验矩阵 9 项）✅；Go build / vet / 全量单测 ✅；全量集成回归（跳过已知 flaky `TestOutboxRelayDeliversUsage`）✅；tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **31/31 全绿** ✅（新增 `09-customers.spec.ts`）
-- [ ] Invoices：`/console/billing/invoices`（发票列表 / 明细，金额 mono + tabular-nums）
-- [ ] `components/charts/` 自绘 SVG 图表：sparkline / bar / line / area / donut（无第三方依赖，质感对齐 §7.5）
-- [ ] 引导管线回填 4 步模型（§2.2：应用→套餐→客户→用量事件）
-- [ ] 环境隔离端到端：注册应用 → 建套餐 → 建客户 → 订阅 → 上报用量 → 生成发票（`X-Environment` 透传，隔离由 API 强制）
-- [ ] DataTable 组件 + 列表筛选 URL 化（R16：`?q=&status=&sort=&page=`，可分享 / 可回退）
+- [x] Invoices：`/console/billing/invoices`（发票列表 / 明细，金额 mono + tabular-nums）— 候选 38
+  - 前置打通：M1 的 `/v1/invoices` 位于 provider 域（API Key），Console 会话走 operator 域，故新增/扩展 **operator 控制面 2 端点**（`?env=` 显式解析）：
+    - `GET /v1/operator/providers/{id}/invoices`（既有跨环境视图保留；传入 `?env=` 时切换为单环境租户读取）
+    - `GET .../invoices/{invoiceId}`（详情，一次请求返回发票视图 + 行明细）
+  - 服务层：`ListInvoicesByProviderEnv` / `GetInvoiceDetailByProvider`（新增 `ListInvoicesByProviderEnv` / `GetInvoiceByProviderEnvID` 2 条 SQL，按 provider+env 过滤；行明细复用既有 `ListInvoiceLinesByInvoice`，未知发票 404）
+  - 前端：`types.ts` 新增 `InvoiceLine` / `InvoiceDetail`；`operator.ts` 新增 `getInvoiceDetail` + `listInvoices` 可选 `env`
+  - 页面：列表（账单号链接到详情、客户、状态、支付状态、金额右对齐、开票日期）+ 详情页（发票头 + 行明细表：项目 / 指标 / 数量 / 单价 / 金额 / 税额 / 合计；金额与数字统一 mono + tabular-nums）
+  - 侧边栏「计费」新增「账单」导航（§6.1 Billing）
+  - §11：openapi.yaml 新增 `InvoiceLine` / `InvoiceDetail` schemas + 1 path（GET 增加可选 env 参数），YAML 引用完整性校验通过（45 paths / 56 schemas，missing=[]）
+  - 验证：集成测试 `operator_invoices_test.go` +2（列表+详情含行明细 / 校验矩阵 6 项）✅；Go build / vet / 全量单测 ✅；全量集成回归（跳过已知 flaky `TestOutboxRelayDeliversUsage`）✅；tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **32/32 全绿** ✅（新增 `10-invoices.spec.ts`，覆盖列表空态与未知发票详情错误态）
+- [x] `components/charts/` 自绘 SVG 图表：sparkline / bar / line / area / donut（无第三方依赖，质感对齐 §7.5）— 候选 39
+  - 新增 `Sparkline`（卡片迷你趋势线，无数据时渲染虚线空态）、`LineChart`（折线 + 网格 + 日期标签 + hover tooltip，单点数据也渲染端点圆点，适配稀疏用量）、`DonutChart`（stroke-dasharray 分段圆环 + 中心值 + 图例，默认墨青/语义色调色板）
+  - `smoothPath` 从 AreaChart 抽取到 `chart-base.tsx`，Area/Line 共用同一曲线算法
+  - 接入真实页面：Overview「Provider 状态分布」DonutChart + 账单收入卡 Sparkline；客户详情「用量」页签按天聚合后用 LineChart 展示趋势
+  - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **34/34 全绿** ✅（新增 `11-charts.spec.ts`，覆盖环形图 / 迷你趋势线 / 用量折线图渲染）
+- [x] 引导管线回填 4 步模型（§2.2：应用→套餐→客户→用量事件）— 候选 40
+  - `lib/onboarding.ts`：`getOnboardingState` 改为 4 步（`application` / `plan` / `customer` / `usage`），`done` 由当前 workspace 对应环境的真实数据推断（apps / plans / customers / usage events）
+  - Overview：按当前 provider 环境并行读取四类数据（`safeGet` 容错），不再用跨 provider 聚合统计污染引导进度；FirstRunPanel 更新为四步文案；OnboardingStrip 步骤圆点改为可点击 Link（R18 可点击回跳），「继续引导」指向首个未完成步骤
+  - 成功面板双出口：应用创建成功 →「继续创建套餐」；套餐创建成功 →「继续创建客户」（R26 可预测下一步）
+  - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **35/35 全绿** ✅（新增 `12-onboarding.spec.ts`：0%→25% 数据驱动进度 + 步骤可点击跳转）
+- [x] 环境隔离端到端：注册应用 → 建套餐 → 建客户 → 订阅 → 上报用量 → 生成发票（`X-Environment` 透传，隔离由 API 强制）— 候选 41
+  - API：`environmentHeaderMiddleware` 注册于 provider 路由组（tenantGuard 之后、限流之前）——`X-Environment` 为可选头，传入时必须匹配 API Key 绑定环境（test/live），否则 `400 environment_mismatch`；隔离仍由凭据本身强制（tenant 上下文只来自 credential，`tenantGuard` 拒绝 query/body 覆盖）
+  - 集成测试 `environment_isolation_test.go` +2：`TestEnvironmentHeaderContract`（错配 400 / 匹配 200 / 缺省 200）；`TestEnvironmentIsolationEndToEnd`（test 建套餐+客户+订阅+用量 → live 激活后全不可见 → live 复用同 external_id 独立建客户 → operator 控制面 `?env=test|live` 套餐隔离）
+  - E2E `13-env-isolation.spec.ts`：Console 环境切换器验证 Plans/Customers 在 test/live 间数据互不可见（先 live 空态，再分别建数据后各自可见）
+  - §11：openapi.yaml 补充 Environment Isolation 契约说明（X-Environment 可选校验 + Console `?env=` 选择），YAML 引用完整性通过（45 paths / 56 schemas，missing=[]）
+  - 验证：Go build / vet / 全量单测 ✅；全量集成回归（跳过已知 flaky `TestOutboxRelayDeliversUsage`）✅；tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **36/36 全绿** ✅
+- [x] DataTable 组件 + 列表筛选 URL 化（R16：`?q=&status=&sort=&page=`，可分享 / 可回退）— 候选 42
+  - `components/ui/data-table.tsx`：通用列表组件，支持列定义（可排序 / 数值列）、搜索键、可选状态筛选、每页条数、分页、sticky 表头、空态
+  - URL 状态：`?q=`（搜索，输入防抖 replace）、`?sort=&dir=`（表头点击 push）、`?page=&pageSize=`（分页/每页条数 push）、`?status=`（筛选 push）；浏览器后退/前进恢复对应状态，搜索框以 `key={q}` 与 URL 同步
+  - 接入 Customers（名称/ID 搜索、创建时间排序、分页）、Invoices（账单号/客户搜索、金额/开票日期排序、状态筛选）、Plans（名称/代码搜索、名称排序）
+  - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **37/37 全绿** ✅（新增 `14-data-table.spec.ts`：搜索 URL 化、排序回退、分页 URL 驱动）
 
 ### M3 — 完善面（⬜ 待办）
 
@@ -478,7 +509,7 @@
 
 - [x] **环境标识色独立 token**（§7.1：`--color-env-test` 琥珀 / `--color-env-live` 红，不与状态色混用）——候选 35 已落地到 EnvSwitcher / Topbar / EnvBadge
 - [ ] 环境切换 toast 提示"已切换到 live 环境"（§6.3）未实现
-- [ ] 引导跳过入口（R18"跳过引导始终可见"）+ 进度条步骤可点击回跳（当前仅 FirstRunPanel 内步骤可点击，OnboardingStrip 步骤为 span）未完整落地
+- [ ] 引导跳过入口（R18"跳过引导始终可见"）未落地；进度条步骤可点击回跳已在候选 40 完成（OnboardingStrip 步骤为 Link）
 - [ ] `api-key-callout.tsx` 为旧原型遗留（英文文案 + amber 硬编码色），需迁移到新 UI 体系（token 色 + 中文品牌语音 + 复制 toast）
 - [ ] `lib/env/`、`lib/utils/`、`lib/validate/` 目录化（当前为单文件 `env.ts` / `utils.ts`，schemas 在 `lib/api/`）
 - [ ] UI 组件补齐：input / select / checkbox / card / drawer / tooltip / pagination / copy-button / DataTable（§7.2）
