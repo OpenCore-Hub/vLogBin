@@ -1055,6 +1055,67 @@ components:
           items:
             $ref: '#/components/schemas/Invoice'
 
+    PortalTokenResult:
+      type: object
+      description: 客户门户邀请 Token（短时有效，签发后仅本响应可见）
+      properties:
+        token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        portal_url:
+          type: string
+        customer_id:
+          type: string
+        environment:
+          type: string
+          enum: [test, live]
+
+    PortalSession:
+      type: object
+      description: Portal token 校验结果
+      properties:
+        valid:
+          type: boolean
+        provider_id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
+        environment_kind:
+          type: string
+          enum: [test, live]
+        customer_external_id:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    PortalDashboard:
+      type: object
+      description: 客户门户 Dashboard（仅当前客户数据 + workspace 品牌）
+      properties:
+        provider_name:
+          type: string
+        provider_slug:
+          type: string
+        customer:
+          $ref: '#/components/schemas/Customer'
+        subscriptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Subscription'
+        usage_events:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageEventRecord'
+        invoices:
+          type: array
+          items:
+            $ref: '#/components/schemas/Invoice'
+
     UsageEventRecord:
       type: object
       description: 用量事件（operator 视图，对应 lib/api/types.ts 的 UsageEvent；openapi 同名 UsageEvent 为 provider 域入参 schema）
@@ -1974,6 +2035,63 @@ paths:
                 $ref: '#/components/schemas/CustomerDetail'
         '404':
           description: Unknown customer, provider, or environment
+
+  /operator/providers/{provider_id}/customers/{customer_external_id}/portal-token:
+    post:
+      tags: [Operator]
+      summary: Issue a customer portal token (Portal M3)
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+        - $ref: '#/components/parameters/CustomerExternalID'
+      responses:
+        '201':
+          description: Portal token issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalTokenResult'
+        '404':
+          description: Unknown customer, provider, or environment
+
+  /portal/sessions:
+    post:
+      tags: [Portal]
+      summary: Validate a portal invite token
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        '200':
+          description: Portal session validated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalSession'
+        '401':
+          description: Invalid or expired token
+
+  /portal/dashboard:
+    get:
+      tags: [Portal]
+      summary: Get the customer's own billing dashboard
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Customer dashboard
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalDashboard'
+        '401':
+          description: Missing or invalid portal token
 
   /operator/providers/{provider_id}/usage-events:
     get:
