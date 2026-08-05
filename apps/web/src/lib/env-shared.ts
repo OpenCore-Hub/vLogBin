@@ -5,6 +5,9 @@ export const ENV_COOKIE = "vlb_env";
 /** 会话 cookie 名（edge 中间件与服务端共用）。 */
 export const SESSION_COOKIE = "vlb_session";
 
+/** First-Run 引导跳过标记（R18：跳过后可随时恢复）。 */
+export const ONBOARDING_DISMISS_COOKIE = "vlb_onboarding_dismissed";
+
 /** 客户门户独立会话 cookie（与平台用户会话隔离）。 */
 export const PORTAL_COOKIE = "vlb_portal_session";
 

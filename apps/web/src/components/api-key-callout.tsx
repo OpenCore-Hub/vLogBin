@@ -1,51 +1,50 @@
 "use client";
 
-import { useState } from "react";
+import { cn } from "@/lib/utils";
+import { CopyButton } from "@/components/ui/code-block";
+import { KeyIcon } from "@/components/ui/icons";
 
 /**
- * Displays a one-time plaintext API key with a copy button.
- * The key is only ever returned once by the API — warn the operator to store it.
+ * 一次性明文密钥展示：新 UI token 色 + 品牌语音 + 复制反馈。
+ * 密钥只会在 API 返回一次，关闭前请先复制保存。
  */
 export function ApiKeyCallout({
   apiKey,
-  title = "API key",
+  title = "API Key",
+  description = "密钥仅展示一次，请立即复制并妥善保存。",
+  onCopied,
+  className,
 }: {
   apiKey: string;
   title?: string;
+  description?: string;
+  onCopied?: () => void;
+  className?: string;
 }) {
-  const [copied, setCopied] = useState(false);
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(apiKey);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Clipboard unavailable (e.g. non-secure context) — leave the key selectable.
-    }
-  }
-
   return (
     <div
       role="alert"
-      className="rounded-md border border-amber-300 bg-amber-50 p-4"
+      className={cn(
+        "rounded-2xl border border-brand-500/20 bg-surface-1 p-4 shadow-[var(--shadow-inset-highlight)]",
+        className,
+      )}
     >
-      <p className="text-sm font-semibold text-amber-900">{title}</p>
-      <p className="mt-1 text-sm text-amber-800">
-        This key is shown once. Copy and store it now — it cannot be retrieved
-        again.
-      </p>
-      <div className="mt-3 flex items-center gap-2">
-        <code className="flex-1 overflow-x-auto rounded border border-amber-200 bg-white px-3 py-2 font-mono text-sm text-zinc-900 select-all">
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600/10 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
+          <KeyIcon size={15} aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-foreground">{title}</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+            {description}
+          </p>
+        </div>
+      </div>
+      <div className="mt-3 flex items-center gap-2 rounded-xl border border-border bg-surface-2 p-3">
+        <code className="min-w-0 flex-1 truncate font-mono text-xs text-foreground select-all">
           {apiKey}
         </code>
-        <button
-          type="button"
-          onClick={copy}
-          className="shrink-0 rounded-md border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
-        >
-          {copied ? "Copied" : "Copy"}
-        </button>
+        <CopyButton text={apiKey} label="复制密钥" onCopied={onCopied} />
       </div>
     </div>
   );

@@ -36,11 +36,17 @@ test.describe("Console navigation", () => {
 
     // 切换后 URL 携带 ?env=live（switchEnv 通过 searchParams 记忆）。
     await expect(page).toHaveURL(/env=live/);
+    await expect(
+      page.getByText("已切换到生产环境", { exact: true }),
+    ).toBeVisible();
 
     // 切回测试环境。
     await page.getByRole("button", { name: /生产环境/ }).click();
     await page.getByText("测试环境", { exact: true }).click();
     await expect(page).toHaveURL(/env=test/);
+    await expect(
+      page.getByText("已切换到测试环境", { exact: true }),
+    ).toBeVisible();
   });
 
   test("topbar user menu shows logout", async ({ page }) => {

@@ -13,11 +13,12 @@ import { formatDate } from "@/lib/format";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
 import { Dialog, ConfirmDialog, DropdownMenu } from "@/components/ui/overlay";
-import { CopyButton } from "@/components/ui/code-block";
-import { EmptyState, ErrorState, Alert, SuccessPanel } from "@/components/ui/feedback";
+import { EmptyState, ErrorState, Alert } from "@/components/ui/feedback";
 import { Badge, EnvBadge } from "@/components/ui/badge";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { useEnv } from "@/components/console/env-provider";
+import { useToast } from "@/components/ui/toast";
+import { ApiKeyCallout } from "@/components/api-key-callout";
 import {
   ArrowRightIcon,
   KeyIcon,
@@ -335,31 +336,39 @@ function CreateKeyDialog({
   providerId: string;
   env: Env;
 }) {
+  const { toast } = useToast();
   const [state, formAction, pending] = useActionState(createCredentialAction, initialState);
+  const [copied, setCopied] = useState(false);
+
+  function handleClose(next: boolean) {
+    if (!next && state.ok && state.apiKey && !copied) {
+      toast({
+        variant: "info",
+        title: "API Key 尚未复制",
+        description: "密钥仅展示一次，关闭后将无法再次查看明文。",
+      });
+    }
+    onOpenChange(next);
+  }
 
   return (
     <Dialog
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={handleClose}
       title="创建 API 密钥"
       description={`密钥将签发到${env === "test" ? "测试环境" : "生产环境"}，创建后只显示一次。`}
       size="md"
     >
       {state.ok && state.apiKey ? (
         <div className="space-y-4">
-          <SuccessPanel
+          <ApiKeyCallout
+            apiKey={state.apiKey}
             title="密钥创建成功"
             description="请立即复制并保存；关闭后平台不会再次显示明文。"
-          >
-            <div className="mt-3 flex items-center gap-2 rounded-md border border-border bg-surface-2 p-3">
-              <code className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
-                {state.apiKey}
-              </code>
-              <CopyButton text={state.apiKey} label="复制密钥" />
-            </div>
-          </SuccessPanel>
+            onCopied={() => setCopied(true)}
+          />
           <div className="flex justify-end">
-            <Button onClick={() => onOpenChange(false)}>完成</Button>
+            <Button onClick={() => handleClose(false)}>完成</Button>
           </div>
         </div>
       ) : (
@@ -425,31 +434,39 @@ function RotateKeyDialog({
   env: Env;
   credential: Credential;
 }) {
+  const { toast } = useToast();
   const [state, formAction, pending] = useActionState(rotateCredentialAction, initialState);
+  const [copied, setCopied] = useState(false);
+
+  function handleClose(next: boolean) {
+    if (!next && state.ok && state.apiKey && !copied) {
+      toast({
+        variant: "info",
+        title: "API Key 尚未复制",
+        description: "密钥仅展示一次，关闭后将无法再次查看明文。",
+      });
+    }
+    onOpenChange(next);
+  }
 
   return (
     <Dialog
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={handleClose}
       title="轮换 API 密钥"
       description="新密钥保留相同名称与权限，旧密钥立即失效。"
       size="md"
     >
       {state.ok && state.apiKey ? (
         <div className="space-y-4">
-          <SuccessPanel
+          <ApiKeyCallout
+            apiKey={state.apiKey}
             title="密钥已轮换"
             description={`${credential.name} 的旧密钥已吊销，新密钥只显示一次。`}
-          >
-            <div className="mt-3 flex items-center gap-2 rounded-md border border-border bg-surface-2 p-3">
-              <code className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
-                {state.apiKey}
-              </code>
-              <CopyButton text={state.apiKey} label="复制密钥" />
-            </div>
-          </SuccessPanel>
+            onCopied={() => setCopied(true)}
+          />
           <div className="flex justify-end">
-            <Button onClick={() => onOpenChange(false)}>完成</Button>
+            <Button onClick={() => handleClose(false)}>完成</Button>
           </div>
         </div>
       ) : (

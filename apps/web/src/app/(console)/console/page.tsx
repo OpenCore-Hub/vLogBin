@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { requireAuth } from "@/lib/auth/rbac";
 import { resolveEnv } from "@/lib/env";
+import { ONBOARDING_DISMISS_COOKIE } from "@/lib/env-shared";
 import {
   getOverviewStats,
   listCatalogPlans,
@@ -13,7 +15,7 @@ import type { OverviewStats, Provider } from "@/lib/api/operator";
 import { getOnboardingState, type OnboardingState } from "@/lib/onboarding";
 import { formatMoney, formatDate } from "@/lib/format";
 import { LifecycleBadge } from "@/components/ui/badge";
-import { LinkButton } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { AreaChart } from "@/components/charts/area-chart";
 import { BarChart } from "@/components/charts/bar-chart";
@@ -29,6 +31,7 @@ import {
   PlusIcon,
   UsersIcon,
 } from "@/components/ui/icons";
+import { dismissOnboarding, restoreOnboarding } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -67,6 +70,9 @@ async function safeGetOverviewStats() {
 export default async function ConsolePage() {
   const session = await requireAuth();
   const env = await resolveEnv(session);
+  const jar = await cookies();
+  const onboardingDismissed =
+    jar.get(ONBOARDING_DISMISS_COOKIE)?.value === "1";
   const providers = await safeList(() => listProviders());
   const provider = providers[0] ?? null;
 
@@ -125,18 +131,31 @@ export default async function ConsolePage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">概览</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          你好，{session.name || "用户"}。这里是你的 vLogBin 控制台。
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">概览</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            你好，{session.name || "用户"}。这里是你的 vLogBin 控制台。
+          </p>
+        </div>
+        {onboardingDismissed && !onboarding.completed && (
+          <form action={restoreOnboarding}>
+            <Button type="submit" variant="ghost" size="sm">
+              重新开始引导
+            </Button>
+          </form>
+        )}
       </header>
 
       {providers.length === 0 ? (
-        <FirstRunPanel onboarding={onboarding} />
+        onboardingDismissed ? (
+          <SkippedOnboarding />
+        ) : (
+          <FirstRunPanel onboarding={onboarding} />
+        )
       ) : (
         <>
-          {!onboarding.completed && (
+          {!onboarding.completed && !onboardingDismissed && (
             <OnboardingStrip onboarding={onboarding} />
           )}
 
@@ -174,6 +193,27 @@ export default async function ConsolePage() {
 }
 
 /* ---------------- First-Run ---------------- */
+function SkippedOnboarding() {
+  return (
+    <div className="surface-premium flex flex-col items-center justify-center rounded-2xl border border-dashed border-border-strong px-6 py-14 text-center">
+      <LogoMark size={26} />
+      <h2 className="mt-4 text-xl font-semibold tracking-tight">引导已跳过</h2>
+      <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
+        创建 Provider 后，可随时从顶栏重新开始四步引导。
+      </p>
+      <LinkButton
+        href="/ops/new"
+        variant="primary"
+        className="mt-6"
+        prefetch={false}
+      >
+        <PlusIcon size={16} aria-hidden="true" />
+        创建 Provider
+      </LinkButton>
+    </div>
+  );
+}
+
 function FirstRunPanel({ onboarding }: { onboarding: OnboardingState }) {
   return (
     <div className="rounded-2xl border border-border bg-surface-1 p-6 sm:p-10">
@@ -228,6 +268,11 @@ function FirstRunPanel({ onboarding }: { onboarding: OnboardingState }) {
           <PlusIcon size={16} aria-hidden="true" />
           开始创建 Provider
         </LinkButton>
+        <form action={dismissOnboarding} className="mt-4">
+          <Button type="submit" variant="ghost" size="sm">
+            跳过引导
+          </Button>
+        </form>
       </div>
     </div>
   );
@@ -270,6 +315,11 @@ function OnboardingStrip({ onboarding }: { onboarding: OnboardingState }) {
         <LinkButton href={next.href} variant="outline" size="sm" prefetch={false}>
           继续引导
         </LinkButton>
+        <form action={dismissOnboarding}>
+          <Button type="submit" variant="ghost" size="sm">
+            跳过引导
+          </Button>
+        </form>
       </div>
     </div>
   );

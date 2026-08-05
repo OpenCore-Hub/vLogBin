@@ -20,6 +20,9 @@ test.describe("Developers control plane", () => {
     await expect(page.getByText("密钥创建成功", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "复制密钥" })).toBeVisible();
     await page.getByRole("button", { name: "完成", exact: true }).click();
+    await expect(
+      page.getByText("API Key 尚未复制", { exact: true }),
+    ).toBeVisible();
 
     const row = page.locator("tr", { hasText: keyName });
     await expect(row).toContainText("pk_test_");

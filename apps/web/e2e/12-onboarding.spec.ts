@@ -69,6 +69,17 @@ test.describe("First-run onboarding", () => {
     await page.goto("/console");
     await expect(page.getByText("完成度 0%", { exact: true })).toBeVisible();
 
+    // R18：跳过引导入口始终可见；跳过后可随时恢复。
+    await page.getByRole("button", { name: "跳过引导" }).click();
+    await expect(
+      page.getByText("完成度 0%", { exact: true }),
+    ).not.toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "重新开始引导" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "重新开始引导" }).click();
+    await expect(page.getByText("完成度 0%", { exact: true })).toBeVisible();
+
     const stripLinks = [
       "创建第一个应用",
       "创建第一个套餐",

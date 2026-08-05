@@ -7,7 +7,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useToast } from "@/components/ui/toast";
 import type { Env } from "@/lib/env-shared";
+import { toErrorMessage } from "@/lib/utils";
 
 type EnvContextValue = {
   env: Env;
@@ -37,6 +39,7 @@ export function EnvProvider({
   onChange: (env: Env) => Promise<void>;
   children: ReactNode;
 }) {
+  const { toast } = useToast();
   const [env, setEnv] = useState<Env>(initialEnv);
   const [pending, setPending] = useState(false);
 
@@ -49,6 +52,7 @@ export function EnvProvider({
   const switchTo = useCallback(
     async (target: Env) => {
       if (target === env) return;
+      const previous = env;
       setPending(true);
       setEnv(target); // 乐观更新：UI 立即反映目标环境。
       try {
@@ -62,11 +66,26 @@ export function EnvProvider({
           "",
           qs ? `${window.location.pathname}?${qs}` : window.location.pathname,
         );
+        toast({
+          variant: "success",
+          title: target === "live" ? "已切换到生产环境" : "已切换到测试环境",
+          description:
+            target === "live"
+              ? "当前页面将读取生产环境数据，操作请谨慎。"
+              : "当前页面已回到隔离的沙箱环境。",
+        });
+      } catch (err) {
+        setEnv(previous);
+        toast({
+          variant: "danger",
+          title: "环境切换失败",
+          description: toErrorMessage(err, "请稍后重试"),
+        });
       } finally {
         setPending(false);
       }
     },
-    [env, onChange],
+    [env, onChange, toast],
   );
 
   return (
