@@ -54,10 +54,12 @@ import type {
   OverviewTrends,
   TrendPoint,
   Capability,
+  CustomDomain,
   WebhookEndpoint,
   WebhookDelivery,
   PlatformEvent,
   PlatformEventStream,
+  NotificationConfig,
   HostedAuthConfig,
   HostedAuthCreateResult,
   CreateProviderInput,
@@ -101,10 +103,12 @@ export type {
   OverviewTrends,
   TrendPoint,
   Capability,
+  CustomDomain,
   WebhookEndpoint,
   WebhookDelivery,
   PlatformEvent,
   PlatformEventStream,
+  NotificationConfig,
   HostedAuthConfig,
   HostedAuthCreateResult,
   CreateProviderInput,
@@ -300,6 +304,25 @@ export async function listMyWorkspaces(): Promise<Workspace[]> {
   return data.workspaces
     .map(asWorkspace)
     .filter((w): w is Workspace => w !== null);
+}
+
+/** 读取当前会话所属 workspace（基础设置：名称 / slug）。 */
+export async function getWorkspace(workspaceId: string): Promise<Workspace | null> {
+  const data = await request<{ workspace?: unknown }>(
+    `/v1/me/workspaces/${encodeURIComponent(workspaceId)}`,
+  );
+  return asWorkspace(data.workspace);
+}
+
+export async function updateWorkspace(
+  workspaceId: string,
+  input: { name?: string; slug?: string },
+): Promise<Workspace | null> {
+  const data = await request<{ workspace?: unknown }>(
+    `/v1/me/workspaces/${encodeURIComponent(workspaceId)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+  return asWorkspace(data.workspace);
 }
 
 function asProvider(value: unknown): Provider | null {
@@ -1060,6 +1083,151 @@ export async function listCapabilities(
   return data.capabilities
     .map(asCapability)
     .filter((c): c is Capability => c !== null);
+}
+
+function asCustomDomain(value: unknown): CustomDomain | null {
+  const rec = asRecord(value);
+  if (!rec) return null;
+  const status =
+    rec.status === "pending" || rec.status === "verified" || rec.status === "revoked"
+      ? rec.status
+      : "pending";
+  return {
+    id: typeof rec.id === "string" ? rec.id : "",
+    provider_id: typeof rec.provider_id === "string" ? rec.provider_id : "",
+    environment_id: typeof rec.environment_id === "string" ? rec.environment_id : "",
+    domain: typeof rec.domain === "string" ? rec.domain : "",
+    verification_token:
+      typeof rec.verification_token === "string" ? rec.verification_token : "",
+    status,
+    verified_at: typeof rec.verified_at === "string" ? rec.verified_at : undefined,
+    revoked_at: typeof rec.revoked_at === "string" ? rec.revoked_at : undefined,
+    created_at: typeof rec.created_at === "string" ? rec.created_at : undefined,
+    updated_at: typeof rec.updated_at === "string" ? rec.updated_at : undefined,
+  };
+}
+
+export async function listCustomDomains(
+  providerId: string,
+  env: "test" | "live",
+): Promise<CustomDomain[]> {
+  const data = await request<{ custom_domains?: unknown }>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/custom-domains?env=${env}`,
+  );
+  if (!Array.isArray(data.custom_domains)) return [];
+  return data.custom_domains
+    .map(asCustomDomain)
+    .filter((d): d is CustomDomain => d !== null);
+}
+
+export async function registerCustomDomain(
+  providerId: string,
+  env: "test" | "live",
+  domain: string,
+): Promise<CustomDomain | null> {
+  const data = await request<Partial<CustomDomain>>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/custom-domains?env=${env}`,
+    { method: "POST", body: JSON.stringify({ domain }) },
+  );
+  return asCustomDomain(data);
+}
+
+export async function verifyCustomDomain(
+  providerId: string,
+  env: "test" | "live",
+  domainId: string,
+): Promise<CustomDomain | null> {
+  const data = await request<Partial<CustomDomain>>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/custom-domains/${encodeURIComponent(domainId)}/verify?env=${env}`,
+    { method: "POST", body: JSON.stringify({}) },
+  );
+  return asCustomDomain(data);
+}
+
+export async function revokeCustomDomain(
+  providerId: string,
+  env: "test" | "live",
+  domainId: string,
+): Promise<CustomDomain | null> {
+  const data = await request<Partial<CustomDomain>>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/custom-domains/${encodeURIComponent(domainId)}/revoke?env=${env}`,
+    { method: "POST", body: JSON.stringify({}) },
+  );
+  return asCustomDomain(data);
+}
+
+export async function deleteCustomDomain(
+  providerId: string,
+  env: "test" | "live",
+  domainId: string,
+): Promise<void> {
+  await request<never>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/custom-domains/${encodeURIComponent(domainId)}?env=${env}`,
+    { method: "DELETE" },
+  );
+}
+
+function asNotificationConfig(value: unknown): NotificationConfig | null {
+  const rec = asRecord(value);
+  if (!rec) return null;
+  const channel = rec.channel === "email" || rec.channel === "sms" ? rec.channel : "email";
+  return {
+    id: typeof rec.id === "string" ? rec.id : "",
+    provider_id: typeof rec.provider_id === "string" ? rec.provider_id : "",
+    environment_id: typeof rec.environment_id === "string" ? rec.environment_id : "",
+    channel,
+    provider_type: typeof rec.provider_type === "string" ? rec.provider_type : "",
+    config:
+      rec.config && typeof rec.config === "object"
+        ? (rec.config as Record<string, unknown>)
+        : {},
+    from_address: typeof rec.from_address === "string" ? rec.from_address : "",
+    enabled: typeof rec.enabled === "boolean" ? rec.enabled : false,
+    created_at: typeof rec.created_at === "string" ? rec.created_at : undefined,
+    updated_at: typeof rec.updated_at === "string" ? rec.updated_at : undefined,
+  };
+}
+
+export async function listNotificationConfigs(
+  providerId: string,
+  env: "test" | "live",
+): Promise<NotificationConfig[]> {
+  const data = await request<{ notification_configs?: unknown }>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/notification-configs?env=${env}`,
+  );
+  if (!Array.isArray(data.notification_configs)) return [];
+  return data.notification_configs
+    .map(asNotificationConfig)
+    .filter((c): c is NotificationConfig => c !== null);
+}
+
+export async function setNotificationConfig(
+  providerId: string,
+  env: "test" | "live",
+  input: {
+    channel: "email" | "sms";
+    provider_type: string;
+    config: Record<string, unknown>;
+    from_address: string;
+    enabled: boolean;
+  },
+): Promise<NotificationConfig | null> {
+  const data = await request<Partial<NotificationConfig>>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/notification-configs?env=${env}`,
+    { method: "PUT", body: JSON.stringify(input) },
+  );
+  return asNotificationConfig(data);
+}
+
+export async function deleteNotificationConfig(
+  providerId: string,
+  env: "test" | "live",
+  channel: "email" | "sms",
+): Promise<void> {
+  await request<never>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/notification-configs/${encodeURIComponent(channel)}?env=${env}`,
+    { method: "DELETE" },
+  );
 }
 
 function asStringArray(value: unknown): string[] {

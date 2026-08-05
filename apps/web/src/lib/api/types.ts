@@ -314,6 +314,34 @@ export interface WorkspaceMembership {
   updated_at?: string;
 }
 
+/** 自定义认证域名（Console Settings 安全分组）。 */
+export interface CustomDomain {
+  id: string;
+  provider_id: string;
+  environment_id: string;
+  domain: string;
+  verification_token: string;
+  status: "pending" | "verified" | "revoked";
+  verified_at?: string;
+  revoked_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** 通知配置（解密后的 Console 视图；config 含渠道凭据，仅本会话可见）。 */
+export interface NotificationConfig {
+  id: string;
+  provider_id: string;
+  environment_id: string;
+  channel: "email" | "sms";
+  provider_type: string;
+  config: Record<string, unknown>;
+  from_address: string;
+  enabled: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
 /** Provider 能力开关。 */
 export interface Capability {
   id: string;
