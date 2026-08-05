@@ -383,7 +383,7 @@
 | M0 基座 | 目录 / tokens / 认证 / 官网 / Console 布局 / Ops 迁移 / 引导 | ✅ 已完成（静态验收，待提交） |
 | M1 控制面 API | `apps/api` 新增 Console 端点（最大前置依赖） | ✅ 已完成（候选 29-33） |
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
-| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 46） |
+| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 47） |
 
 ### M0 — 基座（✅ 已完成，待提交）
 
@@ -534,6 +534,12 @@
   - 前端：`/portal/login` 独立客户会话（`vlb_portal_session` cookie，与 Console 会话隔离）+ `/portal` Dashboard（账单 / 用量 / 支付三个页签，空状态与退出）
   - §11：openapi.yaml 新增 `PortalTokenResult` / `PortalSession` / `PortalDashboard` schemas + 3 paths，YAML 引用完整性校验通过
   - 验证：portal 单测 +3、config 单测 +1、集成测试 `portal_test.go` +2（会话+Dashboard 数据域隔离 / 无效 Token 契约）✅；Go build / vet / 全量单测 ✅；全量集成回归（跳过已知 flaky `TestOutboxRelayDeliversUsage`）✅；tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **46/46 全绿** ✅（新增 `18-portal.spec.ts`：Token 登录 → Dashboard → 页签 → 退出）
+- [x] 全球视觉天花板：去模版化 + 高端质感 + 品牌动效 — 候选 47
+  - Design tokens：暖中性 ivory 表面、品牌青低饱和阴影、`--shadow-premium` / `--shadow-inset-highlight`、2xl 圆角、`--ease-premium` 弹性曲线
+  - 全局质感：固定细颗粒噪点叠加、聚焦环柔化、`surface-premium` 内高光面板、`pressable` 磁性按钮按压反馈
+  - 组件升级：Button 全圆角 + 品牌阴影 + active scale；DataTable / Dialog / EmptyState / SuccessPanel / Input 全部 2xl 圆角与内高光；Sidebar 激活项品牌岛式高亮 + 半透明毛玻璃；Topbar 柔和阴影
+  - 官网：悬浮玻璃导航岛、非对称 Editorial Hero、Bento 能力网格、编辑式三步流程、双圈终端窗口、CTA 深色玻璃容器；全页 staggered reveal 动效（`animate-reveal[-delay-*]`，仅 transform/opacity/filter，尊重 reduced-motion）
+  - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **46/46 全绿** ✅
 
 ### M3 — 完善面（🔄 进行中）
 
@@ -541,6 +547,7 @@
 - [x] Settings 页面（§6.6.2 按心智分组：基础 / 安全 / 高级）— 候选 44
 - [x] 运营商台增强：审核队列、风险、Cell 运维（`/ops` M3）— 候选 45
 - [x] 客户门户 Portal（§8.2：账单 / 用量 / 支付；客户级 token 数据域隔离；独立客户会话）— 候选 46
+- [x] 全球视觉天花板：去模版化 + 高端质感 + 品牌动效 — 候选 47
 - [ ] E2E 全量 + 暗色主题打磨 + 审计日志前端
 - [ ] 客户端 React Query 缓存（staleTime）+ `hooks/` 扩充（useActionState 封装）
 
