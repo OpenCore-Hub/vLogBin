@@ -46,6 +46,9 @@ func (s *Service) SetNotificationConfig(ctx context.Context, tc tenant.Ctx, in N
 	if len(in.Config) == 0 {
 		return nil, fmt.Errorf("%w: config must not be empty", ErrValidation)
 	}
+	if s.encryptor == nil {
+		return nil, fmt.Errorf("%w: notification encryption is not configured", ErrValidation)
+	}
 
 	plaintext, err := json.Marshal(in.Config)
 	if err != nil {
@@ -94,6 +97,9 @@ func (s *Service) SetNotificationConfig(ctx context.Context, tc tenant.Ctx, in N
 // GetNotificationConfig returns a notification channel configuration.
 // The config is decrypted before returning.
 func (s *Service) GetNotificationConfig(ctx context.Context, tc tenant.Ctx, channel string) (*NotificationConfigResult, error) {
+	if s.encryptor == nil {
+		return nil, fmt.Errorf("%w: notification encryption is not configured", ErrValidation)
+	}
 	var result NotificationConfigResult
 	err := s.store.WithTenant(ctx, tc, func(tx pgx.Tx, q *store.Queries) error {
 		nc, err := q.GetNotificationConfig(ctx, storegen.GetNotificationConfigParams{
@@ -122,6 +128,9 @@ func (s *Service) GetNotificationConfig(ctx context.Context, tc tenant.Ctx, chan
 
 // ListNotificationConfigs returns all notification channel configurations.
 func (s *Service) ListNotificationConfigs(ctx context.Context, tc tenant.Ctx) ([]NotificationConfigResult, error) {
+	if s.encryptor == nil {
+		return nil, fmt.Errorf("%w: notification encryption is not configured", ErrValidation)
+	}
 	var out []NotificationConfigResult
 	err := s.store.WithTenant(ctx, tc, func(tx pgx.Tx, q *store.Queries) error {
 		configs, err := q.ListNotificationConfigs(ctx, storegen.ListNotificationConfigsParams{

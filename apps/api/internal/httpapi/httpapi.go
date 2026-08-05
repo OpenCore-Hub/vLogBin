@@ -236,6 +236,15 @@ func (s *Server) Router() chi.Router {
 			r.Get("/providers/{id}/invoices/{invoiceId}", s.operatorGetInvoice)
 			// Console Events stream (§8 M3), environment-scoped via ?env=.
 			r.Get("/providers/{id}/events", s.operatorStreamEvents)
+			// Console Settings (§8 M3): custom domains + notification configs.
+			r.Get("/providers/{id}/custom-domains", s.operatorListCustomDomains)
+			r.Post("/providers/{id}/custom-domains", s.operatorRegisterCustomDomain)
+			r.Post("/providers/{id}/custom-domains/{domainId}/verify", s.operatorVerifyCustomDomain)
+			r.Post("/providers/{id}/custom-domains/{domainId}/revoke", s.operatorRevokeCustomDomain)
+			r.Delete("/providers/{id}/custom-domains/{domainId}", s.operatorDeleteCustomDomain)
+			r.Get("/providers/{id}/notification-configs", s.operatorListNotificationConfigs)
+			r.Put("/providers/{id}/notification-configs", s.operatorSetNotificationConfig)
+			r.Delete("/providers/{id}/notification-configs/{channel}", s.operatorDeleteNotificationConfig)
 			// Provider capability grants (operator-managed).
 			r.Get("/providers/{id}/capabilities", s.operatorListCapabilities)
 			r.Post("/providers/{id}/capabilities/{capability}/grant", s.operatorGrantCapability)

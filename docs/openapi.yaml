@@ -269,6 +269,12 @@ components:
         id:
           type: string
           format: uuid
+        provider_id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
         domain:
           type: string
         status:
@@ -276,6 +282,69 @@ components:
           enum: [pending, verified, revoked]
         verification_token:
           type: string
+        verified_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    NotificationConfig:
+      type: object
+      description: 通知渠道配置（config 为解密后的渠道凭据，仅本会话可见）
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
+        channel:
+          type: string
+          enum: [email, sms]
+        provider_type:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+        from_address:
+          type: string
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    NotificationConfigInput:
+      type: object
+      description: 保存通知渠道配置的入参（config 会加密存储）
+      required: [channel, provider_type, config, from_address]
+      properties:
+        channel:
+          type: string
+          enum: [email, sms]
+        provider_type:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+        from_address:
+          type: string
+        enabled:
+          type: boolean
+          default: true
     
     MigrationJob:
       type: object
@@ -2109,6 +2178,168 @@ paths:
           description: Invalid env or cursor
         '404':
           description: Unknown provider or environment
+
+  /operator/providers/{provider_id}/custom-domains:
+    get:
+      tags: [Operator]
+      summary: List custom domains for one environment (Console Settings)
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+      responses:
+        '200':
+          description: Custom domain list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  custom_domains:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CustomDomain'
+    post:
+      tags: [Operator]
+      summary: Register a custom domain for DNS verification
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domain]
+              properties:
+                domain:
+                  type: string
+      responses:
+        '201':
+          description: Domain registered with verification token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomDomain'
+        '409':
+          description: Domain already registered
+
+  /operator/providers/{provider_id}/custom-domains/{domain_id}:
+    delete:
+      tags: [Operator]
+      summary: Delete a pending/revoked custom domain
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+        - name: domain_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Domain deleted
+        '409':
+          description: Verified domain must be revoked first
+
+  /operator/providers/{provider_id}/custom-domains/{domain_id}/verify:
+    post:
+      tags: [Operator]
+      summary: Verify DNS ownership of a custom domain
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+        - name: domain_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Domain verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomDomain'
+        '400':
+          description: DNS TXT record missing or mismatched
+
+  /operator/providers/{provider_id}/custom-domains/{domain_id}/revoke:
+    post:
+      tags: [Operator]
+      summary: Revoke a custom domain
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+        - name: domain_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Domain revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomDomain'
+
+  /operator/providers/{provider_id}/notification-configs:
+    get:
+      tags: [Operator]
+      summary: List notification configs for one environment (Console Settings)
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+      responses:
+        '200':
+          description: Notification config list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notification_configs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NotificationConfig'
+    put:
+      tags: [Operator]
+      summary: Save a notification channel config (email/sms)
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationConfigInput'
+      responses:
+        '200':
+          description: Notification config saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationConfig'
+
+  /operator/providers/{provider_id}/notification-configs/{channel}:
+    delete:
+      tags: [Operator]
+      summary: Delete a notification channel config
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+        - name: channel
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [email, sms]
+      responses:
+        '204':
+          description: Notification config deleted
 
   /operator/providers/{provider_id}/webhook-deliveries:
     get:
