@@ -5,9 +5,11 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -22,12 +24,17 @@ import (
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/tenant"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/webhook"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/zitadel"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
+
+func pathHasSuffix(path, suffix string) bool {
+	return len(path) >= len(suffix) && path[len(path)-len(suffix):] == suffix
+}
 
 const (
 	operatorToken = "test-operator-token"
@@ -110,14 +117,54 @@ func TestMain(m *testing.M) {
 	defer appStore.Close()
 
 	testEncryptor, _ := crypto.NewEncryptor("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+
+	// The global test server carries a ZITADEL Management mock so the
+	// operator Console endpoints (OIDC Application management) can be
+	// exercised over real HTTP. Existing Hosted Auth tests keep their own
+	// per-test mock instances for call counting.
+	zitadelMux := http.NewServeMux()
+	zitadelMux.HandleFunc("/management/v1/projects", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"id": "proj-" + uuid.NewString()[:8]})
+	})
+	zitadelMux.HandleFunc("/management/v1/projects/", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			json.NewEncoder(w).Encode(map[string]any{
+				"appId":        "app-" + uuid.NewString()[:8],
+				"clientId":     "client-" + uuid.NewString()[:8],
+				"clientSecret": "secret-" + uuid.NewString()[:8],
+			})
+		case http.MethodPut:
+			if pathHasSuffix(r.URL.Path, "/oidc_config/secret") {
+				json.NewEncoder(w).Encode(map[string]any{"clientSecret": "secret-" + uuid.NewString()[:8]})
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		case http.MethodDelete:
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	zitadelServer := httptest.NewServer(zitadelMux)
+	defer zitadelServer.Close()
+	mgmtClient := zitadel.NewManagementClient(zitadelServer.URL, "test-pat")
+
 	svc = service.New(appStore, baseDomain,
 		service.WithBillingAdapter(billing.NewNoop(nil)),
 		service.WithURLValidator(webhook.ValidateURLAllowLoopback),
 		service.WithCryptoEncryptor(testEncryptor),
 		service.WithDNSResolver(testDNSResolver),
+		service.WithZITADELManagement(mgmtClient, zitadelServer.URL),
 	)
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	httpServer = httptest.NewServer(httpapi.NewServer(appStore, svc, operatorToken, logger).Router())
+	apiServer := httpapi.NewServer(appStore, svc, operatorToken, logger)
+	apiServer.SetStartupComplete() // migrations + pool + service are ready
+	httpServer = httptest.NewServer(apiServer.Router())
 	defer httpServer.Close()
 
 	os.Exit(m.Run())

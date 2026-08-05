@@ -171,7 +171,7 @@ func TestRevokeCustomDomain(t *testing.T) {
 }
 
 func TestDeleteCustomDomain(t *testing.T) {
-	_, apiKey := createProviderAPI(t, "cd-del-"+uuid.NewString()[:8])
+	providerID, apiKey := createProviderAPI(t, "cd-del-"+uuid.NewString()[:8])
 
 	// Register a pending domain (not verified).
 	status, body := apiReq(t, "POST", "/v1/custom-domains", apiKey, map[string]any{
@@ -183,6 +183,18 @@ func TestDeleteCustomDomain(t *testing.T) {
 	status, body = apiReq(t, "DELETE", "/v1/custom-domains/"+domainID, apiKey, nil)
 	if status != http.StatusNoContent {
 		t.Fatalf("delete pending: status %d, want 204, body %v", status, body)
+	}
+
+	// Deletion must emit a custom_domain.deleted outbox event so downstream
+	// consumers (auth routing / cert management) can clean up.
+	var deletedCount int
+	if err := superPool.QueryRow(testCtx,
+		`SELECT count(*) FROM outbox_events WHERE provider_id = $1 AND event_type = 'custom_domain.deleted'`,
+		providerID).Scan(&deletedCount); err != nil {
+		t.Fatalf("query deleted outbox events: %v", err)
+	}
+	if deletedCount != 1 {
+		t.Fatalf("custom_domain.deleted outbox events = %d, want 1", deletedCount)
 	}
 
 	// Register and verify another domain.
@@ -214,6 +226,16 @@ func TestDeleteCustomDomain(t *testing.T) {
 	status, _ = apiReq(t, "DELETE", "/v1/custom-domains/"+domainID2, apiKey, nil)
 	if status != http.StatusNoContent {
 		t.Fatalf("delete revoked: status %d, want 204", status)
+	}
+
+	// Both deletions must be reflected in the outbox (one event per delete).
+	if err := superPool.QueryRow(testCtx,
+		`SELECT count(*) FROM outbox_events WHERE provider_id = $1 AND event_type = 'custom_domain.deleted'`,
+		providerID).Scan(&deletedCount); err != nil {
+		t.Fatalf("query deleted outbox events: %v", err)
+	}
+	if deletedCount != 2 {
+		t.Fatalf("custom_domain.deleted outbox events = %d, want 2", deletedCount)
 	}
 }
 

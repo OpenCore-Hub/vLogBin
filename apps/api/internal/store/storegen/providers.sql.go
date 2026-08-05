@@ -11,6 +11,47 @@ import (
 	uuid "github.com/google/uuid"
 )
 
+const activateProvider = `-- name: ActivateProvider :one
+UPDATE providers
+SET home_region_id = $2, cell_id = $3, lifecycle_state = $4, updated_at = now()
+WHERE id = $1 AND lifecycle_state = 'REGISTERED'
+RETURNING id, slug, name, home_region_id, cell_id, lifecycle_state, sla_tier, created_at, updated_at
+`
+
+type ActivateProviderParams struct {
+	ID             uuid.UUID     `json:"id"`
+	HomeRegionID   uuid.NullUUID `json:"home_region_id"`
+	CellID         uuid.NullUUID `json:"cell_id"`
+	LifecycleState string        `json:"lifecycle_state"`
+}
+
+// Operator activation (design baseline §2.1): assigns the home region and
+// shared cell, then moves the provider from REGISTERED to TEST_ACTIVE.
+// The WHERE guard makes activation concurrency-safe: a provider that is not
+// REGISTERED (already activated, suspended, or gone) matches no row and the
+// caller receives ErrNoRows instead of silently corrupting state.
+func (q *Queries) ActivateProvider(ctx context.Context, arg ActivateProviderParams) (Provider, error) {
+	row := q.db.QueryRow(ctx, activateProvider,
+		arg.ID,
+		arg.HomeRegionID,
+		arg.CellID,
+		arg.LifecycleState,
+	)
+	var i Provider
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.HomeRegionID,
+		&i.CellID,
+		&i.LifecycleState,
+		&i.SlaTier,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createProvider = `-- name: CreateProvider :one
 INSERT INTO providers (slug, name, home_region_id, cell_id, lifecycle_state)
 VALUES ($1, $2, $3, $4, $5)
@@ -20,7 +61,7 @@ RETURNING id, slug, name, home_region_id, cell_id, lifecycle_state, sla_tier, cr
 type CreateProviderParams struct {
 	Slug           string        `json:"slug"`
 	Name           string        `json:"name"`
-	HomeRegionID   uuid.UUID     `json:"home_region_id"`
+	HomeRegionID   uuid.NullUUID `json:"home_region_id"`
 	CellID         uuid.NullUUID `json:"cell_id"`
 	LifecycleState string        `json:"lifecycle_state"`
 }
@@ -33,6 +74,39 @@ func (q *Queries) CreateProvider(ctx context.Context, arg CreateProviderParams) 
 		arg.CellID,
 		arg.LifecycleState,
 	)
+	var i Provider
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.HomeRegionID,
+		&i.CellID,
+		&i.LifecycleState,
+		&i.SlaTier,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createRegisteredProvider = `-- name: CreateRegisteredProvider :one
+INSERT INTO providers (id, slug, name, lifecycle_state)
+VALUES ($1, $2, $3, 'REGISTERED')
+RETURNING id, slug, name, home_region_id, cell_id, lifecycle_state, sla_tier, created_at, updated_at
+`
+
+type CreateRegisteredProviderParams struct {
+	ID   uuid.UUID `json:"id"`
+	Slug string    `json:"slug"`
+	Name string    `json:"name"`
+}
+
+// Signup-time provider record (design baseline §2.1): workspace_id maps 1:1
+// to provider_id, so the caller passes the workspace id as the provider id.
+// No region or cell yet; both are assigned by the operator at activation
+// (REGISTERED → TEST_ACTIVE).
+func (q *Queries) CreateRegisteredProvider(ctx context.Context, arg CreateRegisteredProviderParams) (Provider, error) {
+	row := q.db.QueryRow(ctx, createRegisteredProvider, arg.ID, arg.Slug, arg.Name)
 	var i Provider
 	err := row.Scan(
 		&i.ID,
@@ -179,33 +253,29 @@ func (q *Queries) UpdateProviderCell(ctx context.Context, arg UpdateProviderCell
 	return err
 }
 
-const updateProviderLifecycle = `-- name: UpdateProviderLifecycle :one
+const updateProviderLifecycle = `-- name: UpdateProviderLifecycle :execrows
 UPDATE providers
-SET lifecycle_state = $2, updated_at = now()
-WHERE id = $1
-RETURNING id, slug, name, home_region_id, cell_id, lifecycle_state, sla_tier, created_at, updated_at
+SET lifecycle_state = $1, updated_at = now()
+WHERE id = $2 AND lifecycle_state = $3
 `
 
 type UpdateProviderLifecycleParams struct {
-	ID             uuid.UUID `json:"id"`
-	LifecycleState string    `json:"lifecycle_state"`
+	ToState   string    `json:"to_state"`
+	ID        uuid.UUID `json:"id"`
+	FromState string    `json:"from_state"`
 }
 
-func (q *Queries) UpdateProviderLifecycle(ctx context.Context, arg UpdateProviderLifecycleParams) (Provider, error) {
-	row := q.db.QueryRow(ctx, updateProviderLifecycle, arg.ID, arg.LifecycleState)
-	var i Provider
-	err := row.Scan(
-		&i.ID,
-		&i.Slug,
-		&i.Name,
-		&i.HomeRegionID,
-		&i.CellID,
-		&i.LifecycleState,
-		&i.SlaTier,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+// Optimistic concurrency guard (design baseline §2.1): the transition is
+// conditional on the observed source state, so two concurrent transitions
+// cannot silently overwrite each other. A stale caller (whose read happened
+// before another transition committed) matches no row and receives affected=0
+// instead of corrupting state; the service maps that to a lifecycle_conflict.
+func (q *Queries) UpdateProviderLifecycle(ctx context.Context, arg UpdateProviderLifecycleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateProviderLifecycle, arg.ToState, arg.ID, arg.FromState)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const upsertProviderCapability = `-- name: UpsertProviderCapability :one

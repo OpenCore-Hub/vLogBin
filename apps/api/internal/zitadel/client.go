@@ -79,6 +79,36 @@ func (c *ManagementClient) DeleteProject(ctx context.Context, projectID string) 
 	return c.do(ctx, http.MethodDelete, path, nil, nil)
 }
 
+// RotateOIDCAppSecret generates a new client secret for an existing OIDC
+// application and returns the plaintext secret. The old secret is
+// immediately invalidated on the ZITADEL side.
+func (c *ManagementClient) RotateOIDCAppSecret(ctx context.Context, projectID, appID string) (string, error) {
+	path := fmt.Sprintf("/management/v1/projects/%s/apps/%s/oidc_config/secret", projectID, appID)
+	var resp struct {
+		ClientSecret string `json:"clientSecret"`
+	}
+	if err := c.do(ctx, http.MethodPut, path, map[string]any{}, &resp); err != nil {
+		return "", fmt.Errorf("rotate oidc app secret: %w", err)
+	}
+	if resp.ClientSecret == "" {
+		return "", fmt.Errorf("rotate oidc app secret: empty secret in response")
+	}
+	return resp.ClientSecret, nil
+}
+
+// UpdateOIDCAppRedirectURIs updates the redirect URIs of an existing OIDC
+// application without changing the client secret.
+func (c *ManagementClient) UpdateOIDCAppRedirectURIs(ctx context.Context, projectID, appID string, redirectURIs []string) error {
+	path := fmt.Sprintf("/management/v1/projects/%s/apps/%s/oidc_config", projectID, appID)
+	body := map[string]any{
+		"redirectUris": redirectURIs,
+	}
+	if err := c.do(ctx, http.MethodPut, path, body, nil); err != nil {
+		return fmt.Errorf("update oidc app redirect uris: %w", err)
+	}
+	return nil
+}
+
 // do executes an HTTP request to the ZITADEL Management API.
 func (c *ManagementClient) do(ctx context.Context, method, path string, body any, out any) error {
 	var reqBody io.Reader

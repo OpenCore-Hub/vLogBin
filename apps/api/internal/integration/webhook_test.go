@@ -11,10 +11,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/billing"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/circuitbreaker"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/outbox"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/webhook"
 	"github.com/google/uuid"
@@ -192,6 +194,159 @@ func TestWebhookDelivery(t *testing.T) {
 	if d["endpoint_id"] != endpointID {
 		t.Fatalf("endpoint_id = %v, want %s", d["endpoint_id"], endpointID)
 	}
+}
+
+// TestWebhookDeliveryLifecycleAware verifies that outbound webhook delivery is
+// lifecycle-aware (design baseline §7.4):
+//
+//  1. While a provider is SUSPENDED, worker runs create delivery rows but never
+//     claim/send them — the backlog stays 'pending' and no HTTP call is made.
+//  2. After reactivation (SUSPENDED -> LIVE_ACTIVE) the backlog is delivered
+//     automatically without any manual replay.
+//  3. RESTRICTED keeps delivering: it is a limited but operational state, so
+//     deliveries must still be claimed and sent.
+func TestWebhookDeliveryLifecycleAware(t *testing.T) {
+	cleanupWebhookData(t)
+
+	providerID, apiKey := createProviderAPI(t, "wh-lifecycle-"+uuid.NewString()[:8])
+	versionID := createPublishedCatalog(t, apiKey)
+	custExt, _ := createCustomerAndSubscription(t, apiKey, versionID)
+
+	var capMu sync.Mutex
+	received := 0
+	wc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capMu.Lock()
+		received++
+		capMu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer wc.Close()
+
+	createWebhookViaAPI(t, apiKey, wc.URL)
+
+	// Ingest usage while TEST_ACTIVE (writable) so the outbox event exists
+	// before the provider is suspended.
+	txID := "wh-lc-tx-" + uuid.NewString()[:8]
+	ts := time.Now().UTC().Format(time.RFC3339Nano)
+	status, body := ingestUsage(t, apiKey, txID, custExt, "api_calls", ts, map[string]any{"count": 1})
+	if status != http.StatusCreated {
+		t.Fatalf("ingest usage: status %d, body %v", status, body)
+	}
+
+	// Suspend the provider: TEST_ACTIVE -> LIVE_REVIEW -> SUSPENDED.
+	for _, to := range []string{"LIVE_REVIEW", "SUSPENDED"} {
+		status, body = apiReq(t, "POST", "/v1/operator/providers/"+providerID+"/lifecycle", operatorToken,
+			map[string]any{"to": to, "reason": "abuse investigation", "actor": "op-lifecycle-test"})
+		if status != http.StatusOK {
+			t.Fatalf("transition to %s: status %d, body %v", to, status, body)
+		}
+	}
+
+	// Publish the outbox event while suspended (the relay is lifecycle-agnostic).
+	relay := outbox.NewRelay(appStore, billing.NewNoop(nil), 50*time.Millisecond,
+		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err := relay.DrainOnce(testCtx); err != nil {
+		t.Fatalf("relay drain: %v", err)
+	}
+
+	// Run the worker repeatedly while suspended: a delivery row is created but
+	// must never be claimed/sent.
+	worker := newTestWebhookWorker()
+	for range 3 {
+		if err := worker.DrainOnce(testCtx); err != nil {
+			t.Fatalf("drain while suspended: %v", err)
+		}
+	}
+	capMu.Lock()
+	if received != 0 {
+		t.Fatalf("webhook delivered while suspended: %d requests", received)
+	}
+	capMu.Unlock()
+
+	// The delivery row exists and is parked as 'pending' (backlog).
+	status, body = apiReq(t, "GET", "/v1/webhook-deliveries", apiKey, nil)
+	if status != http.StatusOK {
+		t.Fatalf("list deliveries (suspended): status %d, body %v", status, body)
+	}
+	deliveries, ok := body["deliveries"].([]any)
+	if !ok || len(deliveries) == 0 {
+		t.Fatal("expected a delivery record while suspended")
+	}
+	if d := deliveries[0].(map[string]any); d["status"] != "pending" {
+		t.Fatalf("delivery status = %v, want pending while suspended", d["status"])
+	}
+
+	// Reactivate: SUSPENDED -> LIVE_ACTIVE.
+	status, body = apiReq(t, "POST", "/v1/operator/providers/"+providerID+"/lifecycle", operatorToken,
+		map[string]any{"to": "LIVE_ACTIVE", "reason": "investigation cleared", "actor": "op-lifecycle-test"})
+	if status != http.StatusOK {
+		t.Fatalf("reactivate: status %d, body %v", status, body)
+	}
+
+	// After reactivation the backlog is delivered automatically.
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := worker.DrainOnce(testCtx); err != nil {
+			t.Fatalf("drain after reactivation: %v", err)
+		}
+		capMu.Lock()
+		n := received
+		capMu.Unlock()
+		if n > 0 {
+			break
+		}
+	}
+	capMu.Lock()
+	if received == 0 {
+		t.Fatal("expected delivery after reactivation, got 0")
+	}
+	capMu.Unlock()
+
+	status, body = apiReq(t, "GET", "/v1/webhook-deliveries", apiKey, nil)
+	if status != http.StatusOK {
+		t.Fatalf("list deliveries (reactivated): status %d, body %v", status, body)
+	}
+	deliveries, ok = body["deliveries"].([]any)
+	if !ok || len(deliveries) == 0 {
+		t.Fatal("expected a delivery record after reactivation")
+	}
+	if d := deliveries[0].(map[string]any); d["status"] != "delivered" {
+		t.Fatalf("delivery status = %v, want delivered after reactivation", d["status"])
+	}
+
+	// RESTRICTED must keep delivering: ingest a second event, move to
+	// RESTRICTED, and assert the webhook still goes out.
+	txID2 := "wh-lc-tx-" + uuid.NewString()[:8]
+	ts2 := time.Now().UTC().Format(time.RFC3339Nano)
+	status, body = ingestUsage(t, apiKey, txID2, custExt, "api_calls", ts2, map[string]any{"count": 2})
+	if status != http.StatusCreated {
+		t.Fatalf("ingest usage (2): status %d, body %v", status, body)
+	}
+	status, body = apiReq(t, "POST", "/v1/operator/providers/"+providerID+"/lifecycle", operatorToken,
+		map[string]any{"to": "RESTRICTED", "reason": "billing review", "actor": "op-lifecycle-test"})
+	if status != http.StatusOK {
+		t.Fatalf("transition to RESTRICTED: status %d, body %v", status, body)
+	}
+	if err := relay.DrainOnce(testCtx); err != nil {
+		t.Fatalf("relay drain (restricted): %v", err)
+	}
+	deadline = time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := worker.DrainOnce(testCtx); err != nil {
+			t.Fatalf("drain while restricted: %v", err)
+		}
+		capMu.Lock()
+		n := received
+		capMu.Unlock()
+		if n >= 2 {
+			break
+		}
+	}
+	capMu.Lock()
+	if received < 2 {
+		t.Fatalf("expected delivery while RESTRICTED, received = %d, want >= 2", received)
+	}
+	capMu.Unlock()
 }
 
 // ---------------------------------------------------------------------------
@@ -491,4 +646,339 @@ func TestWebhookEventFilter(t *testing.T) {
 		t.Fatal("expected webhook delivery for usage.accepted (matching filter)")
 	}
 	capMu.Unlock()
+}
+
+// ---------------------------------------------------------------------------
+// Testing: Webhook dead-letter replay (operator loop)
+// ---------------------------------------------------------------------------
+
+// TestWebhookDeliveryReplay verifies the dead-letter replay loop: a delivery
+// that exhausts its retry budget lands in dead_letter, the operator can
+// requeue it via POST /v1/operator/providers/{id}/webhook-deliveries/{id}/replay,
+// and the worker redelivers it with a fresh attempt budget. Non-terminal
+// deliveries are rejected with replay_invalid_state, and the replay is
+// written to the provider's audit trail.
+func TestWebhookDeliveryReplay(t *testing.T) {
+	cleanupWebhookData(t)
+
+	providerID, apiKey := createProviderAPI(t, "wh-replay-"+uuid.NewString()[:8])
+	versionID := createPublishedCatalog(t, apiKey)
+	custExt, _ := createCustomerAndSubscription(t, apiKey, versionID)
+
+	// Endpoint that fails until flipped healthy, forcing the delivery into
+	// dead_letter first.
+	var healthy atomic.Bool
+	wc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if healthy.Load() {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer wc.Close()
+
+	createWebhookViaAPI(t, apiKey, wc.URL)
+
+	txID := "wh-replay-tx-" + uuid.NewString()[:8]
+	ts := time.Now().UTC().Format(time.RFC3339Nano)
+	status, body := ingestUsage(t, apiKey, txID, custExt, "api_calls", ts, map[string]any{"count": 1})
+	if status != http.StatusCreated {
+		t.Fatalf("ingest usage: status %d, body %v", status, body)
+	}
+
+	relay := outbox.NewRelay(appStore, billing.NewNoop(nil), 50*time.Millisecond,
+		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err := relay.DrainOnce(testCtx); err != nil {
+		t.Fatalf("relay drain: %v", err)
+	}
+
+	// Exhaust the retry budget (3 attempts): drain, then reset the backoff so
+	// the next drain can re-claim immediately (same acceleration as
+	// TestWebhookRetryBackoff).
+	// The setup helpers above also enqueue non-usage outbox events (customer,
+	// subscription, catalog), so the worker will create a delivery for each.
+	// The breaker is left effectively inert (a very high threshold) because
+	// this test exercises the replay loop, not circuit-breaking.
+	worker := newTestWebhookWorker()
+	worker.SetBreakerOptions(circuitbreaker.Options{FailureThreshold: 1000})
+	for range 3 {
+		if err := worker.DrainOnce(testCtx); err != nil {
+			t.Fatalf("drain: %v", err)
+		}
+		if _, err := superPool.Exec(context.Background(),
+			`UPDATE webhook_deliveries SET next_attempt_at = now() WHERE status = 'failed'`); err != nil {
+			t.Fatalf("reset next_attempt_at: %v", err)
+		}
+	}
+	if err := worker.DrainOnce(testCtx); err != nil {
+		t.Fatalf("final drain: %v", err)
+	}
+	d := operatorLatestDelivery(t, providerID)
+	if d["status"] != "dead_letter" {
+		t.Fatalf("status = %v, want dead_letter", d["status"])
+	}
+	deliveryID := d["id"].(string)
+
+	// Replay via the operator API → reset to pending with a fresh budget.
+	status, body = apiReq(t, "POST", "/v1/operator/providers/"+providerID+"/webhook-deliveries/"+deliveryID+"/replay",
+		operatorToken, map[string]any{"actor": "op-replay-test"})
+	if status != http.StatusOK {
+		t.Fatalf("replay: status %d, body %v", status, body)
+	}
+	rd := body["delivery"].(map[string]any)
+	if rd["status"] != "pending" {
+		t.Fatalf("replayed status = %v, want pending", rd["status"])
+	}
+	if n := rd["attempts"].(float64); n != 0 {
+		t.Fatalf("replayed attempts = %v, want 0", n)
+	}
+
+	// Replaying a non-terminal (now pending) delivery must be rejected.
+	status, body = apiReq(t, "POST", "/v1/operator/providers/"+providerID+"/webhook-deliveries/"+deliveryID+"/replay",
+		operatorToken, nil)
+	if status != http.StatusConflict {
+		t.Fatalf("replay while pending: status %d, want 409, body %v", status, body)
+	}
+	if ec := body["error"].(map[string]any)["code"]; ec != "replay_invalid_state" {
+		t.Fatalf("replay while pending error code = %v, want replay_invalid_state", ec)
+	}
+
+	// Flip the endpoint healthy and drain: the replayed delivery delivers.
+	healthy.Store(true)
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := worker.DrainOnce(testCtx); err != nil {
+			t.Fatalf("drain after replay: %v", err)
+		}
+		if operatorDeliveryStatus(t, providerID, deliveryID) == "delivered" {
+			break
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	if s := operatorDeliveryStatus(t, providerID, deliveryID); s != "delivered" {
+		t.Fatalf("delivery status after replay = %v, want delivered", s)
+	}
+
+	// The replay is recorded in the provider's audit trail.
+	status, body = apiReq(t, "GET", "/v1/operator/providers/"+providerID+"/audit", operatorToken, nil)
+	if status != http.StatusOK {
+		t.Fatalf("audit list: status %d, body %v", status, body)
+	}
+	found := false
+	for _, e := range body["audit_events"].([]any) {
+		em := e.(map[string]any)
+		if em["action"] == "webhook_delivery_replay" && em["target_id"] == deliveryID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("replay must produce a webhook_delivery_replay audit record")
+	}
+}
+
+// operatorLatestDelivery returns the most recent webhook delivery for a
+// provider via the operator (cross-environment) view.
+func operatorLatestDelivery(t *testing.T, providerID string) map[string]any {
+	t.Helper()
+	status, body := apiReq(t, "GET", "/v1/operator/providers/"+providerID+"/webhook-deliveries", operatorToken, nil)
+	if status != http.StatusOK {
+		t.Fatalf("list deliveries: status %d, body %v", status, body)
+	}
+	deliveries, ok := body["deliveries"].([]any)
+	if !ok || len(deliveries) == 0 {
+		t.Fatal("expected at least 1 delivery record")
+	}
+	return deliveries[0].(map[string]any)
+}
+
+func operatorDeliveryStatus(t *testing.T, providerID, deliveryID string) string {
+	t.Helper()
+	status, body := apiReq(t, "GET", "/v1/operator/providers/"+providerID+"/webhook-deliveries", operatorToken, nil)
+	if status != http.StatusOK {
+		t.Fatalf("list deliveries: status %d, body %v", status, body)
+	}
+	for _, e := range body["deliveries"].([]any) {
+		d := e.(map[string]any)
+		if d["id"] == deliveryID {
+			return d["status"].(string)
+		}
+	}
+	t.Fatalf("delivery %s not found", deliveryID)
+	return ""
+}
+
+// ---------------------------------------------------------------------------
+// Testing: Webhook retention sweep
+// ---------------------------------------------------------------------------
+
+// TestWebhookRetentionPurge verifies the retention sweeper deletes only
+// terminal rows older than the cutoff: delivered/dead_letter deliveries,
+// failed deliveries with retries exhausted (next_attempt_at NULL), and
+// published or dead-lettered outbox events. Pending rows, failed rows still
+// inside their retry window, and fresh rows are never purged.
+func TestWebhookRetentionPurge(t *testing.T) {
+	cleanupWebhookData(t)
+
+	providerID, apiKey := createProviderAPI(t, "wh-ret-"+uuid.NewString()[:8])
+	envID := getTestEnvID(t, providerID)
+	endpointID, _ := createWebhookViaAPI(t, apiKey, "http://127.0.0.1:9/never")
+
+	old := "now() - interval '40 days'"
+	future := "now() + interval '1 hour'"
+
+	// Terminal deliveries older than the cutoff — all must be purged.
+	insertDelivery := func(status string, createdAt string, nextAttemptAt string) string {
+		id := uuid.NewString()
+		_, err := superPool.Exec(testCtx, `
+			INSERT INTO webhook_deliveries
+				(id, endpoint_id, outbox_event_id, provider_id, environment_id, status, created_at, next_attempt_at)
+			VALUES ($1, $2, $3, $4, $5, $6, `+createdAt+`, `+nextAttemptAt+`)`,
+			id, endpointID, uuid.NewString(), providerID, envID, status)
+		if err != nil {
+			t.Fatalf("insert delivery %s: %v", status, err)
+		}
+		return id
+	}
+	insertDelivery("delivered", old, "NULL")
+	insertDelivery("dead_letter", old, "NULL")
+	insertDelivery("failed", old, "NULL") // retries exhausted → purge
+
+	// Must survive: failed but still inside its retry window.
+	insertDelivery("failed", old, future)
+	// Must survive: fresh terminal row.
+	insertDelivery("delivered", "now()", "NULL")
+	// Must survive: pending row (never purged regardless of age).
+	insertDelivery("pending", old, "NULL")
+
+	// Outbox events. transaction_id must be unique per provider+environment.
+	insertOutbox := func(status string, createdAt string, nextAttemptAt string) {
+		_, err := superPool.Exec(testCtx, `
+			INSERT INTO outbox_events
+				(provider_id, environment_id, aggregate_type, aggregate_id, event_type,
+				 payload, payload_hash, transaction_id, status, created_at, next_attempt_at)
+			VALUES ($1, $2, 'usage', 'agg-1', 'usage.recorded', '{}', 'h', $3, $4, `+createdAt+`, `+nextAttemptAt+`)`,
+			providerID, envID, uuid.NewString(), status)
+		if err != nil {
+			t.Fatalf("insert outbox %s: %v", status, err)
+		}
+	}
+	insertOutbox("published", old, "NULL")     // terminal → purge
+	insertOutbox("failed", old, "NULL")        // retries exhausted → purge
+	insertOutbox("failed", old, future)        // still retrying → survive
+	insertOutbox("published", "now()", "NULL") // fresh → survive
+
+	// Run the sweep with a 30-day retention window.
+	cutoff := time.Now().UTC().Add(-30 * 24 * time.Hour)
+	n, err := svc.PurgeExpiredWebhookDeliveries(testCtx, cutoff)
+	if err != nil {
+		t.Fatalf("PurgeExpiredWebhookDeliveries: %v", err)
+	}
+	if n != 5 { // 3 deliveries + 2 outbox events
+		t.Fatalf("purged %d rows, want 5", n)
+	}
+
+	var deliveries, oldOutbox, freshPublished int
+	if err := superPool.QueryRow(testCtx,
+		`SELECT count(*) FROM webhook_deliveries WHERE provider_id = $1`, providerID).Scan(&deliveries); err != nil {
+		t.Fatalf("count deliveries: %v", err)
+	}
+	if deliveries != 3 { // failed-retry + fresh delivered + pending
+		t.Errorf("remaining deliveries = %d, want 3", deliveries)
+	}
+	// Old outbox rows: only the failed-but-still-retrying row survives.
+	if err := superPool.QueryRow(testCtx,
+		`SELECT count(*) FROM outbox_events WHERE provider_id = $1 AND created_at < $2`,
+		providerID, cutoff).Scan(&oldOutbox); err != nil {
+		t.Fatalf("count old outbox: %v", err)
+	}
+	if oldOutbox != 1 {
+		t.Errorf("remaining old outbox events = %d, want 1 (failed, still retrying)", oldOutbox)
+	}
+	// Fresh published rows are never purged.
+	if err := superPool.QueryRow(testCtx,
+		`SELECT count(*) FROM outbox_events WHERE provider_id = $1 AND status = 'published' AND created_at >= $2`,
+		providerID, cutoff).Scan(&freshPublished); err != nil {
+		t.Fatalf("count fresh published outbox: %v", err)
+	}
+	if freshPublished < 1 {
+		t.Errorf("fresh published outbox events = %d, want >= 1 (never purged)", freshPublished)
+	}
+
+	// A second sweep is a no-op (idempotent).
+	n2, err := svc.PurgeExpiredWebhookDeliveries(testCtx, cutoff)
+	if err != nil {
+		t.Fatalf("second PurgeExpiredWebhookDeliveries: %v", err)
+	}
+	if n2 != 0 {
+		t.Errorf("second sweep purged %d rows, want 0 (idempotent)", n2)
+	}
+}
+
+// TestWebhookCircuitBreakerTripsAndFastFails verifies the per-endpoint
+// circuit breaker: a webhook endpoint that keeps returning 500s is hit
+// exactly FailureThreshold times, then every subsequent delivery is
+// fast-failed (scheduled for backoff retry) without any real HTTP call —
+// the worker stops hammering a dead endpoint.
+func TestWebhookCircuitBreakerTripsAndFastFails(t *testing.T) {
+	cleanupWebhookData(t)
+
+	_, apiKey := createProviderAPI(t, "wh-cb-"+uuid.NewString()[:8])
+	versionID := createPublishedCatalog(t, apiKey)
+	custExt, _ := createCustomerAndSubscription(t, apiKey, versionID)
+
+	// Endpoint that always fails with 500.
+	var hits atomic.Int64
+	wc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer wc.Close()
+
+	createWebhookViaAPI(t, apiKey, wc.URL)
+
+	// Ingest 4 usage events → 4 outbox events → 4 deliveries, enough to
+	// trip a breaker with FailureThreshold=4.
+	for range 4 {
+		txID := "wh-cb-tx-" + uuid.NewString()[:8]
+		status, _ := ingestUsage(t, apiKey, txID, custExt, "api_calls",
+			time.Now().UTC().Format(time.RFC3339Nano), map[string]any{"count": 1})
+		if status != http.StatusCreated {
+			t.Fatalf("ingest usage: status %d", status)
+		}
+	}
+	relay := outbox.NewRelay(appStore, billing.NewNoop(nil), 50*time.Millisecond,
+		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err := relay.DrainOnce(testCtx); err != nil {
+		t.Fatalf("relay drain: %v", err)
+	}
+
+	worker := newTestWebhookWorker()
+	worker.SetBreakerOptions(circuitbreaker.Options{
+		FailureThreshold: 4,
+		OpenTimeout:      5 * time.Minute, // stays open for the whole test
+	})
+
+	// Drain until the endpoint has been hit at least 4 times (breaker open).
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) && hits.Load() < 4 {
+		if err := worker.DrainOnce(testCtx); err != nil {
+			t.Fatalf("drain: %v", err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if got := hits.Load(); got != 4 {
+		t.Fatalf("endpoint hit %d times, want exactly 4 (threshold)", got)
+	}
+
+	// More drains must not produce any real HTTP call: deliveries are
+	// fast-failed while the breaker is open (and retried later).
+	for range 4 {
+		if err := worker.DrainOnce(testCtx); err != nil {
+			t.Fatalf("drain after trip: %v", err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if got := hits.Load(); got != 4 {
+		t.Fatalf("endpoint hit %d times while breaker open, want 4 (must fast-fail)", got)
+	}
 }

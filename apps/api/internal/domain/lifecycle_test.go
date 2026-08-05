@@ -12,7 +12,7 @@ func TestCanTransition(t *testing.T) {
 		to   LifecycleState
 		want bool
 	}{
-		{"registered to test", StateRegistered, StateTestActive, true},
+		{"registered to test rejected", StateRegistered, StateTestActive, false},
 		{"test to review", StateTestActive, StateLiveReview, true},
 		{"review to active", StateLiveReview, StateLiveActive, true},
 		{"active to restricted", StateLiveActive, StateRestricted, true},
@@ -41,12 +41,12 @@ func TestCanTransition(t *testing.T) {
 
 func TestTransition(t *testing.T) {
 	t.Run("valid transition", func(t *testing.T) {
-		got, err := Transition(StateRegistered, StateTestActive)
+		got, err := Transition(StateTestActive, StateLiveReview)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if got != StateTestActive {
-			t.Fatalf("got %v, want %v", got, StateTestActive)
+		if got != StateLiveReview {
+			t.Fatalf("got %v, want %v", got, StateLiveReview)
 		}
 	})
 
@@ -56,6 +56,111 @@ func TestTransition(t *testing.T) {
 			t.Fatalf("expected ErrInvalidTransition, got %v", err)
 		}
 	})
+
+	// REGISTERED → TEST_ACTIVE is exclusively the activation flow's job
+	// (assigns region + cell, provisions the test environment); the generic
+	// transition must reject it.
+	t.Run("registered to test rejected", func(t *testing.T) {
+		_, err := Transition(StateRegistered, StateTestActive)
+		if !errors.Is(err, ErrInvalidTransition) {
+			t.Fatalf("expected ErrInvalidTransition, got %v", err)
+		}
+	})
+}
+
+func TestCanWrite(t *testing.T) {
+	tests := []struct {
+		name  string
+		state LifecycleState
+		want  bool
+	}{
+		{"registered", StateRegistered, false},
+		{"test active", StateTestActive, true},
+		{"live review", StateLiveReview, true},
+		{"live active", StateLiveActive, true},
+		{"restricted", StateRestricted, true},
+		{"suspended", StateSuspended, false},
+		{"offboarding", StateOffboarding, false},
+		{"unknown", LifecycleState("UNKNOWN"), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := CanWrite(tt.state); got != tt.want {
+				t.Errorf("CanWrite(%s) = %v, want %v", tt.state, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCanPublishCatalog(t *testing.T) {
+	tests := []struct {
+		name  string
+		state LifecycleState
+		want  bool
+	}{
+		{"registered", StateRegistered, false},
+		{"test active", StateTestActive, true},
+		{"live review", StateLiveReview, true},
+		{"live active", StateLiveActive, true},
+		{"restricted", StateRestricted, true},
+		{"suspended", StateSuspended, false},
+		{"offboarding", StateOffboarding, false},
+		{"unknown", LifecycleState("UNKNOWN"), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := CanPublishCatalog(tt.state); got != tt.want {
+				t.Errorf("CanPublishCatalog(%s) = %v, want %v", tt.state, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAllowedTransitions(t *testing.T) {
+	// Verify AllowedTransitions returns a copy (modifying it must not
+	// affect the internal state machine).
+	tests := []struct {
+		from     LifecycleState
+		expected []LifecycleState
+	}{
+		{StateRegistered, []LifecycleState{}},
+		{StateTestActive, []LifecycleState{StateLiveReview}},
+		{StateLiveReview, []LifecycleState{StateLiveActive, StateRestricted, StateSuspended}},
+		{StateLiveActive, []LifecycleState{StateRestricted, StateSuspended, StateOffboarding}},
+		{StateRestricted, []LifecycleState{StateLiveActive, StateSuspended, StateOffboarding}},
+		{StateSuspended, []LifecycleState{StateLiveActive, StateOffboarding}},
+		{StateOffboarding, []LifecycleState{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.from), func(t *testing.T) {
+			got := AllowedTransitions(tt.from)
+			if len(got) != len(tt.expected) {
+				t.Fatalf("AllowedTransitions(%s) = %v, want %v", tt.from, got, tt.expected)
+			}
+			for i, want := range tt.expected {
+				if got[i] != want {
+					t.Errorf("AllowedTransitions(%s)[%d] = %v, want %v", tt.from, i, got[i], want)
+				}
+			}
+			// Mutate the returned slice and verify the internal map
+			// is unaffected (proves it's a copy).
+			if len(got) > 0 {
+				got[0] = LifecycleState("MUTATED")
+				fresh := AllowedTransitions(tt.from)
+				if fresh[0] == "MUTATED" {
+					t.Fatal("AllowedTransitions did not return a copy; internal state machine was mutated")
+				}
+			}
+		})
+	}
+
+	// Unknown state returns nil (empty).
+	if got := AllowedTransitions(LifecycleState("UNKNOWN")); len(got) != 0 {
+		t.Fatalf("AllowedTransitions(UNKNOWN) = %v, want nil/empty", got)
+	}
 }
 
 func TestValidScope(t *testing.T) {

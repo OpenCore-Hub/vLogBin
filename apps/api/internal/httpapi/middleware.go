@@ -5,13 +5,18 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/domain"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/keys"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store/storegen"
@@ -33,6 +38,22 @@ const maxBodySize = 1 << 20
 func bodyLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
+		next.ServeHTTP(w, r)
+	})
+}
+
+// securityHeadersMiddleware applies baseline security headers to every
+// response and disables caching. API responses may embed provider-scoped
+// data, so browsers and intermediate caches must not retain them; no-store
+// also keeps operator/provider payloads out of shared caches.
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		h.Set("Cache-Control", "no-store")
 		next.ServeHTTP(w, r)
 	})
 }
@@ -77,32 +98,95 @@ func (s *Server) rateLimitMiddleware(next http.Handler) http.Handler {
 		}
 		endpointKey := r.Method + ":" + routePattern
 
+		rl := s.RateLimits()
 		limits := []struct {
 			key   string
+			level string
 			limit int
 		}{
-			{"provider:" + tc.ProviderID.String(), s.rateLimits.Provider},
-			{"env:" + tc.EnvironmentID.String(), s.rateLimits.Environment},
-			{"cred:" + tc.CredentialID.String(), s.rateLimits.Credential},
-			{"cred_ep:" + tc.CredentialID.String() + ":" + endpointKey, s.rateLimits.Endpoint},
+			{"provider:" + tc.ProviderID.String(), "provider", rl.Provider},
+			{"env:" + tc.EnvironmentID.String(), "environment", rl.Environment},
+			{"cred:" + tc.CredentialID.String(), "credential", rl.Credential},
+			{"cred_ep:" + tc.CredentialID.String() + ":" + endpointKey, "endpoint", rl.Endpoint},
 		}
 
 		for _, lm := range limits {
-			if !s.limiter.Allow(lm.key, lm.limit, s.rateLimits.Window) {
-				w.Header().Set("Retry-After", "60")
-				writeError(w, http.StatusTooManyRequests, "rate_limited",
-					"rate limit exceeded; retry after the window resets",
-					reqIDFromRequest(r))
-				s.log.Warn("rate limit exceeded",
-					"key", lm.key,
-					"limit", lm.limit,
-					"request_id", reqIDFromRequest(r),
-				)
-				return
+			ok, retry := s.limiter.AllowRetryAfter(lm.key, lm.limit, rl.Window)
+			if ok {
+				continue
 			}
+			// Retry-After reflects the actual remaining time in the fixed
+			// window, rounded up to whole seconds (never 0/negative).
+			secs := max(int64(retry/time.Second), 1)
+			w.Header().Set("Retry-After", strconv.FormatInt(secs, 10))
+			writeError(w, http.StatusTooManyRequests, "rate_limited",
+				"rate limit exceeded; retry after the window resets",
+				reqIDFromRequest(r))
+			s.log.Warn("rate limit exceeded",
+				"key", lm.key,
+				"level", lm.level,
+				"limit", lm.limit,
+				"request_id", reqIDFromRequest(r),
+			)
+			s.metrics.HTTPRateLimitedTotal.WithLabelValues(lm.level).Inc()
+			return
 		}
 
 		next.ServeHTTP(w, r)
+	})
+}
+
+// clientIP returns the client source IP used for the per-IP rate limit: the
+// first entry of X-Forwarded-For when present (production sits behind a
+// reverse proxy), otherwise the remote address host. The trusted proxy must
+// overwrite X-Forwarded-For so clients cannot spoof it.
+func clientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if i := strings.IndexByte(xff, ','); i >= 0 {
+			xff = xff[:i]
+		}
+		return strings.TrimSpace(xff)
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+// ipRateLimitMiddleware applies a global per-source-IP safety net before
+// authentication. A client that rotates credentials would otherwise get a
+// fresh bucket per credential, so this layer guarantees a hard ceiling per
+// source address and also protects unauthenticated endpoints (health,
+// metrics) from naive DoS. Disabled when RateLimits.IP is 0.
+func (s *Server) ipRateLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rl := s.RateLimits()
+		if rl.IP <= 0 {
+			next.ServeHTTP(w, r)
+			return
+		}
+		ip := clientIP(r)
+		if ip == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		ok, retry := s.limiter.AllowRetryAfter("ip:"+ip, rl.IP, rl.Window)
+		if ok {
+			next.ServeHTTP(w, r)
+			return
+		}
+		secs := max(int64(retry/time.Second), 1)
+		w.Header().Set("Retry-After", strconv.FormatInt(secs, 10))
+		writeError(w, http.StatusTooManyRequests, "rate_limited",
+			"rate limit exceeded; retry after the window resets",
+			reqIDFromRequest(r))
+		s.log.Warn("per-ip rate limit exceeded",
+			"ip", ip,
+			"limit", rl.IP,
+			"request_id", reqIDFromRequest(r),
+		)
+		s.metrics.HTTPRateLimitedTotal.WithLabelValues("ip").Inc()
 	})
 }
 
@@ -110,12 +194,17 @@ func (s *Server) rateLimitMiddleware(next http.Handler) http.Handler {
 // default "*" allows the Next.js dev server (port 3000) to call the API
 // (port 8080). In production, CORS_ALLOWED_ORIGINS should be set to the
 // specific frontend origin(s).
-func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
+//
+// It takes a provider function instead of a static slice: the provider is
+// invoked inside the per-request handler, so the current origin list is
+// resolved atomically on every request. This keeps CORS hot-reloadable even
+// though chi caches the middleware chain after the first request.
+func corsMiddleware(origins func() []string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
 			if origin != "" {
-				for _, o := range allowedOrigins {
+				for _, o := range origins() {
 					if o == "*" || o == origin {
 						w.Header().Set("Access-Control-Allow-Origin", origin)
 						w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -133,6 +222,13 @@ func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// corsMiddleware is the Server variant used in the router. It hands the
+// CORSOrigins accessor to corsMiddleware; because the accessor is called
+// per-request, SetCORSOrigins takes effect without a router rebuild/restart.
+func (s *Server) corsMiddleware(next http.Handler) http.Handler {
+	return corsMiddleware(s.CORSOrigins)(next)
 }
 
 // requestIDMiddleware assigns every request a request id, propagated into
@@ -161,13 +257,62 @@ func (sr *statusRecorder) WriteHeader(code int) {
 	sr.ResponseWriter.WriteHeader(code)
 }
 
+// metricsMiddleware records HTTP request count and latency into the
+// Prometheus registry. Probes (/health, /ready, /startup) and the /metrics
+// endpoint itself are skipped to keep scrape and health traffic out of API
+// metrics.
+func (s *Server) metricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" || r.URL.Path == "/ready" || r.URL.Path == "/startup" || r.URL.Path == "/metrics" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		start := time.Now()
+		sr := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(sr, r)
+
+		var route string
+		if rc := chi.RouteContext(r.Context()); rc != nil {
+			route = rc.RoutePattern()
+		}
+		if route == "" {
+			// Outside a chi router (or for unmatched paths) fall back to the
+			// raw path so no request goes unrecorded.
+			route = r.URL.Path
+		}
+		s.metrics.HTTPRequestsTotal.WithLabelValues(r.Method, route, fmt.Sprintf("%d", sr.status)).Inc()
+		s.metrics.HTTPRequestSeconds.WithLabelValues(r.Method, route).Observe(time.Since(start).Seconds())
+	})
+}
+
+// requestTimeoutMiddleware bounds the whole handler lifetime. A request whose
+// handler outlives the deadline gets its context cancelled; the service layer
+// then fails fast and serviceError maps context.DeadlineExceeded to
+// 504 upstream_timeout. This prevents a hung upstream (e.g. a stuck Postgres
+// query) from pinning a goroutine and request slot forever.
+func (s *Server) requestTimeoutMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.requestTimeout <= 0 {
+			next.ServeHTTP(w, r)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), s.requestTimeout)
+		defer cancel()
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 // requestLogMiddleware logs every request (except health probes) with
 // method, path, status, duration, and request_id for production
-// observability and audit correlation.
+// observability and audit correlation. Credential-like query parameters are
+// redacted before logging, and requests slower than the configured threshold
+// are escalated to Warn with slow=true so tail latency is visible without
+// noisy debug logging.
 func (s *Server) requestLogMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Skip health-check endpoints to avoid log noise from probes.
-		if r.URL.Path == "/health" || r.URL.Path == "/ready" {
+		if r.URL.Path == "/health" || r.URL.Path == "/ready" || r.URL.Path == "/startup" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -188,15 +333,68 @@ func (s *Server) requestLogMiddleware(next http.Handler) http.Handler {
 			"request_id", reqID,
 			"remote_addr", remoteIP(r),
 		}
+		if q := redactQuery(r.URL.RawQuery); q != "" {
+			attrs = append(attrs, "query", q)
+		}
 
-		if sr.status >= 500 {
+		thr := s.SlowRequestThreshold()
+		slow := thr > 0 && duration >= thr
+		if slow {
+			attrs = append(attrs, "slow", true, "threshold_ms", thr.Milliseconds())
+		}
+
+		switch {
+		case sr.status >= 500:
 			s.log.Error("request", attrs...)
-		} else if sr.status >= 400 {
+		case slow || sr.status >= 400:
 			s.log.Warn("request", attrs...)
-		} else {
+		default:
 			s.log.Info("request", attrs...)
 		}
 	})
+}
+
+// sensitiveQueryKeys lists credential-like query parameter names whose values
+// must never reach the logs. Matching is case-insensitive and also covers
+// suffixed variants (e.g. access_token, x-api-key).
+var sensitiveQueryKeys = []string{
+	"token", "key", "secret", "password", "passwd",
+	"api_key", "apikey", "access_token", "refresh_token",
+	"signature", "sig", "code",
+}
+
+func isSensitiveQueryKey(k string) bool {
+	k = strings.ToLower(k)
+	if slices.Contains(sensitiveQueryKeys, k) {
+		return true
+	}
+	for _, suffix := range []string{"token", "key", "secret", "password", "signature"} {
+		if strings.HasSuffix(k, "_"+suffix) || strings.HasSuffix(k, "-"+suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// redactQuery returns a log-safe copy of a raw query string: values of
+// credential-like parameters are replaced with "REDACTED" and keys are sorted
+// for stable output. An empty input yields an empty string; an unparseable
+// input yields a placeholder so nothing is ever logged verbatim.
+func redactQuery(rawQuery string) string {
+	if rawQuery == "" {
+		return ""
+	}
+	values, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return "REDACTED_INVALID_QUERY"
+	}
+	for k := range values {
+		if isSensitiveQueryKey(k) {
+			values[k] = []string{"REDACTED"}
+		}
+	}
+	// Encode sorts keys and escapes values, giving stable, log-safe output.
+	return values.Encode()
 }
 
 // operatorAuth authenticates /v1/operator/* with either a ZITADEL OIDC
@@ -331,6 +529,31 @@ func (s *Server) tenantGuard(next http.Handler) http.Handler {
 			}
 			writeError(w, http.StatusForbidden, "tenant_context_override",
 				"provider_id/environment_id must come from the credential, not the request", reqIDFromRequest(r))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// lifecycleWriteGuard enforces a read-only mode on the provider API while the
+// provider is not in a writable lifecycle state (REGISTERED, SUSPENDED,
+// OFFBOARDING). Write methods (POST/PUT/PATCH/DELETE) are rejected with 409
+// provider_not_writable; read methods (GET/HEAD/OPTIONS) always pass so a
+// suspended provider can still inspect its own data for audit/forensics.
+// The lifecycle state comes from the credential-derived tenant context, so
+// the guard is real-time and requires no extra query.
+func (s *Server) lifecycleWriteGuard(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet, http.MethodHead, http.MethodOptions:
+			next.ServeHTTP(w, r)
+			return
+		}
+		tc, ok := tenant.FromContext(r.Context())
+		if ok && !domain.CanWrite(domain.LifecycleState(tc.LifecycleState)) {
+			writeError(w, http.StatusConflict, "provider_not_writable",
+				fmt.Sprintf("provider %s is in state %s: write operations are disabled",
+					tc.ProviderID, tc.LifecycleState), reqIDFromRequest(r))
 			return
 		}
 		next.ServeHTTP(w, r)

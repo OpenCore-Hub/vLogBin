@@ -1,13 +1,21 @@
 package httpapi
 
 import (
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/config"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/metrics"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/ratelimit"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/tenant"
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 func testTenantCtx() tenant.Ctx {
@@ -131,4 +139,89 @@ func http404() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	})
+}
+
+func testIPRateLimitServer(ipLimit int) *Server {
+	s := &Server{
+		log:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		limiter: ratelimit.New(),
+		metrics: metrics.New(),
+	}
+	s.SetRateLimits(config.RateLimitConfig{IP: ipLimit, Window: time.Minute})
+	return s
+}
+
+func TestClientIP(t *testing.T) {
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Set("X-Forwarded-For", "203.0.113.7, 10.0.0.1")
+	if got := clientIP(r); got != "203.0.113.7" {
+		t.Fatalf("clientIP with XFF = %q, want 203.0.113.7", got)
+	}
+
+	r = httptest.NewRequest("GET", "/", nil)
+	if got := clientIP(r); got != "192.0.2.1" {
+		t.Fatalf("clientIP from RemoteAddr = %q, want 192.0.2.1", got)
+	}
+
+	r.RemoteAddr = "malformed"
+	if got := clientIP(r); got != "malformed" {
+		t.Fatalf("clientIP on malformed RemoteAddr = %q, want fallback", got)
+	}
+}
+
+func TestIPRateLimitMiddlewareRejects(t *testing.T) {
+	s := testIPRateLimitServer(2)
+
+	ok := func(remote string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", "/", nil)
+		r.RemoteAddr = remote
+		w := httptest.NewRecorder()
+		s.ipRateLimitMiddleware(http404()).ServeHTTP(w, r)
+		return w
+	}
+
+	if w := ok("203.0.113.1:1234"); w.Code != 404 {
+		t.Fatalf("first request must pass through, got %d", w.Code)
+	}
+	if w := ok("203.0.113.1:1234"); w.Code != 404 {
+		t.Fatalf("second request must pass through, got %d", w.Code)
+	}
+
+	w := ok("203.0.113.1:1234")
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("third request must be 429, got %d", w.Code)
+	}
+	ra, err := strconv.Atoi(w.Header().Get("Retry-After"))
+	if err != nil || ra < 1 {
+		t.Fatalf("Retry-After = %q, want a positive integer", w.Header().Get("Retry-After"))
+	}
+
+	// A different source IP is unaffected.
+	if w := ok("198.51.100.9:1234"); w.Code != 404 {
+		t.Fatalf("different IP must not share the bucket, got %d", w.Code)
+	}
+}
+
+func TestIPRateLimitMiddlewareDisabled(t *testing.T) {
+	s := testIPRateLimitServer(0) // 0 disables the layer
+	for range 3 {
+		r := httptest.NewRequest("GET", "/", nil)
+		w := httptest.NewRecorder()
+		s.ipRateLimitMiddleware(http404()).ServeHTTP(w, r)
+		if w.Code != 404 {
+			t.Fatalf("disabled per-IP limit must pass through, got %d", w.Code)
+		}
+	}
+}
+
+func TestIPRateLimitMiddlewareCountsMetric(t *testing.T) {
+	s := testIPRateLimitServer(1)
+	r := httptest.NewRequest("GET", "/", nil)
+	s.ipRateLimitMiddleware(http404()).ServeHTTP(httptest.NewRecorder(), r) // allowed
+	r = httptest.NewRequest("GET", "/", nil)
+	s.ipRateLimitMiddleware(http404()).ServeHTTP(httptest.NewRecorder(), r) // rejected
+
+	if got := testutil.ToFloat64(s.metrics.HTTPRateLimitedTotal.WithLabelValues("ip")); got != 1 {
+		t.Fatalf("ip rate-limited metric = %v, want 1", got)
+	}
 }

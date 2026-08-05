@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store/storegen"
@@ -151,4 +153,88 @@ func (s *Service) ListWebhookDeliveriesByProvider(ctx context.Context, providerI
 		return err
 	})
 	return out, err
+}
+
+// ErrWebhookReplayConflict is returned when a webhook delivery replay is
+// attempted on a delivery that is not in a terminal, replayable state
+// (dead_letter | failed). Clients should re-read the delivery list to find
+// the current status.
+var ErrWebhookReplayConflict = fmt.Errorf("webhook delivery is not in a replayable state")
+
+// ReplayWebhookDeliveryByProvider requeues a terminal webhook delivery for
+// immediate redelivery (operator view, cross-environment). The delivery is
+// reset to 'pending' with a fresh attempt budget (attempts=0, backoff
+// cleared, response trace wiped); the worker picks it up on the next drain
+// and applies the normal retry/backoff policy again. Unknown deliveries or
+// deliveries not owned by the provider yield ErrNotFound; non-terminal
+// deliveries yield ErrWebhookReplayConflict. The replay is written to the
+// provider's audit trail so incident post-mortems show who requeued what.
+func (s *Service) ReplayWebhookDeliveryByProvider(ctx context.Context, providerID, deliveryID uuid.UUID, actor string) (*storegen.WebhookDelivery, error) {
+	if actor == "" {
+		actor = "operator"
+	}
+	var out *storegen.WebhookDelivery
+	err := s.store.WithOperator(ctx, func(tx pgx.Tx, q *store.Queries) error {
+		d, err := q.GetWebhookDelivery(ctx, storegen.GetWebhookDeliveryParams{
+			ID:         deliveryID,
+			ProviderID: providerID,
+		})
+		if err != nil {
+			return mapErr(err, "webhook delivery %s", deliveryID)
+		}
+		if d.Status != "dead_letter" && d.Status != "failed" {
+			return fmt.Errorf("%w: delivery %s status=%s", ErrWebhookReplayConflict, deliveryID, d.Status)
+		}
+		upd, err := q.ReplayWebhookDelivery(ctx, storegen.ReplayWebhookDeliveryParams{
+			ID:         deliveryID,
+			ProviderID: providerID,
+		})
+		if err != nil {
+			return err
+		}
+		out = &upd
+		return insertAuditTx(ctx, q,
+			uuid.NullUUID{UUID: providerID, Valid: true},
+			uuid.NullUUID{UUID: d.EnvironmentID, Valid: true},
+			"operator", actor, "webhook_delivery_replay", "webhook_delivery", deliveryID.String(),
+			map[string]any{"from_status": d.Status, "endpoint_id": d.EndpointID})
+	})
+	return out, err
+}
+
+// PurgeExpiredWebhookDeliveries deletes terminal webhook deliveries and
+// terminal outbox events older than cutoff. Called by the background
+// retention sweeper (NewWebhookRetentionSweeper) so webhook_deliveries and
+// outbox_events do not grow without bound. Only terminal rows are removed:
+// 'delivered' and 'dead_letter' deliveries, 'failed' deliveries whose retry
+// window is exhausted (next_attempt_at IS NULL), and 'published' or
+// dead-lettered outbox events. Pending rows and failed rows still inside
+// their retry window are never purged. Deliveries are swept first so outbox
+// events are only removed after the delivery traces referencing them are
+// gone. Runs in the operator context so RLS does not scope the sweep.
+func (s *Service) PurgeExpiredWebhookDeliveries(ctx context.Context, cutoff time.Time) (int64, error) {
+	var total int64
+	err := s.store.WithOperator(ctx, func(tx pgx.Tx, q *store.Queries) error {
+		deliveries, err := q.DeleteExpiredWebhookDeliveries(ctx, cutoff)
+		if err != nil {
+			return err
+		}
+		events, err := q.DeleteExpiredOutboxEvents(ctx, cutoff)
+		if err != nil {
+			return err
+		}
+		total = deliveries + events
+		return nil
+	})
+	return total, err
+}
+
+// NewWebhookRetentionSweeper creates a background sweeper that purges
+// terminal webhook deliveries and outbox events beyond the retention window
+// at the given interval. The cutoff is recomputed on every sweep so a long
+// shutdown gap does not age the window.
+func NewWebhookRetentionSweeper(svc *Service, retentionDays int, interval time.Duration, log *slog.Logger) *ExpirySweeper {
+	return NewExpirySweeper("webhook_retention", func(ctx context.Context) (int64, error) {
+		return svc.PurgeExpiredWebhookDeliveries(ctx, time.Now().UTC().Add(-time.Duration(retentionDays)*24*time.Hour))
+	}, interval, log)
 }

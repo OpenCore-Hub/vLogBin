@@ -241,20 +241,30 @@ func validateCatalog(c CatalogContent, requireComplete bool) error {
 		}
 		grantKeys := map[string]bool{}
 		for _, e := range p.Entitlements {
-			if e.Key == "" {
-				return fmt.Errorf("plan %q: entitlement key is required", p.Code)
+			if err := ValidateEntitlementInput(e); err != nil {
+				return fmt.Errorf("plan %q: %v", p.Code, err)
 			}
 			if grantKeys[e.Key] {
 				return fmt.Errorf("plan %q: duplicate entitlement key %q", p.Code, e.Key)
 			}
 			grantKeys[e.Key] = true
-			if !ValidValueType(e.ValueType) {
-				return fmt.Errorf("plan %q: entitlement %q: unknown value_type %q", p.Code, e.Key, e.ValueType)
-			}
-			if len(e.Value) == 0 || string(e.Value) == "null" {
-				return fmt.Errorf("plan %q: entitlement %q: value is required", p.Code, e.Key)
-			}
 		}
+	}
+	return nil
+}
+
+// ValidateEntitlementInput validates a single entitlement grant with the same
+// rules enforced by validateCatalog. It is the single source of truth for the
+// plan-level Policies endpoints (SetPlanEntitlement).
+func ValidateEntitlementInput(e EntitlementInput) error {
+	if e.Key == "" {
+		return fmt.Errorf("entitlement key is required")
+	}
+	if !ValidValueType(e.ValueType) {
+		return fmt.Errorf("entitlement %q: unknown value_type %q", e.Key, e.ValueType)
+	}
+	if len(e.Value) == 0 || string(e.Value) == "null" {
+		return fmt.Errorf("entitlement %q: value is required", e.Key)
 	}
 	return nil
 }

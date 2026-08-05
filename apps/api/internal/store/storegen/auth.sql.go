@@ -13,29 +13,34 @@ import (
 
 const createAuthConfig = `-- name: CreateAuthConfig :one
 INSERT INTO provider_auth_configs (
-    provider_id, environment_id,
-    zitadel_project_id, zitadel_app_id, zitadel_client_id, zitadel_client_secret
-) VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, provider_id, environment_id, zitadel_project_id, zitadel_app_id, zitadel_client_id, zitadel_client_secret, enabled, created_at, updated_at
+    provider_id, environment_id, name,
+    zitadel_project_id, zitadel_app_id, zitadel_client_id, zitadel_client_secret,
+    redirect_uris
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, provider_id, environment_id, zitadel_project_id, zitadel_app_id, zitadel_client_id, zitadel_client_secret, enabled, created_at, updated_at, redirect_uris, name
 `
 
 type CreateAuthConfigParams struct {
 	ProviderID          uuid.UUID `json:"provider_id"`
 	EnvironmentID       uuid.UUID `json:"environment_id"`
+	Name                string    `json:"name"`
 	ZitadelProjectID    string    `json:"zitadel_project_id"`
 	ZitadelAppID        string    `json:"zitadel_app_id"`
 	ZitadelClientID     string    `json:"zitadel_client_id"`
 	ZitadelClientSecret string    `json:"zitadel_client_secret"`
+	RedirectUris        []byte    `json:"redirect_uris"`
 }
 
 func (q *Queries) CreateAuthConfig(ctx context.Context, arg CreateAuthConfigParams) (ProviderAuthConfig, error) {
 	row := q.db.QueryRow(ctx, createAuthConfig,
 		arg.ProviderID,
 		arg.EnvironmentID,
+		arg.Name,
 		arg.ZitadelProjectID,
 		arg.ZitadelAppID,
 		arg.ZitadelClientID,
 		arg.ZitadelClientSecret,
+		arg.RedirectUris,
 	)
 	var i ProviderAuthConfig
 	err := row.Scan(
@@ -49,6 +54,8 @@ func (q *Queries) CreateAuthConfig(ctx context.Context, arg CreateAuthConfigPara
 		&i.Enabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RedirectUris,
+		&i.Name,
 	)
 	return i, err
 }
@@ -69,7 +76,7 @@ func (q *Queries) DeleteAuthConfig(ctx context.Context, arg DeleteAuthConfigPara
 }
 
 const getAuthConfigByTenant = `-- name: GetAuthConfigByTenant :one
-SELECT id, provider_id, environment_id, zitadel_project_id, zitadel_app_id, zitadel_client_id, zitadel_client_secret, enabled, created_at, updated_at FROM provider_auth_configs
+SELECT id, provider_id, environment_id, zitadel_project_id, zitadel_app_id, zitadel_client_id, zitadel_client_secret, enabled, created_at, updated_at, redirect_uris, name FROM provider_auth_configs
 WHERE provider_id = $1 AND environment_id = $2
 `
 
@@ -92,6 +99,165 @@ func (q *Queries) GetAuthConfigByTenant(ctx context.Context, arg GetAuthConfigBy
 		&i.Enabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RedirectUris,
+		&i.Name,
 	)
 	return i, err
+}
+
+const listAllProviderAuthCiphertexts = `-- name: ListAllProviderAuthCiphertexts :many
+SELECT id, zitadel_client_secret FROM provider_auth_configs
+ORDER BY id
+LIMIT $1
+`
+
+type ListAllProviderAuthCiphertextsRow struct {
+	ID                  uuid.UUID `json:"id"`
+	ZitadelClientSecret string    `json:"zitadel_client_secret"`
+}
+
+// Operator-only view used by the re-encryption worker.
+func (q *Queries) ListAllProviderAuthCiphertexts(ctx context.Context, limit int32) ([]ListAllProviderAuthCiphertextsRow, error) {
+	rows, err := q.db.Query(ctx, listAllProviderAuthCiphertexts, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllProviderAuthCiphertextsRow
+	for rows.Next() {
+		var i ListAllProviderAuthCiphertextsRow
+		if err := rows.Scan(&i.ID, &i.ZitadelClientSecret); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAuthConfigsByTenant = `-- name: ListAuthConfigsByTenant :many
+SELECT id, provider_id, environment_id, zitadel_project_id, zitadel_app_id, zitadel_client_id, zitadel_client_secret, enabled, created_at, updated_at, redirect_uris, name FROM provider_auth_configs
+WHERE provider_id = $1 AND environment_id = $2
+ORDER BY created_at DESC
+`
+
+type ListAuthConfigsByTenantParams struct {
+	ProviderID    uuid.UUID `json:"provider_id"`
+	EnvironmentID uuid.UUID `json:"environment_id"`
+}
+
+func (q *Queries) ListAuthConfigsByTenant(ctx context.Context, arg ListAuthConfigsByTenantParams) ([]ProviderAuthConfig, error) {
+	rows, err := q.db.Query(ctx, listAuthConfigsByTenant, arg.ProviderID, arg.EnvironmentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProviderAuthConfig
+	for rows.Next() {
+		var i ProviderAuthConfig
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProviderID,
+			&i.EnvironmentID,
+			&i.ZitadelProjectID,
+			&i.ZitadelAppID,
+			&i.ZitadelClientID,
+			&i.ZitadelClientSecret,
+			&i.Enabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.RedirectUris,
+			&i.Name,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateAuthConfigRedirectURIs = `-- name: UpdateAuthConfigRedirectURIs :one
+UPDATE provider_auth_configs
+SET redirect_uris = $3, updated_at = now()
+WHERE provider_id = $1 AND environment_id = $2
+RETURNING id, provider_id, environment_id, zitadel_project_id, zitadel_app_id, zitadel_client_id, zitadel_client_secret, enabled, created_at, updated_at, redirect_uris, name
+`
+
+type UpdateAuthConfigRedirectURIsParams struct {
+	ProviderID    uuid.UUID `json:"provider_id"`
+	EnvironmentID uuid.UUID `json:"environment_id"`
+	RedirectUris  []byte    `json:"redirect_uris"`
+}
+
+func (q *Queries) UpdateAuthConfigRedirectURIs(ctx context.Context, arg UpdateAuthConfigRedirectURIsParams) (ProviderAuthConfig, error) {
+	row := q.db.QueryRow(ctx, updateAuthConfigRedirectURIs, arg.ProviderID, arg.EnvironmentID, arg.RedirectUris)
+	var i ProviderAuthConfig
+	err := row.Scan(
+		&i.ID,
+		&i.ProviderID,
+		&i.EnvironmentID,
+		&i.ZitadelProjectID,
+		&i.ZitadelAppID,
+		&i.ZitadelClientID,
+		&i.ZitadelClientSecret,
+		&i.Enabled,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.RedirectUris,
+		&i.Name,
+	)
+	return i, err
+}
+
+const updateAuthConfigSecret = `-- name: UpdateAuthConfigSecret :one
+UPDATE provider_auth_configs
+SET zitadel_client_secret = $3, updated_at = now()
+WHERE provider_id = $1 AND environment_id = $2
+RETURNING id, provider_id, environment_id, zitadel_project_id, zitadel_app_id, zitadel_client_id, zitadel_client_secret, enabled, created_at, updated_at, redirect_uris, name
+`
+
+type UpdateAuthConfigSecretParams struct {
+	ProviderID          uuid.UUID `json:"provider_id"`
+	EnvironmentID       uuid.UUID `json:"environment_id"`
+	ZitadelClientSecret string    `json:"zitadel_client_secret"`
+}
+
+func (q *Queries) UpdateAuthConfigSecret(ctx context.Context, arg UpdateAuthConfigSecretParams) (ProviderAuthConfig, error) {
+	row := q.db.QueryRow(ctx, updateAuthConfigSecret, arg.ProviderID, arg.EnvironmentID, arg.ZitadelClientSecret)
+	var i ProviderAuthConfig
+	err := row.Scan(
+		&i.ID,
+		&i.ProviderID,
+		&i.EnvironmentID,
+		&i.ZitadelProjectID,
+		&i.ZitadelAppID,
+		&i.ZitadelClientID,
+		&i.ZitadelClientSecret,
+		&i.Enabled,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.RedirectUris,
+		&i.Name,
+	)
+	return i, err
+}
+
+const updateProviderAuthClientSecret = `-- name: UpdateProviderAuthClientSecret :exec
+UPDATE provider_auth_configs SET zitadel_client_secret = $2, updated_at = now()
+WHERE id = $1
+`
+
+type UpdateProviderAuthClientSecretParams struct {
+	ID                  uuid.UUID `json:"id"`
+	ZitadelClientSecret string    `json:"zitadel_client_secret"`
+}
+
+func (q *Queries) UpdateProviderAuthClientSecret(ctx context.Context, arg UpdateProviderAuthClientSecretParams) error {
+	_, err := q.db.Exec(ctx, updateProviderAuthClientSecret, arg.ID, arg.ZitadelClientSecret)
+	return err
 }

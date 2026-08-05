@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // Lago delivers usage events to a Lago instance over HTTP
@@ -24,7 +26,13 @@ func NewLago(apiURL, apiKey string) *Lago {
 	return &Lago{
 		apiURL: strings.TrimRight(apiURL, "/"),
 		apiKey: apiKey,
-		client: &http.Client{Timeout: 10 * time.Second},
+		client: &http.Client{
+			Timeout: 10 * time.Second,
+			// Instrument outbound billing calls with OpenTelemetry client
+			// spans. The default no-op tracer keeps this transparent when
+			// tracing is disabled.
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		},
 	}
 }
 
@@ -84,26 +92,26 @@ type lagoMeta struct {
 }
 
 type lagoInvoice struct {
-	LagoID         string     `json:"lago_id"`
-	Number         string     `json:"number"`
-	IssuingDate    string     `json:"issuing_date"`
-	InvoiceType    string     `json:"invoice_type"`
-	Status         string     `json:"status"`
-	PaymentStatus  string     `json:"payment_status"`
-	Currency       string     `json:"currency"`
-	FeesAmountCents           json.Number `json:"fees_amount_cents"`
-	CouponsAmountCents        json.Number `json:"coupons_amount_cents"`
-	CreditNotesAmountCents    json.Number `json:"credit_notes_amount_cents"`
-	SubTotalExclTaxCents      json.Number `json:"sub_total_excluding_taxes_amount_cents"`
-	TaxesAmountCents          json.Number `json:"taxes_amount_cents"`
-	SubTotalInclTaxCents      json.Number `json:"sub_total_including_taxes_amount_cents"`
-	TotalAmountCents          json.Number `json:"total_amount_cents"`
-	FileURL        string     `json:"file_url"`
-	WebURL         string     `json:"web_url"`
-	LagoCreatedAt  string     `json:"created_at"`
-	Fees           []lagoFee  `json:"fees"`
-	Customer       lagoCustomer      `json:"customer"`
-	Subscriptions  []lagoSubscription `json:"subscriptions"`
+	LagoID                 string             `json:"lago_id"`
+	Number                 string             `json:"number"`
+	IssuingDate            string             `json:"issuing_date"`
+	InvoiceType            string             `json:"invoice_type"`
+	Status                 string             `json:"status"`
+	PaymentStatus          string             `json:"payment_status"`
+	Currency               string             `json:"currency"`
+	FeesAmountCents        json.Number        `json:"fees_amount_cents"`
+	CouponsAmountCents     json.Number        `json:"coupons_amount_cents"`
+	CreditNotesAmountCents json.Number        `json:"credit_notes_amount_cents"`
+	SubTotalExclTaxCents   json.Number        `json:"sub_total_excluding_taxes_amount_cents"`
+	TaxesAmountCents       json.Number        `json:"taxes_amount_cents"`
+	SubTotalInclTaxCents   json.Number        `json:"sub_total_including_taxes_amount_cents"`
+	TotalAmountCents       json.Number        `json:"total_amount_cents"`
+	FileURL                string             `json:"file_url"`
+	WebURL                 string             `json:"web_url"`
+	LagoCreatedAt          string             `json:"created_at"`
+	Fees                   []lagoFee          `json:"fees"`
+	Customer               lagoCustomer       `json:"customer"`
+	Subscriptions          []lagoSubscription `json:"subscriptions"`
 }
 
 type lagoCustomer struct {

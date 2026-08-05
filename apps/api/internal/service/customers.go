@@ -11,6 +11,19 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// CustomerDetail is the Console-facing customer detail payload: the customer
+// plus its subscriptions, usage events and invoices in the same environment.
+// One request carries all data the detail page needs, with DB-side filtering
+// by customer id instead of shipping the provider's entire billing dataset.
+type CustomerDetail struct {
+	Customer      storegen.CustomerAccount                  `json:"customer"`
+	Subscriptions []storegen.ListSubscriptionsByCustomerRow `json:"subscriptions"`
+	UsageEvents   []storegen.ListUsageEventsByCustomerRow   `json:"usage_events"`
+	Invoices      []storegen.ListInvoicesByCustomerRow      `json:"invoices"`
+}
+
+const customerDetailLimit = 100
+
 // CreateCustomer registers a B2B (business) or B2C (individual) customer
 // account. external_id is unique per provider environment.
 func (s *Service) CreateCustomer(ctx context.Context, tc tenant.Ctx, externalID, accountType, displayName string) (*storegen.CustomerAccount, error) {
@@ -58,4 +71,48 @@ func (s *Service) ListCustomers(ctx context.Context, tc tenant.Ctx, limit int32)
 		return err
 	})
 	return out, err
+}
+
+// GetCustomerDetail returns one customer with its subscriptions, usage events
+// and invoices, all scoped to the tenant (provider + environment). Unknown
+// customers yield ErrNotFound so the Console can surface a clear 404.
+func (s *Service) GetCustomerDetail(ctx context.Context, tc tenant.Ctx, externalID string) (*CustomerDetail, error) {
+	var out CustomerDetail
+	err := s.store.WithTenant(ctx, tc, func(tx pgx.Tx, q *store.Queries) error {
+		customer, err := q.GetCustomerByExternalID(ctx, storegen.GetCustomerByExternalIDParams{
+			ProviderID: tc.ProviderID, EnvironmentID: tc.EnvironmentID, ExternalID: externalID,
+		})
+		if err != nil {
+			return mapErr(err, "customer %q", externalID)
+		}
+		subs, err := q.ListSubscriptionsByCustomer(ctx, storegen.ListSubscriptionsByCustomerParams{
+			CustomerAccountID: customer.ID, Limit: customerDetailLimit,
+		})
+		if err != nil {
+			return err
+		}
+		events, err := q.ListUsageEventsByCustomer(ctx, storegen.ListUsageEventsByCustomerParams{
+			CustomerAccountID: customer.ID, Limit: customerDetailLimit,
+		})
+		if err != nil {
+			return err
+		}
+		invs, err := q.ListInvoicesByCustomer(ctx, storegen.ListInvoicesByCustomerParams{
+			CustomerAccountID: customer.ID, Limit: customerDetailLimit,
+		})
+		if err != nil {
+			return err
+		}
+		out = CustomerDetail{
+			Customer:      customer,
+			Subscriptions: emptyIfNil(subs),
+			UsageEvents:   emptyIfNil(events),
+			Invoices:      emptyIfNil(invs),
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }

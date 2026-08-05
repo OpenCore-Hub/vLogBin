@@ -59,6 +59,38 @@ func (q *Queries) GetNotificationConfig(ctx context.Context, arg GetNotification
 	return i, err
 }
 
+const listAllNotificationConfigCiphertexts = `-- name: ListAllNotificationConfigCiphertexts :many
+SELECT id, config_enc FROM notification_configs
+ORDER BY id
+LIMIT $1
+`
+
+type ListAllNotificationConfigCiphertextsRow struct {
+	ID        uuid.UUID `json:"id"`
+	ConfigEnc []byte    `json:"config_enc"`
+}
+
+// Operator-only view used by the re-encryption worker.
+func (q *Queries) ListAllNotificationConfigCiphertexts(ctx context.Context, limit int32) ([]ListAllNotificationConfigCiphertextsRow, error) {
+	rows, err := q.db.Query(ctx, listAllNotificationConfigCiphertexts, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllNotificationConfigCiphertextsRow
+	for rows.Next() {
+		var i ListAllNotificationConfigCiphertextsRow
+		if err := rows.Scan(&i.ID, &i.ConfigEnc); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listNotificationConfigs = `-- name: ListNotificationConfigs :many
 SELECT id, provider_id, environment_id, channel, provider_type, config_enc, from_address, enabled, created_at, updated_at FROM notification_configs
 WHERE provider_id = $1 AND environment_id = $2
@@ -99,6 +131,21 @@ func (q *Queries) ListNotificationConfigs(ctx context.Context, arg ListNotificat
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateNotificationConfigCiphertext = `-- name: UpdateNotificationConfigCiphertext :exec
+UPDATE notification_configs SET config_enc = $2, updated_at = now()
+WHERE id = $1
+`
+
+type UpdateNotificationConfigCiphertextParams struct {
+	ID        uuid.UUID `json:"id"`
+	ConfigEnc []byte    `json:"config_enc"`
+}
+
+func (q *Queries) UpdateNotificationConfigCiphertext(ctx context.Context, arg UpdateNotificationConfigCiphertextParams) error {
+	_, err := q.db.Exec(ctx, updateNotificationConfigCiphertext, arg.ID, arg.ConfigEnc)
+	return err
 }
 
 const upsertNotificationConfig = `-- name: UpsertNotificationConfig :one

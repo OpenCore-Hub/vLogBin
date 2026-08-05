@@ -65,10 +65,18 @@ X-Request-ID: optional-uuid-for-tracing
 
 ### 2.5 幂等性
 
+所有写请求（`POST`/`PUT`/`PATCH`/`DELETE`）支持 **Stripe 风格 `Idempotency-Key` 头**（1-255 个可打印 ASCII 字符，客户端自行生成）：
+- 首次携带该 key 的请求正常执行，其响应（状态码 + 响应体）被缓存；
+- 相同 key + 相同身份（Provider 或 Operator）+ 相同方法 + 相同路径的后续请求，直接返回首次响应，并带 `Idempotency-Replayed: true` 头，**不会重复创建资源**；
+- 同一 key 的并发重复请求返回 `409`（`error.code = "concurrent"`）；
+- 响应缓存默认保留 24h（`IDEMPOTENCY_TTL` 可调），由后台 sweeper 清理过期记录；
+- key 按认证身份隔离：不同 Provider 使用相同 key 互不影响；
+- 5xx 响应不缓存，客户端可用相同 key 重试。
+
+业务层幂等保持不变，与 HTTP 幂等键互补：
 - **Usage 事件**：通过 `transaction_id` 幂等（相同 ID 返回已有记录）
 - **Quota 预占**：通过 `reservation_id` 幂等
 - **SCIM 用户**：通过 `externalId` 幂等
-- **其他 POST**：非幂等，重复调用可能创建重复资源
 
 ### 2.6 分页
 

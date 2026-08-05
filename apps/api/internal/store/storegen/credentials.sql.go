@@ -82,6 +82,69 @@ func (q *Queries) GetCredentialByID(ctx context.Context, id uuid.UUID) (Credenti
 	return i, err
 }
 
+const getCredentialByProvider = `-- name: GetCredentialByProvider :one
+SELECT c.id,
+       c.provider_id,
+       c.environment_id,
+       c.name,
+       c.key_prefix,
+       c.scopes,
+       c.allowed_cidrs,
+       c.expires_at,
+       c.revoked_at,
+       c.last_used_at,
+       c.created_at,
+       e.kind::text AS environment_kind,
+       e.issuer       AS environment_issuer
+FROM credentials c
+JOIN environments e ON e.id = c.environment_id
+WHERE c.id = $1 AND c.provider_id = $2
+`
+
+type GetCredentialByProviderParams struct {
+	ID         uuid.UUID `json:"id"`
+	ProviderID uuid.UUID `json:"provider_id"`
+}
+
+type GetCredentialByProviderRow struct {
+	ID                uuid.UUID  `json:"id"`
+	ProviderID        uuid.UUID  `json:"provider_id"`
+	EnvironmentID     uuid.UUID  `json:"environment_id"`
+	Name              string     `json:"name"`
+	KeyPrefix         string     `json:"key_prefix"`
+	Scopes            []string   `json:"scopes"`
+	AllowedCidrs      []string   `json:"allowed_cidrs"`
+	ExpiresAt         *time.Time `json:"expires_at"`
+	RevokedAt         *time.Time `json:"revoked_at"`
+	LastUsedAt        *time.Time `json:"last_used_at"`
+	CreatedAt         time.Time  `json:"created_at"`
+	EnvironmentKind   string     `json:"environment_kind"`
+	EnvironmentIssuer string     `json:"environment_issuer"`
+}
+
+// Operator view: a single credential scoped to a provider, with environment
+// details. Used to authorize revocations against the owning provider.
+func (q *Queries) GetCredentialByProvider(ctx context.Context, arg GetCredentialByProviderParams) (GetCredentialByProviderRow, error) {
+	row := q.db.QueryRow(ctx, getCredentialByProvider, arg.ID, arg.ProviderID)
+	var i GetCredentialByProviderRow
+	err := row.Scan(
+		&i.ID,
+		&i.ProviderID,
+		&i.EnvironmentID,
+		&i.Name,
+		&i.KeyPrefix,
+		&i.Scopes,
+		&i.AllowedCidrs,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.LastUsedAt,
+		&i.CreatedAt,
+		&i.EnvironmentKind,
+		&i.EnvironmentIssuer,
+	)
+	return i, err
+}
+
 const listCredentialsByEnvironment = `-- name: ListCredentialsByEnvironment :many
 SELECT id, provider_id, environment_id, name, key_prefix, key_hash, scopes, allowed_cidrs, expires_at, revoked_at, last_used_at, created_at FROM credentials
 WHERE provider_id = $1 AND environment_id = $2
@@ -115,6 +178,79 @@ func (q *Queries) ListCredentialsByEnvironment(ctx context.Context, arg ListCred
 			&i.RevokedAt,
 			&i.LastUsedAt,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCredentialsByProvider = `-- name: ListCredentialsByProvider :many
+SELECT c.id,
+       c.provider_id,
+       c.environment_id,
+       c.name,
+       c.key_prefix,
+       c.scopes,
+       c.allowed_cidrs,
+       c.expires_at,
+       c.revoked_at,
+       c.last_used_at,
+       c.created_at,
+       e.kind::text AS environment_kind,
+       e.issuer       AS environment_issuer
+FROM credentials c
+JOIN environments e ON e.id = c.environment_id
+WHERE c.provider_id = $1
+ORDER BY c.created_at DESC
+`
+
+type ListCredentialsByProviderRow struct {
+	ID                uuid.UUID  `json:"id"`
+	ProviderID        uuid.UUID  `json:"provider_id"`
+	EnvironmentID     uuid.UUID  `json:"environment_id"`
+	Name              string     `json:"name"`
+	KeyPrefix         string     `json:"key_prefix"`
+	Scopes            []string   `json:"scopes"`
+	AllowedCidrs      []string   `json:"allowed_cidrs"`
+	ExpiresAt         *time.Time `json:"expires_at"`
+	RevokedAt         *time.Time `json:"revoked_at"`
+	LastUsedAt        *time.Time `json:"last_used_at"`
+	CreatedAt         time.Time  `json:"created_at"`
+	EnvironmentKind   string     `json:"environment_kind"`
+	EnvironmentIssuer string     `json:"environment_issuer"`
+}
+
+// Operator view: every API key issued to a provider across all environments.
+// key_hash is intentionally excluded; the operator console identifies keys by
+// key_prefix only.
+func (q *Queries) ListCredentialsByProvider(ctx context.Context, providerID uuid.UUID) ([]ListCredentialsByProviderRow, error) {
+	rows, err := q.db.Query(ctx, listCredentialsByProvider, providerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCredentialsByProviderRow
+	for rows.Next() {
+		var i ListCredentialsByProviderRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProviderID,
+			&i.EnvironmentID,
+			&i.Name,
+			&i.KeyPrefix,
+			&i.Scopes,
+			&i.AllowedCidrs,
+			&i.ExpiresAt,
+			&i.RevokedAt,
+			&i.LastUsedAt,
+			&i.CreatedAt,
+			&i.EnvironmentKind,
+			&i.EnvironmentIssuer,
 		); err != nil {
 			return nil, err
 		}

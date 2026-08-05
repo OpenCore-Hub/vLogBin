@@ -3,16 +3,40 @@ INSERT INTO providers (slug, name, home_region_id, cell_id, lifecycle_state)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
+-- name: CreateRegisteredProvider :one
+-- Signup-time provider record (design baseline §2.1): workspace_id maps 1:1
+-- to provider_id, so the caller passes the workspace id as the provider id.
+-- No region or cell yet; both are assigned by the operator at activation
+-- (REGISTERED → TEST_ACTIVE).
+INSERT INTO providers (id, slug, name, lifecycle_state)
+VALUES ($1, $2, $3, 'REGISTERED')
+RETURNING *;
+
 -- name: GetProviderByID :one
 SELECT * FROM providers WHERE id = $1;
 
 -- name: ListProviders :many
 SELECT * FROM providers ORDER BY created_at DESC;
 
--- name: UpdateProviderLifecycle :one
+-- name: UpdateProviderLifecycle :execrows
+-- Optimistic concurrency guard (design baseline §2.1): the transition is
+-- conditional on the observed source state, so two concurrent transitions
+-- cannot silently overwrite each other. A stale caller (whose read happened
+-- before another transition committed) matches no row and receives affected=0
+-- instead of corrupting state; the service maps that to a lifecycle_conflict.
 UPDATE providers
-SET lifecycle_state = $2, updated_at = now()
-WHERE id = $1
+SET lifecycle_state = sqlc.arg(to_state), updated_at = now()
+WHERE id = sqlc.arg(id) AND lifecycle_state = sqlc.arg(from_state);
+
+-- name: ActivateProvider :one
+-- Operator activation (design baseline §2.1): assigns the home region and
+-- shared cell, then moves the provider from REGISTERED to TEST_ACTIVE.
+-- The WHERE guard makes activation concurrency-safe: a provider that is not
+-- REGISTERED (already activated, suspended, or gone) matches no row and the
+-- caller receives ErrNoRows instead of silently corrupting state.
+UPDATE providers
+SET home_region_id = $2, cell_id = $3, lifecycle_state = $4, updated_at = now()
+WHERE id = $1 AND lifecycle_state = 'REGISTERED'
 RETURNING *;
 
 -- name: UpdateProviderCell :exec

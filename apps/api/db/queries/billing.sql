@@ -62,6 +62,28 @@ DELETE FROM plans WHERE catalog_version_id = $1;
 -- name: GetPlanByVersionAndCode :one
 SELECT * FROM plans WHERE catalog_version_id = $1 AND code = $2;
 
+-- name: UpdatePlan :one
+UPDATE plans
+SET name = $2, interval = $3, currency = $4
+WHERE id = $1
+RETURNING *;
+
+-- name: DeletePlanByVersionAndCode :execrows
+DELETE FROM plans WHERE catalog_version_id = $1 AND code = $2;
+
+-- name: GetDraftCatalogVersionByTenant :one
+SELECT * FROM catalog_versions
+WHERE provider_id = $1 AND environment_id = $2 AND state = 'draft'
+ORDER BY version DESC
+LIMIT 1
+FOR UPDATE;
+
+-- name: GetLatestPublishedCatalogVersionByTenant :one
+SELECT * FROM catalog_versions
+WHERE provider_id = $1 AND environment_id = $2 AND state = 'published'
+ORDER BY version DESC
+LIMIT 1;
+
 -- ---- prices ----
 
 -- name: InsertPrice :one
@@ -78,6 +100,9 @@ SELECT * FROM prices WHERE plan_id = $1;
 -- name: DeletePricesByVersion :exec
 DELETE FROM prices WHERE catalog_version_id = $1;
 
+-- name: DeletePricesByPlan :exec
+DELETE FROM prices WHERE plan_id = $1;
+
 -- ---- entitlement grants ----
 
 -- name: InsertEntitlementGrant :one
@@ -93,6 +118,18 @@ SELECT * FROM entitlement_grants WHERE plan_id = $1;
 
 -- name: DeleteGrantsByVersion :exec
 DELETE FROM entitlement_grants WHERE catalog_version_id = $1;
+
+-- name: DeleteGrantsByPlan :exec
+DELETE FROM entitlement_grants WHERE plan_id = $1;
+
+-- name: UpsertEntitlementGrant :one
+INSERT INTO entitlement_grants (plan_id, catalog_version_id, provider_id, environment_id, key, value_type, value)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (plan_id, key) DO UPDATE SET value_type = EXCLUDED.value_type, value = EXCLUDED.value
+RETURNING *;
+
+-- name: DeleteEntitlementGrantByKey :execrows
+DELETE FROM entitlement_grants WHERE plan_id = $1 AND key = $2;
 
 -- ---- customer accounts ----
 
@@ -233,6 +270,28 @@ WHERE ue.provider_id = $1
 ORDER BY ue.created_at DESC
 LIMIT 200;
 
+-- name: ListSubscriptionsByCustomer :many
+SELECT s.id, s.external_id, ca.external_id AS customer_external_id, p.code AS plan_code,
+    s.catalog_version_id, s.status, e.kind AS environment_kind, s.started_at, s.terminated_at
+FROM subscriptions s
+JOIN customer_accounts ca ON ca.id = s.customer_account_id
+JOIN plans p ON p.id = s.plan_id
+JOIN environments e ON e.id = s.environment_id
+WHERE s.customer_account_id = $1
+ORDER BY s.started_at DESC
+LIMIT $2;
+
+-- name: ListUsageEventsByCustomer :many
+SELECT ue.id, ue.transaction_id, ue.kind, ue.metric_code,
+    ca.external_id AS customer_external_id, ue.environment_id, e.kind AS environment_kind,
+    ue.event_timestamp, ue.created_at
+FROM usage_events ue
+JOIN customer_accounts ca ON ca.id = ue.customer_account_id
+JOIN environments e ON e.id = ue.environment_id
+WHERE ue.customer_account_id = $1
+ORDER BY ue.created_at DESC
+LIMIT $2;
+
 -- ---- invoices ----
 
 -- name: UpsertInvoice :one
@@ -297,6 +356,16 @@ JOIN customer_accounts ca ON ca.id = i.customer_account_id
 JOIN environments e ON e.id = i.environment_id
 WHERE i.provider_id = $1
 ORDER BY i.issuing_date DESC LIMIT 200;
+
+-- name: ListInvoicesByCustomer :many
+SELECT i.id, i.number, i.lago_id, i.issuing_date, i.invoice_type, i.status, i.payment_status,
+       i.currency, i.total_amount_cents, i.customer_account_id, i.subscription_id, i.catalog_version_id,
+       ca.external_id AS customer_external_id, i.environment_id, e.kind AS environment_kind
+FROM invoices i
+JOIN customer_accounts ca ON ca.id = i.customer_account_id
+JOIN environments e ON e.id = i.environment_id
+WHERE i.customer_account_id = $1
+ORDER BY i.issuing_date DESC LIMIT $2;
 
 -- name: GetInvoiceStatusByLagoID :one
 SELECT id, status FROM invoices WHERE provider_id = $1 AND environment_id = $2 AND lago_id = $3;

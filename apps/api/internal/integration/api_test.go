@@ -132,6 +132,7 @@ func TestOperatorProviderLifecycleFlow(t *testing.T) {
 		map[string]any{"to": "LIVE_REVIEW"}); status != http.StatusOK {
 		t.Fatalf("LIVE_REVIEW: status %d, body %v", status, body)
 	}
+	submitApprovedRiskReview(t, providerID)
 	status, body = apiReq(t, "POST", "/v1/operator/providers/"+providerID+"/lifecycle", operatorToken,
 		map[string]any{"to": "LIVE_ACTIVE"})
 	if status != http.StatusOK {

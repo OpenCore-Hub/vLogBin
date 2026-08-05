@@ -268,10 +268,13 @@ curl -X POST https://api.vlogbin.com/v1/data-deletion \
 
 | 维度 | 默认限制 |
 |---|---|
+| 来源 IP（全局兜底，认证前生效）| 6000 req/min（`RL_IP_LIMIT` 可调，`0` 关闭）|
 | Provider | 1000 req/min |
 | Environment | 500 req/min |
 | Credential | 100 req/min |
 | Endpoint | 60 req/min |
+
+> per-IP 兜底层防止通过轮换凭证绕过认证后限流，同时保护未认证端点（健康检查、指标）免受裸 DoS。
 
 响应头：
 - `X-RateLimit-Limit`：限制总数

@@ -37,6 +37,48 @@ func (q *Queries) CountDeadLetterOutbox(ctx context.Context) (int64, error) {
 	return column_1, err
 }
 
+const countInvoiceAmountMismatches = `-- name: CountInvoiceAmountMismatches :one
+SELECT count(*)::bigint FROM invoices
+WHERE status IN ('finalized', 'voided')
+AND (
+    sub_total_including_taxes_amount_cents <> sub_total_excluding_taxes_amount_cents + taxes_amount_cents
+    OR total_amount_cents <> sub_total_including_taxes_amount_cents - credit_notes_amount_cents
+    OR (invoice_type <> 'credit' AND total_amount_cents < 0)
+)
+`
+
+// Finalized/voided invoices whose financial fields violate Lago's arithmetic
+// invariants: sub_total_including = sub_total_excluding + taxes, and
+// total = sub_total_including - credit_notes. Credit invoices carry a
+// negative total, so they are excluded from the non-negative check.
+func (q *Queries) CountInvoiceAmountMismatches(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countInvoiceAmountMismatches)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countInvoiceLinesTotalMismatch = `-- name: CountInvoiceLinesTotalMismatch :one
+SELECT count(*)::bigint FROM (
+    SELECT i.id
+    FROM invoices i
+    JOIN invoice_lines il ON il.invoice_id = i.id
+    WHERE i.status IN ('finalized', 'voided')
+    GROUP BY i.id, i.total_amount_cents
+    HAVING sum(il.total_amount_cents) <> i.total_amount_cents
+) mismatches
+`
+
+// Finalized/voided invoices whose line totals do not sum to the invoice
+// header total. Line rows are immutable once the invoice is finalized, so
+// any mismatch is a financial integrity violation.
+func (q *Queries) CountInvoiceLinesTotalMismatch(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countInvoiceLinesTotalMismatch)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countInvoicesWithoutCatalogVersion = `-- name: CountInvoicesWithoutCatalogVersion :one
 SELECT count(*)::bigint FROM invoices
 WHERE subscription_id IS NOT NULL
@@ -73,6 +115,23 @@ AND (next_attempt_at IS NULL OR next_attempt_at < now() - interval '1 hour')
 
 func (q *Queries) CountStuckUsageOutbox(ctx context.Context) (int64, error) {
 	row := q.db.QueryRow(ctx, countStuckUsageOutbox)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countUnpaidFinalizedOverdue = `-- name: CountUnpaidFinalizedOverdue :one
+SELECT count(*)::bigint FROM invoices
+WHERE status = 'finalized'
+AND payment_status <> 'succeeded'
+AND finalized_at IS NOT NULL
+AND finalized_at < now() - interval '7 days'
+`
+
+// Finalized invoices not marked paid within 7 days. Signals collection risk
+// and payment-status divergence from the Lago billing system.
+func (q *Queries) CountUnpaidFinalizedOverdue(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countUnpaidFinalizedOverdue)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err

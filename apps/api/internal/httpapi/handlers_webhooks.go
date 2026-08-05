@@ -93,3 +93,33 @@ func (s *Server) operatorListWebhookDeliveries(w http.ResponseWriter, r *http.Re
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"deliveries": deliveries})
 }
+
+type replayWebhookDeliveryRequest struct {
+	Actor string `json:"actor,omitempty"`
+}
+
+// operatorReplayWebhookDelivery requeues a terminal (dead_letter | failed)
+// webhook delivery for immediate redelivery. The body is optional and only
+// carries an audit actor; the replay itself is an operator-only action.
+func (s *Server) operatorReplayWebhookDelivery(w http.ResponseWriter, r *http.Request) {
+	providerID, err := parseUUIDParam(w, r, "id")
+	if err != nil {
+		return
+	}
+	deliveryID, err := parseUUIDParam(w, r, "deliveryId")
+	if err != nil {
+		return
+	}
+	var req replayWebhookDeliveryRequest
+	if r.ContentLength > 0 {
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+	}
+	delivery, err := s.svc.ReplayWebhookDeliveryByProvider(r.Context(), providerID, deliveryID, req.Actor)
+	if err != nil {
+		s.serviceError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"delivery": delivery})
+}

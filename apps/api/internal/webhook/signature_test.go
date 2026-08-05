@@ -63,6 +63,80 @@ func TestSignPayloadEmpty(t *testing.T) {
 	}
 }
 
+func TestVerifySignature(t *testing.T) {
+	secret := "test-secret"
+	timestamp := "1627742400"
+	payload := []byte(`{"event":"test"}`)
+	sig := signPayload(secret, timestamp, payload)
+
+	// Correct signature must verify.
+	if !VerifySignature(secret, timestamp, payload, sig) {
+		t.Fatal("VerifySignature returned false for a valid signature")
+	}
+}
+
+func TestVerifySignatureWrongSecret(t *testing.T) {
+	payload := []byte("test")
+	sig := signPayload("secret1", "123", payload)
+
+	// Different secret must fail verification.
+	if VerifySignature("secret2", "123", payload, sig) {
+		t.Fatal("VerifySignature returned true for a wrong secret")
+	}
+}
+
+func TestVerifySignatureWrongPayload(t *testing.T) {
+	sig := signPayload("secret", "123", []byte("payload1"))
+
+	// Different payload must fail verification.
+	if VerifySignature("secret", "123", []byte("payload2"), sig) {
+		t.Fatal("VerifySignature returned true for a wrong payload")
+	}
+}
+
+func TestVerifySignatureWrongTimestamp(t *testing.T) {
+	sig := signPayload("secret", "123", []byte("payload"))
+
+	// Different timestamp must fail verification.
+	if VerifySignature("secret", "456", []byte("payload"), sig) {
+		t.Fatal("VerifySignature returned true for a wrong timestamp")
+	}
+}
+
+func TestVerifySignatureTamperedSignature(t *testing.T) {
+	sig := signPayload("secret", "123", []byte("payload"))
+
+	// Flip a character in the signature — must fail.
+	tampered := sig[:len(sig)-1]
+	if sig[len(sig)-1] == 'a' {
+		tampered += "b"
+	} else {
+		tampered += "a"
+	}
+	if VerifySignature("secret", "123", []byte("payload"), tampered) {
+		t.Fatal("VerifySignature returned true for a tampered signature")
+	}
+}
+
+func TestVerifySignatureInvalidHex(t *testing.T) {
+	// Non-hex string must fail (not panic).
+	if VerifySignature("secret", "123", []byte("payload"), "not-hex!") {
+		t.Fatal("VerifySignature returned true for invalid hex")
+	}
+}
+
+func TestVerifySignatureEmptySignature(t *testing.T) {
+	sig := signPayload("secret", "123", []byte("payload"))
+	// Empty string is valid hex (decodes to empty byte slice), so it
+	// won't match the non-empty expected signature.
+	if sig == "" {
+		t.Fatal("signPayload produced empty signature")
+	}
+	if VerifySignature("secret", "123", []byte("payload"), "") {
+		t.Fatal("VerifySignature returned true for an empty signature")
+	}
+}
+
 func TestEventMatchesFilter(t *testing.T) {
 	tests := []struct {
 		name      string

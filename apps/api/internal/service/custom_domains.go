@@ -231,6 +231,11 @@ func (s *Service) DeleteCustomDomain(ctx context.Context, tc tenant.Ctx, domainI
 		if rows == 0 {
 			return fmt.Errorf("%w: custom domain %s", ErrNotFound, domainID)
 		}
+		if err := emitOutboxTx(ctx, q, tc.ProviderID, tc.EnvironmentID, "custom_domain", domainID.String(), "custom_domain.deleted", map[string]any{
+			"domain": d.Domain, "status": d.Status,
+		}); err != nil {
+			return err
+		}
 		if err := insertAuditTx(ctx, q, tc.ProviderNullUUID(), tc.EnvironmentNullUUID(),
 			"credential", tc.CredentialID.String(), "custom_domain.delete",
 			"custom_domain", domainID.String(),

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	uuid "github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const claimDueOutboxEvents = `-- name: ClaimDueOutboxEvents :many
@@ -23,7 +24,7 @@ WHERE id IN (
     LIMIT $1
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, provider_id, environment_id, aggregate_type, aggregate_id, event_type, payload, payload_hash, transaction_id, status, attempts, created_at, published_at, next_attempt_at
+RETURNING id, provider_id, environment_id, aggregate_type, aggregate_id, event_type, payload, payload_hash, transaction_id, status, attempts, created_at, published_at, next_attempt_at, last_error
 `
 
 // Atomically claims and leases a batch: sets next_attempt_at 120s ahead so
@@ -31,7 +32,8 @@ RETURNING id, provider_id, environment_id, aggregate_type, aggregate_id, event_t
 // caller delivers events OUTSIDE this transaction and then marks each
 // event's outcome (published / retry / dead-letter) in a separate short
 // transaction. If the relay crashes, the 120s lease expires and another
-// instance re-claims — at-least-once delivery.
+// instance re-claims — at-least-once delivery. Terminal dead-lettered rows
+// (status='dead_letter') are never claimed.
 func (q *Queries) ClaimDueOutboxEvents(ctx context.Context, limit int32) ([]OutboxEvent, error) {
 	rows, err := q.db.Query(ctx, claimDueOutboxEvents, limit)
 	if err != nil {
@@ -56,7 +58,42 @@ func (q *Queries) ClaimDueOutboxEvents(ctx context.Context, limit int32) ([]Outb
 			&i.CreatedAt,
 			&i.PublishedAt,
 			&i.NextAttemptAt,
+			&i.LastError,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countOutboxEventsByStatus = `-- name: CountOutboxEventsByStatus :many
+SELECT status, COUNT(*)::bigint AS count
+FROM outbox_events
+GROUP BY status
+`
+
+type CountOutboxEventsByStatusRow struct {
+	Status string `json:"status"`
+	Count  int64  `json:"count"`
+}
+
+// Backlog gauge for Prometheus: total outbox_events rows grouped by
+// delivery status (pending / failed / published / dead_letter). Refreshed
+// periodically by the metrics backlog reporter.
+func (q *Queries) CountOutboxEventsByStatus(ctx context.Context) ([]CountOutboxEventsByStatusRow, error) {
+	rows, err := q.db.Query(ctx, countOutboxEventsByStatus)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountOutboxEventsByStatusRow
+	for rows.Next() {
+		var i CountOutboxEventsByStatusRow
+		if err := rows.Scan(&i.Status, &i.Count); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -74,7 +111,8 @@ WHERE provider_id = $1 AND status IN ('pending', 'failed')
 
 // Counts outbox events that are pending or failed (not yet delivered)
 // for a provider. Used by CompleteFailover to report replay counts
-// (spec Section 14: "切换后重放未确认 Outbox").
+// (spec Section 14: "切换后重放未确认 Outbox"). Dead-lettered events are
+// terminal and deliberately excluded from replay.
 func (q *Queries) CountUnconfirmedOutbox(ctx context.Context, providerID uuid.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, countUnconfirmedOutbox, providerID)
 	var count int64
@@ -82,10 +120,33 @@ func (q *Queries) CountUnconfirmedOutbox(ctx context.Context, providerID uuid.UU
 	return count, err
 }
 
+const deleteExpiredOutboxEvents = `-- name: DeleteExpiredOutboxEvents :execrows
+DELETE FROM outbox_events
+WHERE created_at < $1
+  AND (status = 'published'
+    OR status = 'dead_letter'
+    OR (status = 'failed' AND next_attempt_at IS NULL))
+`
+
+// Retention policy: delete outbox events that have left the delivery pipeline
+// (published, or terminal dead-lettered, or failed with retries exhausted —
+// next_attempt_at NULL) older than the retention cutoff. Pending events and
+// failed events still inside their retry window (next_attempt_at set) are never
+// deleted: the relay may still claim and deliver them. Terminal webhook
+// deliveries referencing these events are swept first by
+// DeleteExpiredWebhookDeliveries.
+func (q *Queries) DeleteExpiredOutboxEvents(ctx context.Context, cutoff time.Time) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredOutboxEvents, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const insertOutboxEvent = `-- name: InsertOutboxEvent :one
 INSERT INTO outbox_events (provider_id, environment_id, aggregate_type, aggregate_id, event_type, payload, payload_hash, transaction_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, provider_id, environment_id, aggregate_type, aggregate_id, event_type, payload, payload_hash, transaction_id, status, attempts, created_at, published_at, next_attempt_at
+RETURNING id, provider_id, environment_id, aggregate_type, aggregate_id, event_type, payload, payload_hash, transaction_id, status, attempts, created_at, published_at, next_attempt_at, last_error
 `
 
 type InsertOutboxEventParams struct {
@@ -126,6 +187,7 @@ func (q *Queries) InsertOutboxEvent(ctx context.Context, arg InsertOutboxEventPa
 		&i.CreatedAt,
 		&i.PublishedAt,
 		&i.NextAttemptAt,
+		&i.LastError,
 	)
 	return i, err
 }
@@ -162,7 +224,7 @@ func (q *Queries) InsertOutboxEventIdempotent(ctx context.Context, arg InsertOut
 }
 
 const listOutboxEventsByTenant = `-- name: ListOutboxEventsByTenant :many
-SELECT id, provider_id, environment_id, aggregate_type, aggregate_id, event_type, payload, payload_hash, transaction_id, status, attempts, created_at, published_at, next_attempt_at FROM outbox_events
+SELECT id, provider_id, environment_id, aggregate_type, aggregate_id, event_type, payload, payload_hash, transaction_id, status, attempts, created_at, published_at, next_attempt_at, last_error FROM outbox_events
 WHERE provider_id = $1 AND environment_id = $2
 ORDER BY created_at DESC
 LIMIT $3
@@ -198,6 +260,7 @@ func (q *Queries) ListOutboxEventsByTenant(ctx context.Context, arg ListOutboxEv
 			&i.CreatedAt,
 			&i.PublishedAt,
 			&i.NextAttemptAt,
+			&i.LastError,
 		); err != nil {
 			return nil, err
 		}
@@ -210,11 +273,26 @@ func (q *Queries) ListOutboxEventsByTenant(ctx context.Context, arg ListOutboxEv
 }
 
 const markOutboxEventDeadLetter = `-- name: MarkOutboxEventDeadLetter :exec
-UPDATE outbox_events SET status = 'failed', attempts = attempts + 1, next_attempt_at = NULL WHERE id = $1
+UPDATE outbox_events
+SET status = 'dead_letter',
+    attempts = attempts + 1,
+    next_attempt_at = NULL,
+    last_error = $2
+WHERE id = $1
 `
 
-func (q *Queries) MarkOutboxEventDeadLetter(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, markOutboxEventDeadLetter, id)
+type MarkOutboxEventDeadLetterParams struct {
+	ID        uuid.UUID   `json:"id"`
+	LastError pgtype.Text `json:"last_error"`
+}
+
+// Terminal failure: permanently fails an event (max attempts reached or an
+// unparseable payload). status='dead_letter' is a true terminal state — the
+// relay never re-claims dead-lettered rows (see ClaimDueOutboxEvents) and the
+// reconciliation check CountDeadLetterOutbox surfaces them. last_error records
+// the final failure cause for operator visibility.
+func (q *Queries) MarkOutboxEventDeadLetter(ctx context.Context, arg MarkOutboxEventDeadLetterParams) error {
+	_, err := q.db.Exec(ctx, markOutboxEventDeadLetter, arg.ID, arg.LastError)
 	return err
 }
 
@@ -251,7 +329,7 @@ func (q *Queries) MarkOutboxEventRetry(ctx context.Context, arg MarkOutboxEventR
 }
 
 const streamOutboxEvents = `-- name: StreamOutboxEvents :many
-SELECT oe.id, oe.provider_id, oe.environment_id, oe.aggregate_type, oe.aggregate_id, oe.event_type, oe.payload, oe.payload_hash, oe.transaction_id, oe.status, oe.attempts, oe.created_at, oe.published_at, oe.next_attempt_at FROM outbox_events oe
+SELECT oe.id, oe.provider_id, oe.environment_id, oe.aggregate_type, oe.aggregate_id, oe.event_type, oe.payload, oe.payload_hash, oe.transaction_id, oe.status, oe.attempts, oe.created_at, oe.published_at, oe.next_attempt_at, oe.last_error FROM outbox_events oe
 WHERE oe.provider_id = $1 AND oe.environment_id = $2
     AND ($3::uuid = '00000000-0000-0000-0000-000000000000' OR (oe.created_at, oe.id) > (
         SELECT oe2.created_at, oe2.id FROM outbox_events oe2 WHERE oe2.id = $3
@@ -309,6 +387,7 @@ func (q *Queries) StreamOutboxEvents(ctx context.Context, arg StreamOutboxEvents
 			&i.CreatedAt,
 			&i.PublishedAt,
 			&i.NextAttemptAt,
+			&i.LastError,
 		); err != nil {
 			return nil, err
 		}

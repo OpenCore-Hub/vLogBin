@@ -23,7 +23,19 @@ sql:
       - "db/migrations/0021_scim_groups.sql"
       - "db/migrations/0022_cell_failovers.sql"
       - "db/migrations/0023_cell_migrations.sql"
+      - "db/migrations/0024_analytics.sql"
       - "db/migrations/0025_metered_billing.sql"
+      - "db/migrations/0026_workspaces.sql"
+      - "db/migrations/0027_provider_home_region_nullable.sql"
+      - "db/migrations/0028_webhook_retention.sql"
+      - "db/migrations/0029_idempotency_keys.sql"
+      - "db/migrations/0030_audit_retention.sql"
+      - "db/migrations/0031_audit_hash_chain.sql"
+      - "db/migrations/0032_audit_anchor_archive.sql"
+      - "db/migrations/0033_outbox_dead_letter.sql"
+      - "db/migrations/0034_provider_risk_reviews.sql"
+      - "db/migrations/0035_auth_config_redirect_uris.sql"
+      - "db/migrations/0036_auth_config_name.sql"
     queries: "db/queries"
     gen:
       go:
@@ -51,3 +63,11 @@ sql:
               import: "time"
               type: "Time"
               pointer: true
+          # jsonb columns that surface in API responses: []byte would be
+          # base64-encoded by encoding/json, json.RawMessage keeps the raw JSON.
+          - column: "public.entitlement_grants.value"
+            go_type: "encoding/json.RawMessage"
+          - column: "public.entitlement_overrides.value"
+            go_type: "encoding/json.RawMessage"
+          - column: "public.prices.properties"
+            go_type: "encoding/json.RawMessage"

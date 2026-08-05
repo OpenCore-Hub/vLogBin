@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/metrics"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store/storegen"
 	"github.com/jackc/pgx/v5"
@@ -107,6 +108,54 @@ func (s *Service) RunReconciliation(ctx context.Context) ([]ReconciliationCheck,
 		results = append(results, r5)
 		s.storeReconciliationResult(ctx, q, r5)
 
+		// Check 6: Finalized/voided invoices violating amount arithmetic.
+		amountMismatch, err := q.CountInvoiceAmountMismatches(ctx)
+		if err != nil {
+			return fmt.Errorf("check invoice amount consistency: %w", err)
+		}
+		r6 := ReconciliationCheck{
+			Name: "invoice_amount_consistency", Status: "ok",
+			ExpectedCount: 0, ActualCount: 0, DriftCount: amountMismatch,
+			Details: map[string]any{"description": "finalized/voided invoices violating amount invariants (incl = excl + taxes, total = incl - credit notes)"},
+		}
+		if amountMismatch > 0 {
+			r6.Status = "drift"
+		}
+		results = append(results, r6)
+		s.storeReconciliationResult(ctx, q, r6)
+
+		// Check 7: Finalized/voided invoices whose line totals diverge from the header.
+		lineMismatch, err := q.CountInvoiceLinesTotalMismatch(ctx)
+		if err != nil {
+			return fmt.Errorf("check invoice lines total: %w", err)
+		}
+		r7 := ReconciliationCheck{
+			Name: "invoice_lines_total_match", Status: "ok",
+			ExpectedCount: 0, ActualCount: 0, DriftCount: lineMismatch,
+			Details: map[string]any{"description": "finalized/voided invoices where sum(line totals) != header total"},
+		}
+		if lineMismatch > 0 {
+			r7.Status = "drift"
+		}
+		results = append(results, r7)
+		s.storeReconciliationResult(ctx, q, r7)
+
+		// Check 8: Finalized invoices unpaid for more than 7 days.
+		overdue, err := q.CountUnpaidFinalizedOverdue(ctx)
+		if err != nil {
+			return fmt.Errorf("check unpaid finalized overdue: %w", err)
+		}
+		r8 := ReconciliationCheck{
+			Name: "unpaid_finalized_overdue", Status: "ok",
+			ExpectedCount: 0, ActualCount: 0, DriftCount: overdue,
+			Details: map[string]any{"description": "finalized invoices not marked succeeded within 7 days of finalization"},
+		}
+		if overdue > 0 {
+			r8.Status = "drift"
+		}
+		results = append(results, r8)
+		s.storeReconciliationResult(ctx, q, r8)
+
 		return nil
 	})
 	if err != nil {
@@ -151,16 +200,17 @@ type ReconciliationWorker struct {
 	svc      *Service
 	interval time.Duration
 	log      *slog.Logger
+	metrics  *metrics.Metrics // optional; nil skips metric reporting
 }
 
-func NewReconciliationWorker(svc *Service, interval time.Duration, log *slog.Logger) *ReconciliationWorker {
+func NewReconciliationWorker(svc *Service, interval time.Duration, log *slog.Logger, m *metrics.Metrics) *ReconciliationWorker {
 	if interval <= 0 {
 		interval = time.Hour
 	}
 	if log == nil {
 		log = slog.Default()
 	}
-	return &ReconciliationWorker{svc: svc, interval: interval, log: log}
+	return &ReconciliationWorker{svc: svc, interval: interval, log: log, metrics: m}
 }
 
 func (w *ReconciliationWorker) Run(ctx context.Context) error {
@@ -184,10 +234,18 @@ func (w *ReconciliationWorker) runOnce(ctx context.Context) {
 	results, err := w.svc.RunReconciliation(ctx)
 	if err != nil {
 		w.log.Error("reconciliation run failed", "error", err, "duration", time.Since(start))
+		if w.metrics != nil {
+			w.metrics.ReconciliationDrift.WithLabelValues("run_error").Set(1)
+		}
 		return
 	}
 	driftCount := 0
 	for _, r := range results {
+		// Refresh the per-check drift gauge on every run so alerting sees
+		// the current truth (0 = healthy, >0 = violation) even between runs.
+		if w.metrics != nil {
+			w.metrics.ReconciliationDrift.WithLabelValues(r.Name).Set(float64(r.DriftCount))
+		}
 		if r.Status == "drift" {
 			driftCount++
 			w.log.Warn("reconciliation drift detected",

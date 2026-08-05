@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/domain"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/service"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/tenant"
 	"github.com/google/uuid"
@@ -82,10 +83,29 @@ func TestEnvironmentIsolation(t *testing.T) {
 	a := createProvider(t, "env-iso")
 	testEnv := a.Environments[0]
 
-	if _, err := svc.TransitionLifecycle(testCtx, a.Provider.ID, domain.StateLiveReview); err != nil {
+	if _, err := svc.TransitionLifecycle(testCtx, a.Provider.ID, service.LifecycleTransitionInput{To: domain.StateLiveReview}); err != nil {
 		t.Fatalf("to LIVE_REVIEW: %v", err)
 	}
-	res, err := svc.TransitionLifecycle(testCtx, a.Provider.ID, domain.StateLiveActive)
+	// Go-live gate (architecture §15): an approved risk review is required
+	// before LIVE_REVIEW → LIVE_ACTIVE.
+	if _, err := svc.SubmitRiskReview(testCtx, a.Provider.ID, service.RiskReviewInput{
+		RiskScore: 20,
+		Checks: map[string]bool{
+			"email_and_company_domain": true,
+			"tos_dpa":                  true,
+			"custom_domain_ownership":  true,
+			"payment_tax_connection":   true,
+			"webhook_destination":      true,
+			"initial_quota":            true,
+			"security_contact":         true,
+		},
+		Decision:   domain.RiskDecisionApproved,
+		Reason:     "go-live checklist verified",
+		ReviewedBy: "op-test",
+	}); err != nil {
+		t.Fatalf("submit approved risk review: %v", err)
+	}
+	res, err := svc.TransitionLifecycle(testCtx, a.Provider.ID, service.LifecycleTransitionInput{To: domain.StateLiveActive})
 	if err != nil {
 		t.Fatalf("to LIVE_ACTIVE: %v", err)
 	}

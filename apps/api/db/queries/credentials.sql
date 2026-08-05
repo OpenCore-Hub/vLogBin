@@ -38,3 +38,45 @@ UPDATE credentials SET scopes = $2 WHERE id = $1 AND revoked_at IS NULL RETURNIN
 
 -- name: TouchCredentialLastUsed :exec
 UPDATE credentials SET last_used_at = now() WHERE id = $1;
+
+-- name: ListCredentialsByProvider :many
+-- Operator view: every API key issued to a provider across all environments.
+-- key_hash is intentionally excluded; the operator console identifies keys by
+-- key_prefix only.
+SELECT c.id,
+       c.provider_id,
+       c.environment_id,
+       c.name,
+       c.key_prefix,
+       c.scopes,
+       c.allowed_cidrs,
+       c.expires_at,
+       c.revoked_at,
+       c.last_used_at,
+       c.created_at,
+       e.kind::text AS environment_kind,
+       e.issuer       AS environment_issuer
+FROM credentials c
+JOIN environments e ON e.id = c.environment_id
+WHERE c.provider_id = $1
+ORDER BY c.created_at DESC;
+
+-- name: GetCredentialByProvider :one
+-- Operator view: a single credential scoped to a provider, with environment
+-- details. Used to authorize revocations against the owning provider.
+SELECT c.id,
+       c.provider_id,
+       c.environment_id,
+       c.name,
+       c.key_prefix,
+       c.scopes,
+       c.allowed_cidrs,
+       c.expires_at,
+       c.revoked_at,
+       c.last_used_at,
+       c.created_at,
+       e.kind::text AS environment_kind,
+       e.issuer       AS environment_issuer
+FROM credentials c
+JOIN environments e ON e.id = c.environment_id
+WHERE c.id = $1 AND c.provider_id = $2;

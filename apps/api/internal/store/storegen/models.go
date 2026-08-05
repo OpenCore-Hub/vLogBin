@@ -5,11 +5,80 @@
 package storegen
 
 import (
+	"encoding/json"
 	"time"
 
 	uuid "github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type AnalyticsChurn struct {
+	ProviderID            uuid.UUID       `json:"provider_id"`
+	ChurnMonth            pgtype.Interval `json:"churn_month"`
+	ChurnedSubscriptions  int64           `json:"churned_subscriptions"`
+	RetainedSubscriptions int64           `json:"retained_subscriptions"`
+}
+
+type AnalyticsConversion struct {
+	ProviderID                uuid.UUID       `json:"provider_id"`
+	SignupMonth               pgtype.Interval `json:"signup_month"`
+	NewCustomers              int64           `json:"new_customers"`
+	CustomersWithSubscription int64           `json:"customers_with_subscription"`
+	ActiveSubscriptions       int64           `json:"active_subscriptions"`
+}
+
+type AnalyticsMau struct {
+	ProviderID       uuid.UUID       `json:"provider_id"`
+	Month            pgtype.Interval `json:"month"`
+	ActiveCustomers  int64           `json:"active_customers"`
+	UniqueMetrics    int64           `json:"unique_metrics"`
+	TotalUsageEvents int64           `json:"total_usage_events"`
+}
+
+type AnalyticsRevenueSummary struct {
+	ProviderID          uuid.UUID       `json:"provider_id"`
+	ProviderName        string          `json:"provider_name"`
+	Month               pgtype.Interval `json:"month"`
+	InvoiceCount        int64           `json:"invoice_count"`
+	SubscriptionCount   int64           `json:"subscription_count"`
+	TotalRevenueCents   int64           `json:"total_revenue_cents"`
+	AvgInvoiceLineCents float64         `json:"avg_invoice_line_cents"`
+}
+
+type AnalyticsUsageAnomaly struct {
+	ProviderID uuid.UUID       `json:"provider_id"`
+	MetricCode string          `json:"metric_code"`
+	Day        pgtype.Interval `json:"day"`
+	EventCount int64           `json:"event_count"`
+	Avg7d      float64         `json:"avg_7d"`
+	IsAnomaly  bool            `json:"is_anomaly"`
+}
+
+type AnalyticsUsageBreakdown struct {
+	ProviderID    uuid.UUID       `json:"provider_id"`
+	MetricCode    string          `json:"metric_code"`
+	Day           pgtype.Interval `json:"day"`
+	EventCount    int64           `json:"event_count"`
+	TotalQuantity int64           `json:"total_quantity"`
+}
+
+type AuditChainAnchor struct {
+	ID          int64       `json:"id"`
+	TailEventID int64       `json:"tail_event_id"`
+	TailHash    string      `json:"tail_hash"`
+	Operator    string      `json:"operator"`
+	CreatedAt   time.Time   `json:"created_at"`
+	PublishedAt *time.Time  `json:"published_at"`
+	ObjectKey   pgtype.Text `json:"object_key"`
+}
+
+type AuditChainTail struct {
+	ID              int32       `json:"id"`
+	TailHash        pgtype.Text `json:"tail_hash"`
+	TailEventID     pgtype.Int8 `json:"tail_event_id"`
+	PrunedThroughID pgtype.Int8 `json:"pruned_through_id"`
+	UpdatedAt       time.Time   `json:"updated_at"`
+}
 
 type AuditEvent struct {
 	ID            int64         `json:"id"`
@@ -23,6 +92,8 @@ type AuditEvent struct {
 	Metadata      []byte        `json:"metadata"`
 	RequestID     pgtype.Text   `json:"request_id"`
 	CreatedAt     time.Time     `json:"created_at"`
+	PrevHash      pgtype.Text   `json:"prev_hash"`
+	EventHash     pgtype.Text   `json:"event_hash"`
 }
 
 type BudgetAlert struct {
@@ -169,27 +240,27 @@ type DeletionProof struct {
 }
 
 type EntitlementGrant struct {
-	ID               uuid.UUID `json:"id"`
-	PlanID           uuid.UUID `json:"plan_id"`
-	CatalogVersionID uuid.UUID `json:"catalog_version_id"`
-	ProviderID       uuid.UUID `json:"provider_id"`
-	EnvironmentID    uuid.UUID `json:"environment_id"`
-	Key              string    `json:"key"`
-	ValueType        string    `json:"value_type"`
-	Value            []byte    `json:"value"`
+	ID               uuid.UUID       `json:"id"`
+	PlanID           uuid.UUID       `json:"plan_id"`
+	CatalogVersionID uuid.UUID       `json:"catalog_version_id"`
+	ProviderID       uuid.UUID       `json:"provider_id"`
+	EnvironmentID    uuid.UUID       `json:"environment_id"`
+	Key              string          `json:"key"`
+	ValueType        string          `json:"value_type"`
+	Value            json.RawMessage `json:"value"`
 }
 
 type EntitlementOverride struct {
-	ID             uuid.UUID  `json:"id"`
-	ProviderID     uuid.UUID  `json:"provider_id"`
-	EnvironmentID  uuid.UUID  `json:"environment_id"`
-	SubscriptionID uuid.UUID  `json:"subscription_id"`
-	Key            string     `json:"key"`
-	ValueType      string     `json:"value_type"`
-	Value          []byte     `json:"value"`
-	ExpiresAt      *time.Time `json:"expires_at"`
-	Reason         string     `json:"reason"`
-	CreatedAt      time.Time  `json:"created_at"`
+	ID             uuid.UUID       `json:"id"`
+	ProviderID     uuid.UUID       `json:"provider_id"`
+	EnvironmentID  uuid.UUID       `json:"environment_id"`
+	SubscriptionID uuid.UUID       `json:"subscription_id"`
+	Key            string          `json:"key"`
+	ValueType      string          `json:"value_type"`
+	Value          json.RawMessage `json:"value"`
+	ExpiresAt      *time.Time      `json:"expires_at"`
+	Reason         string          `json:"reason"`
+	CreatedAt      time.Time       `json:"created_at"`
 }
 
 type EntitlementSnapshot struct {
@@ -210,6 +281,21 @@ type Environment struct {
 	Status     string    `json:"status"`
 	Issuer     string    `json:"issuer"`
 	CreatedAt  time.Time `json:"created_at"`
+}
+
+type IdempotencyKey struct {
+	ID             uuid.UUID   `json:"id"`
+	Scope          string      `json:"scope"`
+	KeyHash        []byte      `json:"key_hash"`
+	Method         string      `json:"method"`
+	Path           string      `json:"path"`
+	Status         string      `json:"status"`
+	ResponseStatus pgtype.Int4 `json:"response_status"`
+	ContentType    pgtype.Text `json:"content_type"`
+	ResponseBody   []byte      `json:"response_body"`
+	RequestID      string      `json:"request_id"`
+	CreatedAt      time.Time   `json:"created_at"`
+	ExpiresAt      time.Time   `json:"expires_at"`
 }
 
 type InboxEvent struct {
@@ -349,20 +435,21 @@ type NotificationConfig struct {
 }
 
 type OutboxEvent struct {
-	ID            uuid.UUID  `json:"id"`
-	ProviderID    uuid.UUID  `json:"provider_id"`
-	EnvironmentID uuid.UUID  `json:"environment_id"`
-	AggregateType string     `json:"aggregate_type"`
-	AggregateID   string     `json:"aggregate_id"`
-	EventType     string     `json:"event_type"`
-	Payload       []byte     `json:"payload"`
-	PayloadHash   string     `json:"payload_hash"`
-	TransactionID string     `json:"transaction_id"`
-	Status        string     `json:"status"`
-	Attempts      int32      `json:"attempts"`
-	CreatedAt     time.Time  `json:"created_at"`
-	PublishedAt   *time.Time `json:"published_at"`
-	NextAttemptAt *time.Time `json:"next_attempt_at"`
+	ID            uuid.UUID   `json:"id"`
+	ProviderID    uuid.UUID   `json:"provider_id"`
+	EnvironmentID uuid.UUID   `json:"environment_id"`
+	AggregateType string      `json:"aggregate_type"`
+	AggregateID   string      `json:"aggregate_id"`
+	EventType     string      `json:"event_type"`
+	Payload       []byte      `json:"payload"`
+	PayloadHash   string      `json:"payload_hash"`
+	TransactionID string      `json:"transaction_id"`
+	Status        string      `json:"status"`
+	Attempts      int32       `json:"attempts"`
+	CreatedAt     time.Time   `json:"created_at"`
+	PublishedAt   *time.Time  `json:"published_at"`
+	NextAttemptAt *time.Time  `json:"next_attempt_at"`
+	LastError     pgtype.Text `json:"last_error"`
 }
 
 type Plan struct {
@@ -377,21 +464,21 @@ type Plan struct {
 }
 
 type Price struct {
-	ID               uuid.UUID     `json:"id"`
-	PlanID           uuid.UUID     `json:"plan_id"`
-	CatalogVersionID uuid.UUID     `json:"catalog_version_id"`
-	ProviderID       uuid.UUID     `json:"provider_id"`
-	EnvironmentID    uuid.UUID     `json:"environment_id"`
-	MetricID         uuid.NullUUID `json:"metric_id"`
-	ChargeModel      string        `json:"charge_model"`
-	Properties       []byte        `json:"properties"`
+	ID               uuid.UUID       `json:"id"`
+	PlanID           uuid.UUID       `json:"plan_id"`
+	CatalogVersionID uuid.UUID       `json:"catalog_version_id"`
+	ProviderID       uuid.UUID       `json:"provider_id"`
+	EnvironmentID    uuid.UUID       `json:"environment_id"`
+	MetricID         uuid.NullUUID   `json:"metric_id"`
+	ChargeModel      string          `json:"charge_model"`
+	Properties       json.RawMessage `json:"properties"`
 }
 
 type Provider struct {
 	ID             uuid.UUID     `json:"id"`
 	Slug           string        `json:"slug"`
 	Name           string        `json:"name"`
-	HomeRegionID   uuid.UUID     `json:"home_region_id"`
+	HomeRegionID   uuid.NullUUID `json:"home_region_id"`
 	CellID         uuid.NullUUID `json:"cell_id"`
 	LifecycleState string        `json:"lifecycle_state"`
 	SlaTier        string        `json:"sla_tier"`
@@ -410,6 +497,8 @@ type ProviderAuthConfig struct {
 	Enabled             bool      `json:"enabled"`
 	CreatedAt           time.Time `json:"created_at"`
 	UpdatedAt           time.Time `json:"updated_at"`
+	RedirectUris        []byte    `json:"redirect_uris"`
+	Name                string    `json:"name"`
 }
 
 type ProviderCapability struct {
@@ -423,6 +512,18 @@ type ProviderCapability struct {
 	Reason     string     `json:"reason"`
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
+type ProviderRiskReview struct {
+	ID         uuid.UUID `json:"id"`
+	ProviderID uuid.UUID `json:"provider_id"`
+	RiskScore  int16     `json:"risk_score"`
+	Checks     []byte    `json:"checks"`
+	Decision   string    `json:"decision"`
+	Reason     string    `json:"reason"`
+	ReviewedBy string    `json:"reviewed_by"`
+	ReviewedAt time.Time `json:"reviewed_at"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type PspCredential struct {
@@ -617,4 +718,23 @@ type WebhookEndpoint struct {
 	Events        []string  `json:"events"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+type Workspace struct {
+	ID        uuid.UUID `json:"id"`
+	Slug      string    `json:"slug"`
+	Name      string    `json:"name"`
+	CreatedBy string    `json:"created_by"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type WorkspaceMember struct {
+	ID          uuid.UUID `json:"id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	UserSub     string    `json:"user_sub"`
+	Role        string    `json:"role"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }

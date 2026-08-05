@@ -367,9 +367,22 @@ func (s *Service) ValidateCatalogVersion(ctx context.Context, tc tenant.Ctx, id 
 }
 
 // PublishCatalogVersion moves a validated version to published. From this
-// point its content is immutable (DB triggers enforce it).
+// point its content is immutable (DB triggers enforce it). Publishing is
+// refused while the provider is not yet activated (no test environment),
+// suspended, or being offboarded, so a version can never become an external
+// commitment for a provider that is not serving traffic.
 func (s *Service) PublishCatalogVersion(ctx context.Context, tc tenant.Ctx, id uuid.UUID) (*storegen.CatalogVersion, error) {
-	return s.transitionCatalogVersion(ctx, tc, id, domain.CatalogPublished, nil)
+	return s.transitionCatalogVersion(ctx, tc, id, domain.CatalogPublished, func(ctx context.Context, q *store.Queries) error {
+		provider, err := q.GetProviderByID(ctx, tc.ProviderID)
+		if err != nil {
+			return mapErr(err, "provider %s", tc.ProviderID)
+		}
+		if !domain.CanPublishCatalog(domain.LifecycleState(provider.LifecycleState)) {
+			return fmt.Errorf("%w: provider %s is in state %s and cannot publish catalog versions",
+				ErrProviderNotWritable, tc.ProviderID, provider.LifecycleState)
+		}
+		return nil
+	})
 }
 
 // RetireCatalogVersion retires a published version.

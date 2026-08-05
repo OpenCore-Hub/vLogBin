@@ -48,3 +48,44 @@ func (s *Server) disableHostedAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// listHostedAuthConfigs — GET /v1/auth/zitadel/apps
+func (s *Server) listHostedAuthConfigs(w http.ResponseWriter, r *http.Request) {
+	tc, _ := tenant.FromContext(r.Context())
+	cfgs, err := s.svc.ListHostedAuthConfigs(r.Context(), tc)
+	if err != nil {
+		s.serviceError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"apps": cfgs})
+}
+
+// rotateHostedAuthSecret — POST /v1/auth/zitadel/rotate-secret
+func (s *Server) rotateHostedAuthSecret(w http.ResponseWriter, r *http.Request) {
+	tc, _ := tenant.FromContext(r.Context())
+	cfg, err := s.svc.RotateHostedAuthSecret(r.Context(), tc)
+	if err != nil {
+		s.serviceError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, cfg)
+}
+
+// updateHostedAuthRedirectURIs — PUT /v1/auth/zitadel/redirect-uris
+func (s *Server) updateHostedAuthRedirectURIs(w http.ResponseWriter, r *http.Request) {
+	tc, _ := tenant.FromContext(r.Context())
+	var req struct {
+		RedirectURIs []string `json:"redirect_uris"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	cfg, err := s.svc.UpdateHostedAuthRedirectURIs(r.Context(), tc, service.UpdateHostedAuthRedirectURIsInput{
+		RedirectURIs: req.RedirectURIs,
+	})
+	if err != nil {
+		s.serviceError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, cfg)
+}

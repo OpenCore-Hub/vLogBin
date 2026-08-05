@@ -4,14 +4,17 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/config"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/domain"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/metrics"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/ratelimit"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/service"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
@@ -24,30 +27,101 @@ type Server struct {
 	svc           *service.Service
 	operatorToken string
 	log           *slog.Logger
-	corsOrigins   []string
-	limiter       *ratelimit.Limiter
-	rateLimits    config.RateLimitConfig
-	oidcVerifier  *zitadel.Verifier
+	// corsOrigins (atomic.Value of []string), rateLimits (atomic.Value of
+	// config.RateLimitConfig) and slowRequestThreshold (atomic.Int64 of
+	// nanoseconds) are read on every request and swapped by the config
+	// reloader, so they must stay atomic: a runtime update races with
+	// concurrent request handling.
+	corsOrigins          atomic.Value // []string
+	limiter              ratelimit.Backend
+	rateLimits           atomic.Value // config.RateLimitConfig
+	oidcVerifier         *zitadel.Verifier
+	metrics              *metrics.Metrics
+	requestTimeout       time.Duration
+	readyTimeout         time.Duration
+	startupComplete      atomic.Bool
+	slowRequestThreshold atomic.Int64 // nanoseconds
+	idempotencyTTL       time.Duration
 }
 
 func NewServer(st *store.Store, svc *service.Service, operatorToken string, log *slog.Logger) *Server {
-	return &Server{
-		store:         st,
-		svc:           svc,
-		operatorToken: operatorToken,
-		log:           log,
-		corsOrigins:   []string{"*"},
-		limiter:       ratelimit.New(),
-		rateLimits: config.RateLimitConfig{
-			Provider: 1000, Environment: 500, Credential: 200, Endpoint: 60,
-			Window: time.Minute,
-		},
+	s := &Server{
+		store:          st,
+		svc:            svc,
+		operatorToken:  operatorToken,
+		log:            log,
+		limiter:        ratelimit.New(),
+		metrics:        metrics.New(),
+		requestTimeout: 30 * time.Second,
+		readyTimeout:   2 * time.Second,
 	}
+	s.SetCORSOrigins([]string{"*"})
+	s.SetRateLimits(config.RateLimitConfig{
+		Provider: 1000, Environment: 500, Credential: 200, Endpoint: 60,
+		Window: time.Minute,
+	})
+	s.SetIdempotencyTTL(0) // 24h default; main may override via IDEMPOTENCY_TTL
+	return s
 }
 
-// SetRateLimits configures the 4-level rate limit settings.
+// SetRequestTimeout overrides the per-request handler timeout. A non-positive
+// value disables the timeout. Must be called before Handler is built.
+func (s *Server) SetRequestTimeout(d time.Duration) {
+	s.requestTimeout = d
+}
+
+// SetReadyTimeout overrides the /ready database ping timeout. A non-positive
+// value disables the timeout. Must be called before Handler is built.
+func (s *Server) SetReadyTimeout(d time.Duration) {
+	s.readyTimeout = d
+}
+
+// SetStartupComplete marks the server as fully initialized. /startup flips
+// from 503 to 200 once this is called; main calls it only after migrations,
+// the connection pool, billing, ZITADEL and all workers are ready.
+func (s *Server) SetStartupComplete() {
+	s.startupComplete.Store(true)
+}
+
+// SetSlowRequestThreshold escalates request logs to Warn with slow=true once
+// a request exceeds d. A non-positive value disables escalation. May be
+// called at any time; the value is read on every request (atomic).
+func (s *Server) SetSlowRequestThreshold(d time.Duration) {
+	s.slowRequestThreshold.Store(int64(d))
+}
+
+// SlowRequestThreshold returns the current slow-request escalation threshold.
+func (s *Server) SlowRequestThreshold() time.Duration {
+	return time.Duration(s.slowRequestThreshold.Load())
+}
+
+// Metrics exposes the Prometheus metric families so background reporters
+// (backlog gauges, sweeper counters) can update them.
+func (s *Server) Metrics() *metrics.Metrics {
+	return s.metrics
+}
+
+// SetRateLimits configures the 4-level rate limit settings. May be called at
+// any time; the config is read on every request (atomic).
 func (s *Server) SetRateLimits(rl config.RateLimitConfig) {
-	s.rateLimits = rl
+	s.rateLimits.Store(rl)
+}
+
+// SetRateLimiter swaps the rate-limiter backend (in-memory or Redis-backed).
+// Must be called before Router() is built: the middleware captures the
+// limiter reference when the route chain is constructed, so swapping later
+// has no effect. Defaults to the in-memory limiter.
+func (s *Server) SetRateLimiter(l ratelimit.Backend) {
+	s.limiter = l
+}
+
+// RateLimits returns the current rate limit configuration.
+func (s *Server) RateLimits() config.RateLimitConfig {
+	v := s.rateLimits.Load()
+	if v == nil {
+		return config.RateLimitConfig{Window: time.Minute}
+	}
+	return v.(config.RateLimitConfig)
 }
 
 // SetOIDCVerifier configures ZITADEL OIDC token verification for
@@ -56,32 +130,58 @@ func (s *Server) SetOIDCVerifier(v *zitadel.Verifier) {
 	s.oidcVerifier = v
 }
 
-// SetCORSOrigins configures the allowed CORS origins. Must be called
-// before Router().
+// SetCORSOrigins configures the allowed CORS origins. May be called at any
+// time; the middleware reads the current value on every request (atomic).
 func (s *Server) SetCORSOrigins(origins []string) {
 	if len(origins) > 0 {
-		s.corsOrigins = origins
+		s.corsOrigins.Store(origins)
 	}
+}
+
+// CORSOrigins returns the current allowed CORS origins.
+func (s *Server) CORSOrigins() []string {
+	v := s.corsOrigins.Load()
+	if v == nil {
+		return nil
+	}
+	return v.([]string)
 }
 
 func (s *Server) Router() chi.Router {
 	r := chi.NewRouter()
+	// OpenTelemetry tracing outermost so it also captures early failures and
+	// panics recovered below; no-op (negligible) when tracing is disabled.
+	r.Use(s.tracingMiddleware)
 	r.Use(s.recoverMiddleware)
-	r.Use(corsMiddleware(s.corsOrigins))
+	r.Use(securityHeadersMiddleware)
+	r.Use(s.corsMiddleware)
 	r.Use(bodyLimitMiddleware)
 	r.Use(requestIDMiddleware)
 	r.Use(s.requestLogMiddleware)
+	r.Use(s.metricsMiddleware)
+	// Per-IP safety net runs before authentication so a single source
+	// cannot exhaust the authenticated buckets by rotating credentials,
+	// and unauthenticated endpoints stay protected from naive DoS. Its
+	// 429 responses still flow through metricsMiddleware above.
+	r.Use(s.ipRateLimitMiddleware)
+	r.Use(s.requestTimeoutMiddleware)
 	r.Use(DeprecationMiddleware)
+
+	// Prometheus metrics (no auth — scrape target, see docs/DEPLOYMENT.md).
+	r.Get("/metrics", s.metrics.Handler().ServeHTTP)
 
 	// Health-check endpoints (no auth — Kubernetes probes).
 	r.Get("/health", s.health)
 	r.Get("/ready", s.ready)
+	r.Get("/startup", s.startup)
 	// API version info (no auth — public compatibility policy).
 	r.Get("/v1/api-version", s.getAPIVersion)
 
 	// SCIM 2.0 endpoints (standard SCIM path, provider API key auth).
 	r.Route("/scim/v2", func(r chi.Router) {
 		r.Use(s.apiKeyAuth)
+		r.Use(s.lifecycleWriteGuard)
+		r.Use(s.idempotencyMiddleware)
 		r.With(requireScope(domain.ScopeSCIMManage)).Post("/Users", s.scimCreateUser)
 		r.With(requireScope(domain.ScopeSCIMManage)).Get("/Users", s.scimListUsers)
 		r.With(requireScope(domain.ScopeSCIMManage)).Get("/Users/{id}", s.scimGetUser)
@@ -99,28 +199,59 @@ func (s *Server) Router() chi.Router {
 	r.Route("/v1", func(r chi.Router) {
 		r.Route("/operator", func(r chi.Router) {
 			r.Use(s.operatorAuth)
+			r.Use(s.idempotencyMiddleware)
 			r.Post("/providers", s.createProvider)
 			r.Get("/providers", s.listProviders)
 			r.Get("/providers/{id}", s.getProvider)
 			r.Post("/providers/{id}/lifecycle", s.transitionLifecycle)
+			r.Post("/providers/{id}/activate", s.activateProvider)
+			r.Get("/providers/{id}/audit", s.listProviderAuditEvents)
+			r.Get("/providers/{id}/audit/stats", s.providerAuditEventStats)
+			r.Get("/providers/{id}/audit/export", s.providerAuditEventExport)
+			r.Get("/providers/{id}/credentials", s.listProviderCredentials)
+			r.Post("/providers/{id}/credentials/{credentialId}/revoke", s.revokeProviderCredential)
 			r.Get("/regions", s.listRegions)
 			r.Get("/cells", s.listCells)
 			// Operator billing views (cross-environment, read-only).
+			r.Get("/overview-stats", s.operatorOverviewStats)
 			r.Get("/providers/{id}/catalog/versions", s.operatorListCatalogVersions)
 			r.Get("/providers/{id}/catalog/versions/{versionId}", s.operatorGetCatalogVersion)
+			// Console Plans control plane (§8 M2), environment-scoped via ?env=.
+			r.Get("/providers/{id}/catalog/plans", s.operatorListCatalogPlans)
+			r.Get("/providers/{id}/catalog/plans/{code}", s.operatorGetCatalogPlan)
+			r.Post("/providers/{id}/catalog/plans", s.operatorCreateCatalogPlan)
+			r.Put("/providers/{id}/catalog/plans/{code}", s.operatorUpdateCatalogPlan)
+			r.Delete("/providers/{id}/catalog/plans/{code}", s.operatorDeleteCatalogPlan)
 			r.Get("/providers/{id}/subscriptions", s.operatorListSubscriptions)
 			r.Get("/providers/{id}/customers", s.operatorListCustomers)
+			// Console Customers control plane (§8 M2), environment-scoped via ?env=.
+			r.Post("/providers/{id}/customers", s.operatorCreateCustomer)
+			r.Get("/providers/{id}/customers/{externalId}", s.operatorGetCustomer)
 			r.Get("/providers/{id}/usage-events", s.operatorListUsageEvents)
 			r.Get("/providers/{id}/invoices", s.operatorListInvoices)
 			// Provider capability grants (operator-managed).
 			r.Get("/providers/{id}/capabilities", s.operatorListCapabilities)
 			r.Post("/providers/{id}/capabilities/{capability}/grant", s.operatorGrantCapability)
 			r.Post("/providers/{id}/capabilities/{capability}/revoke", s.operatorRevokeCapability)
+			// Provider risk review (go-live gate, architecture §15).
+			r.Post("/providers/{id}/risk-review", s.operatorSubmitRiskReview)
+			r.Get("/providers/{id}/risk-reviews", s.operatorListRiskReviews)
+			// OIDC Application management (Console control plane, §8 M2).
+			r.Get("/providers/{id}/auth/zitadel/apps", s.operatorListHostedAuthConfigs)
+			r.Post("/providers/{id}/auth/zitadel/setup", s.operatorSetupHostedAuth)
+			r.Post("/providers/{id}/auth/zitadel/rotate-secret", s.operatorRotateHostedAuthSecret)
+			r.Put("/providers/{id}/auth/zitadel/redirect-uris", s.operatorUpdateHostedAuthRedirectURIs)
+			r.Delete("/providers/{id}/auth/zitadel", s.operatorDisableHostedAuth)
 			// Reconciliation results (operator monitoring).
 			r.Get("/reconciliation-results", s.operatorListReconciliationResults)
+			// Tamper-evident audit chain (operator-only, migration 0031).
+			r.Get("/audit/chain", s.auditChainState)
+			r.Get("/audit/chain/verify", s.auditChainVerify)
+			r.Post("/audit/chain/anchor", s.auditChainAnchor)
 			// Webhook monitoring (operator view, cross-environment).
 			r.Get("/providers/{id}/webhooks", s.operatorListWebhooks)
 			r.Get("/providers/{id}/webhook-deliveries", s.operatorListWebhookDeliveries)
+			r.Post("/providers/{id}/webhook-deliveries/{deliveryId}/replay", s.operatorReplayWebhookDelivery)
 			// Cell management (operator-only).
 			r.Post("/cells", s.createCell)
 			r.Get("/cells/{id}", s.getCell)
@@ -148,10 +279,28 @@ func (s *Server) Router() chi.Router {
 			r.Post("/support-sessions/{sessionId}/second-approve", s.secondApproveEmergency)
 			r.Post("/support-sessions/{sessionId}/revoke", s.operatorRevokeSupportSession)
 		})
+		// Control plane: platform-user self-service (design baseline §3.1 R11).
+		r.Route("/signup", func(r chi.Router) {
+			r.Use(s.operatorAuth)
+			r.Use(s.idempotencyMiddleware)
+			r.Post("/", s.signup)
+		})
+		r.Route("/me", func(r chi.Router) {
+			r.Use(s.operatorAuth)
+			r.Get("/workspaces", s.meWorkspaces)
+			r.Get("/workspaces/{id}", s.getWorkspace)
+			r.Patch("/workspaces/{id}", s.updateWorkspace)
+			r.Get("/workspaces/{id}/members", s.listWorkspaceMembers)
+			r.Post("/workspaces/{id}/members", s.inviteWorkspaceMember)
+			r.Patch("/workspaces/{id}/members/{userSub}", s.updateWorkspaceMemberRole)
+			r.Delete("/workspaces/{id}/members/{userSub}", s.removeWorkspaceMember)
+		})
 		r.Group(func(r chi.Router) {
 			r.Use(s.apiKeyAuth)
 			r.Use(s.tenantGuard)
 			r.Use(s.rateLimitMiddleware)
+			r.Use(s.idempotencyMiddleware)
+			r.Use(s.lifecycleWriteGuard)
 			r.With(requireScope(domain.ScopeRead)).Get("/whoami", s.whoami)
 			r.With(requireScope(domain.ScopeRead)).Get("/credentials", s.listCredentials)
 			r.With(requireScope(domain.ScopeCredentialsManage)).Post("/credentials", s.createCredential)
@@ -165,6 +314,8 @@ func (s *Server) Router() chi.Router {
 			r.With(requireScope(domain.ScopeCredentialsManage)).Post("/team-members/{id}/reactivate", s.reactivateTeamMember)
 			r.With(requireScope(domain.ScopeCredentialsManage)).Delete("/team-members/{id}", s.removeTeamMember)
 			r.With(requireScope(domain.ScopeAuditRead)).Get("/audit-events", s.listAuditEvents)
+			r.With(requireScope(domain.ScopeAuditRead)).Get("/audit-events/stats", s.auditEventStats)
+			r.With(requireScope(domain.ScopeAuditRead)).Get("/audit-events/export", s.auditEventExport)
 			r.With(requireScope(domain.ScopeRead)).Get("/outbox-events", s.listOutboxEvents)
 			// Enterprise Event Stream (cursor-based forward pagination).
 			r.With(requireScope(domain.ScopeRead)).Get("/events", s.streamEvents)
@@ -231,6 +382,15 @@ func (s *Server) Router() chi.Router {
 			r.With(requireScope(domain.ScopeWrite)).Post("/catalog/versions/{versionId}/validate", s.validateCatalogVersion)
 			r.With(requireScope(domain.ScopeWrite)).Post("/catalog/versions/{versionId}/publish", s.publishCatalogVersion)
 			r.With(requireScope(domain.ScopeWrite)).Post("/catalog/versions/{versionId}/retire", s.retireCatalogVersion)
+			// Catalog plans (plan-level CRUD on the current draft version).
+			r.With(requireScope(domain.ScopeRead)).Get("/catalog/plans", s.listCatalogPlans)
+			r.With(requireScope(domain.ScopeWrite)).Post("/catalog/plans", s.createCatalogPlan)
+			r.With(requireScope(domain.ScopeWrite)).Put("/catalog/plans/{code}", s.updateCatalogPlan)
+			r.With(requireScope(domain.ScopeWrite)).Delete("/catalog/plans/{code}", s.deleteCatalogPlan)
+			// Catalog policies (plan-level entitlement grants on the current draft).
+			r.With(requireScope(domain.ScopeRead)).Get("/catalog/plans/{code}/entitlements", s.listPlanEntitlements)
+			r.With(requireScope(domain.ScopeWrite)).Put("/catalog/plans/{code}/entitlements/{key}", s.setPlanEntitlement)
+			r.With(requireScope(domain.ScopeWrite)).Delete("/catalog/plans/{code}/entitlements/{key}", s.deletePlanEntitlement)
 			// Customers.
 			r.With(requireScope(domain.ScopeWrite)).Post("/customers", s.createCustomer)
 			r.With(requireScope(domain.ScopeRead)).Get("/customers", s.listCustomers)
@@ -271,6 +431,9 @@ func (s *Server) Router() chi.Router {
 			// Hosted Auth (ZITADEL OIDC project management).
 			r.With(requireScope(domain.ScopeWrite)).Post("/auth/zitadel/setup", s.setupHostedAuth)
 			r.With(requireScope(domain.ScopeRead)).Get("/auth/zitadel/config", s.getHostedAuthConfig)
+			r.With(requireScope(domain.ScopeRead)).Get("/auth/zitadel/apps", s.listHostedAuthConfigs)
+			r.With(requireScope(domain.ScopeWrite)).Post("/auth/zitadel/rotate-secret", s.rotateHostedAuthSecret)
+			r.With(requireScope(domain.ScopeWrite)).Put("/auth/zitadel/redirect-uris", s.updateHostedAuthRedirectURIs)
 			r.With(requireScope(domain.ScopeWrite)).Delete("/auth/zitadel", s.disableHostedAuth)
 			// Webhooks (signed delivery to provider endpoints).
 			r.With(requireScope(domain.ScopeWrite)).Post("/webhooks", s.createWebhook)
@@ -294,6 +457,17 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// writeAuditQueryError maps audit query parameter errors to 400 responses;
+// anything else falls through as an internal error (should not happen).
+func writeAuditQueryError(w http.ResponseWriter, r *http.Request, err error) {
+	var qe auditQueryError
+	if errors.As(err, &qe) {
+		writeError(w, http.StatusBadRequest, qe.code, qe.msg, reqIDFromRequest(r))
+		return
+	}
+	writeError(w, http.StatusInternalServerError, "internal", "internal error", reqIDFromRequest(r))
+}
+
 func writeError(w http.ResponseWriter, status int, code, message, requestID string) {
 	body := map[string]any{"code": code, "message": message}
 	if requestID != "" {
@@ -315,6 +489,8 @@ func (s *Server) serviceError(w http.ResponseWriter, r *http.Request, err error)
 	switch {
 	case errors.Is(err, service.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not_found", err.Error(), reqID)
+	case errors.Is(err, service.ErrForbidden):
+		writeError(w, http.StatusForbidden, "forbidden", err.Error(), reqID)
 	case errors.Is(err, service.ErrConflict):
 		writeError(w, http.StatusConflict, "conflict", err.Error(), reqID)
 	case errors.Is(err, service.ErrUsageConflict):
@@ -327,12 +503,24 @@ func (s *Server) serviceError(w http.ResponseWriter, r *http.Request, err error)
 		writeError(w, http.StatusConflict, "cutover_locked", err.Error(), reqID)
 	case errors.Is(err, service.ErrCellDraining):
 		writeError(w, http.StatusConflict, "cell_draining", err.Error(), reqID)
+	case errors.Is(err, service.ErrProviderNotWritable):
+		writeError(w, http.StatusConflict, "provider_not_writable", err.Error(), reqID)
+	case errors.Is(err, service.ErrLifecycleConflict):
+		writeError(w, http.StatusConflict, "lifecycle_conflict", err.Error(), reqID)
+	case errors.Is(err, service.ErrLiveReviewRequired):
+		writeError(w, http.StatusConflict, "live_review_required", err.Error(), reqID)
+	case errors.Is(err, service.ErrRiskReviewConflict):
+		writeError(w, http.StatusConflict, "risk_review_conflict", err.Error(), reqID)
+	case errors.Is(err, service.ErrWebhookReplayConflict):
+		writeError(w, http.StatusConflict, "replay_invalid_state", err.Error(), reqID)
 	case errors.Is(err, service.ErrDomainTaken):
 		writeError(w, http.StatusConflict, "domain_taken", err.Error(), reqID)
 	case errors.Is(err, service.ErrValidation):
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), reqID)
 	case errors.Is(err, domain.ErrInvalidTransition):
 		writeError(w, http.StatusConflict, "invalid_transition", err.Error(), reqID)
+	case errors.Is(err, context.DeadlineExceeded):
+		writeError(w, http.StatusGatewayTimeout, "upstream_timeout", "request exceeded timeout", reqID)
 	default:
 		s.log.Error("internal error", "error", err, "request_id", reqID)
 		writeError(w, http.StatusInternalServerError, "internal", "internal server error", reqID)

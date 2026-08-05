@@ -3,6 +3,7 @@ package integration
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -183,5 +184,104 @@ func TestCellValidation(t *testing.T) {
 	})
 	if status != http.StatusBadRequest {
 		t.Fatalf("invalid status: status %d, want 400", status)
+	}
+}
+
+// TestCellDrainingWriteFencing verifies that when a provider's cell is
+// set to 'draining', billing write operations (subscription creation,
+// usage ingest) are rejected with 409 cell_draining (spec Section 14:
+// "写 fencing"). This is the P0 safety guarantee for failover/migration.
+func TestCellDrainingWriteFencing(t *testing.T) {
+	providerID, apiKey := createProviderAPI(t, "drain-"+uuid.NewString()[:8])
+	regionID := getFirstRegionID(t)
+
+	// Create a dedicated cell and assign the provider to it.
+	status, body := apiReq(t, "POST", "/v1/operator/cells", operatorToken, map[string]any{
+		"region_id":       regionID,
+		"code":            "cell-drain-" + uuid.NewString()[:8],
+		"cell_type":       "shared",
+		"status":          "active",
+		"capacity_limits": map[string]any{},
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("create cell: status %d, body %v", status, body)
+	}
+	cellID := body["id"].(string)
+
+	status, body = apiReq(t, "POST", "/v1/operator/providers/"+providerID+"/cell", operatorToken, map[string]any{
+		"cell_id": cellID,
+	})
+	if status != http.StatusOK {
+		t.Fatalf("assign cell: status %d, body %v", status, body)
+	}
+
+	// Set up billing prerequisites (catalog + customer) while cell is active.
+	versionID := createPublishedCatalog(t, apiKey)
+	custExt, _ := createCustomerAndSubscription(t, apiKey, versionID)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+
+	// Sanity check: with cell active, usage ingest succeeds (201 on first ingest).
+	status, _ = ingestUsage(t, apiKey, "tx-ok-"+uuid.NewString()[:8], custExt, "api_calls", now, map[string]any{"count": 1})
+	if status != http.StatusCreated {
+		t.Fatalf("usage ingest with active cell: status %d, want 201", status)
+	}
+
+	// Flip the cell to draining — this activates write fencing.
+	status, body = apiReq(t, "PATCH", "/v1/operator/cells/"+cellID, operatorToken, map[string]any{
+		"status": "draining",
+	})
+	if status != http.StatusOK {
+		t.Fatalf("update to draining: status %d, body %v", status, body)
+	}
+	if body["status"] != "draining" {
+		t.Fatalf("cell status = %v, want draining", body["status"])
+	}
+
+	// --- Write fencing: subscription creation must be rejected. ---
+	status, body = apiReq(t, "POST", "/v1/subscriptions", apiKey, map[string]any{
+		"external_id":          "sub-blocked-" + uuid.NewString()[:8],
+		"customer_external_id": custExt,
+		"catalog_version_id":   versionID,
+		"plan_code":            "starter",
+	})
+	if status != http.StatusConflict {
+		t.Fatalf("create subscription during draining: status %d, want 409", status)
+	}
+	errObj, _ := body["error"].(map[string]any)
+	if errObj == nil || errObj["code"] != "cell_draining" {
+		t.Fatalf("error.code = %v, want cell_draining (body %v)", errObj, body)
+	}
+
+	// --- Write fencing: usage ingest must be rejected. ---
+	status, body = ingestUsage(t, apiKey, "tx-blocked-"+uuid.NewString()[:8], custExt, "api_calls", now, map[string]any{"count": 1})
+	if status != http.StatusConflict {
+		t.Fatalf("ingest usage during draining: status %d, want 409", status)
+	}
+	errObj, _ = body["error"].(map[string]any)
+	if errObj == nil || errObj["code"] != "cell_draining" {
+		t.Fatalf("error.code = %v, want cell_draining (body %v)", errObj, body)
+	}
+
+	// Restore the cell to active — writes must succeed again.
+	status, _ = apiReq(t, "PATCH", "/v1/operator/cells/"+cellID, operatorToken, map[string]any{
+		"status": "active",
+	})
+	if status != http.StatusOK {
+		t.Fatalf("restore to active: status %d", status)
+	}
+
+	status, body = apiReq(t, "POST", "/v1/subscriptions", apiKey, map[string]any{
+		"external_id":          "sub-restored-" + uuid.NewString()[:8],
+		"customer_external_id": custExt,
+		"catalog_version_id":   versionID,
+		"plan_code":            "starter",
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("create subscription after restore: status %d, want 201", status)
+	}
+
+	status, _ = ingestUsage(t, apiKey, "tx-restored-"+uuid.NewString()[:8], custExt, "api_calls", now, map[string]any{"count": 1})
+	if status != http.StatusCreated {
+		t.Fatalf("usage ingest after restore: status %d, want 201", status)
 	}
 }

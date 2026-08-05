@@ -78,19 +78,41 @@ func ValidCapability(s string) bool {
 	return false
 }
 
+// Risk review decisions (architecture §15: operator approval before go-live).
+const (
+	RiskDecisionApproved = "approved"
+	RiskDecisionRejected = "rejected"
+)
+
 // allowedTransitions encodes:
 //
-//	REGISTERED → TEST_ACTIVE → LIVE_REVIEW → LIVE_ACTIVE → (RESTRICTED | SUSPENDED | OFFBOARDING)
+//	REGISTERED →(activation)→ TEST_ACTIVE → LIVE_REVIEW → LIVE_ACTIVE → (RESTRICTED | SUSPENDED | OFFBOARDING)
 //
 // with operator-controlled re-activation from RESTRICTED/SUSPENDED.
+//
+// REGISTERED intentionally has no transitions here: the only path out of it
+// is the dedicated activation flow (ActivateProvider), which assigns the home
+// region and cell and provisions the test environment. Letting the generic
+// transition endpoint move REGISTERED → TEST_ACTIVE would yield a provider
+// with no region, no cell and no test environment — an inconsistent state.
 var allowedTransitions = map[LifecycleState][]LifecycleState{
-	StateRegistered:  {StateTestActive},
+	StateRegistered:  {},
 	StateTestActive:  {StateLiveReview},
 	StateLiveReview:  {StateLiveActive, StateRestricted, StateSuspended},
 	StateLiveActive:  {StateRestricted, StateSuspended, StateOffboarding},
 	StateRestricted:  {StateLiveActive, StateSuspended, StateOffboarding},
 	StateSuspended:   {StateLiveActive, StateOffboarding},
 	StateOffboarding: {},
+}
+
+// AllowedTransitions returns the set of lifecycle states reachable from
+// the given state in a single transition. The returned slice is a copy;
+// callers may modify it freely. Exposed so the Web console can disable
+// buttons for transitions that the state machine would reject.
+func AllowedTransitions(from LifecycleState) []LifecycleState {
+	out := make([]LifecycleState, len(allowedTransitions[from]))
+	copy(out, allowedTransitions[from])
+	return out
 }
 
 // CanTransition reports whether from → to is allowed.
@@ -109,6 +131,28 @@ func Transition(from, to LifecycleState) (LifecycleState, error) {
 		return "", fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, from, to)
 	}
 	return to, nil
+}
+
+// CanWrite reports whether a provider in the given lifecycle state may
+// perform write operations through the provider API. Suspended and
+// offboarding providers are kept read-only: they must not create new
+// catalog versions, subscriptions, usage, credentials, webhooks, or SCIM
+// resources while their service is not fully operational. REGISTERED
+// providers are refused as well (they have no test environment yet).
+func CanWrite(state LifecycleState) bool {
+	switch state {
+	case StateTestActive, StateLiveReview, StateLiveActive, StateRestricted:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanPublishCatalog reports whether a provider in the given lifecycle state
+// may publish a catalog version. Publishing is an external product
+// commitment, so it follows the same gate as every other write operation.
+func CanPublishCatalog(state LifecycleState) bool {
+	return CanWrite(state)
 }
 
 // ValidScope reports whether s is an assignable credential scope.
@@ -204,6 +248,21 @@ func RoleScopes(role string) []string {
 func ValidTeamRole(s string) bool {
 	return s == TeamRoleAdmin || s == TeamRoleBillingAdmin ||
 		s == TeamRoleDeveloper || s == TeamRoleSupportAgent
+}
+
+// Platform roles are workspace memberships on the control plane (design
+// baseline §3.3). The first user of a workspace is auto-granted
+// provider_admin at signup (§3.1 R11).
+const (
+	PlatformRoleProviderAdmin     = "provider_admin"
+	PlatformRoleProviderDeveloper = "provider_developer"
+	PlatformRoleProviderBilling   = "provider_billing"
+)
+
+// ValidPlatformRole reports whether s is a known workspace membership role.
+func ValidPlatformRole(s string) bool {
+	return s == PlatformRoleProviderAdmin || s == PlatformRoleProviderDeveloper ||
+		s == PlatformRoleProviderBilling
 }
 
 // Migration job statuses.

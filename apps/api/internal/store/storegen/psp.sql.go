@@ -138,6 +138,41 @@ func (q *Queries) GetPSPCredentialByID(ctx context.Context, arg GetPSPCredential
 	return i, err
 }
 
+const listAllPSPCredentialCiphertexts = `-- name: ListAllPSPCredentialCiphertexts :many
+SELECT id, encrypted_api_key, encrypted_webhook_secret FROM psp_credentials
+ORDER BY id
+LIMIT $1
+`
+
+type ListAllPSPCredentialCiphertextsRow struct {
+	ID                     uuid.UUID   `json:"id"`
+	EncryptedApiKey        string      `json:"encrypted_api_key"`
+	EncryptedWebhookSecret pgtype.Text `json:"encrypted_webhook_secret"`
+}
+
+// Operator-only view used by the re-encryption worker: every row's encrypted
+// fields across all tenants, so ciphertext sealed under a rotated-out master
+// key can be re-sealed with the active key.
+func (q *Queries) ListAllPSPCredentialCiphertexts(ctx context.Context, limit int32) ([]ListAllPSPCredentialCiphertextsRow, error) {
+	rows, err := q.db.Query(ctx, listAllPSPCredentialCiphertexts, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllPSPCredentialCiphertextsRow
+	for rows.Next() {
+		var i ListAllPSPCredentialCiphertextsRow
+		if err := rows.Scan(&i.ID, &i.EncryptedApiKey, &i.EncryptedWebhookSecret); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPSPCredentials = `-- name: ListPSPCredentials :many
 SELECT id, provider_id, environment_id, psp_type, label, encrypted_api_key, encrypted_webhook_secret, key_version, active, created_at, rotated_at, revoked_at FROM psp_credentials
 WHERE provider_id = $1 AND environment_id = $2
@@ -195,5 +230,24 @@ type RevokePSPCredentialParams struct {
 
 func (q *Queries) RevokePSPCredential(ctx context.Context, arg RevokePSPCredentialParams) error {
 	_, err := q.db.Exec(ctx, revokePSPCredential, arg.ID, arg.ProviderID, arg.EnvironmentID)
+	return err
+}
+
+const updatePSPCredentialCiphertexts = `-- name: UpdatePSPCredentialCiphertexts :exec
+UPDATE psp_credentials
+SET encrypted_api_key = $2, encrypted_webhook_secret = NULLIF($3, '')
+WHERE id = $1
+`
+
+type UpdatePSPCredentialCiphertextsParams struct {
+	ID              uuid.UUID   `json:"id"`
+	EncryptedApiKey string      `json:"encrypted_api_key"`
+	Column3         interface{} `json:"column_3"`
+}
+
+// NULLIF keeps NULL webhook secrets NULL: sqlc reads a NULL as "" so a
+// re-write must map "" back to NULL to stay byte-identical otherwise.
+func (q *Queries) UpdatePSPCredentialCiphertexts(ctx context.Context, arg UpdatePSPCredentialCiphertextsParams) error {
+	_, err := q.db.Exec(ctx, updatePSPCredentialCiphertexts, arg.ID, arg.EncryptedApiKey, arg.Column3)
 	return err
 }

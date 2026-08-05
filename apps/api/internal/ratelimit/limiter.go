@@ -7,10 +7,23 @@
 package ratelimit
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"time"
 )
+
+// Backend is the interface implemented by both the in-memory Limiter and the
+// Redis-backed RedisLimiter. httpapi depends on this interface so deployments
+// can swap backends (memory for single instance, Redis for multi-instance)
+// via configuration without middleware changes.
+type Backend interface {
+	// Allow reports whether the request is within the limit for the given key.
+	Allow(key string, limit int, window time.Duration) bool
+	// AllowRetryAfter reports whether the request is within the limit and,
+	// when rejected, the duration the caller should wait before retrying.
+	AllowRetryAfter(key string, limit int, window time.Duration) (bool, time.Duration)
+}
 
 // bucket is a fixed-window counter. count is incremented on each request;
 // when the window expires, the counter resets.
@@ -31,10 +44,27 @@ func New() *Limiter {
 	return &Limiter{}
 }
 
+// Ping reports whether the limiter's backing store is reachable. The
+// in-memory limiter has no external dependency and always succeeds; the
+// method exists so /ready can treat every ratelimit backend uniformly.
+func (l *Limiter) Ping(context.Context) error {
+	return nil
+}
+
 // Allow returns true if the request is within the limit for the given key.
 // limit is the maximum number of requests per window. window is the
 // duration of the fixed window (e.g., 1 minute).
 func (l *Limiter) Allow(key string, limit int, window time.Duration) bool {
+	ok, _ := l.AllowRetryAfter(key, limit, window)
+	return ok
+}
+
+// AllowRetryAfter reports whether the request is within the limit for the
+// given key and, when rejected, the precise duration the caller should wait
+// before retrying (the remaining time in the current fixed window, floored
+// to at least 1ms so a Retry-After header is never 0 or negative). When the
+// request is allowed, the retry duration is 0.
+func (l *Limiter) AllowRetryAfter(key string, limit int, window time.Duration) (bool, time.Duration) {
 	now := time.Now().UnixNano()
 	windowEnd := now + window.Nanoseconds()
 
@@ -52,7 +82,14 @@ func (l *Limiter) Allow(key string, limit int, window time.Duration) bool {
 	}
 
 	count := bkt.count.Add(1)
-	return count <= int64(limit)
+	if count <= int64(limit) {
+		return true, 0
+	}
+	retry := time.Duration(bkt.windowEnd.Load()-now) * time.Nanosecond
+	if retry < time.Millisecond {
+		retry = time.Millisecond
+	}
+	return false, retry
 }
 
 // StartCleanup launches a background goroutine that periodically removes

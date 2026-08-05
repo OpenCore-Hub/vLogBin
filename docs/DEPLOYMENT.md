@@ -12,6 +12,7 @@
 | Kubernetes | 1.28 | 1.30+ |
 | ZITADEL | 2.60 | 2.65+ |
 | Lago | 1.0 | 1.0+ |
+| Redis | 6.2 | 7+（仅 `RATE_LIMIT_BACKEND=redis` 多实例部署需要）|
 
 ### 1.2 网络要求
 
@@ -20,6 +21,7 @@
 - ZITADEL：内部 8080
 - Lago API：内部 3000
 - 出站 HTTPS：Webhook 投递、ZITADEL Management API、Lago API
+- 出站 HTTPS：WORM 对象存储（`AUDIT_ARCHIVE_S3_ENDPOINT`，MinIO 或 AWS S3）——启用审计归档时必需
 
 ## 2. Docker Compose 部署
 
@@ -79,6 +81,28 @@ data:
   SUPPORT_SWEEP_INTERVAL: "30s"
   QUOTA_SWEEP_INTERVAL: "15s"
   MIGRATION_SCHEDULE_INTERVAL: "5m"
+  # 审计：保留窗口（0=禁用，审计为合规证据，须显式配置才启动 sweeper）
+  AUDIT_RETENTION_DAYS: "0"
+  AUDIT_RETENTION_SWEEP_INTERVAL: "1h"
+  # 审计：哈希链锚点周期（0=禁用；周期越短，篡改检测窗口越小）
+  AUDIT_CHAIN_ANCHOR_INTERVAL: "24h"
+  # Worker 监督：异常退出/panic 后指数退避重启的最大间隔（默认 30s）
+  WORKER_BACKOFF_MAX: "30s"
+  # 主密钥重加密收敛 worker：轮换后自动把旧密钥密文重写为 active 封存（0=禁用；
+  # 仅当 PSP_MASTER_KEY_PREVIOUS 非空时有意义）
+  REENCRYPT_SWEEP_INTERVAL: "30m"
+  # 每表每批处理行数（默认 100，必须 >0）
+  REENCRYPT_BATCH_SIZE: "100"
+  # 审计：WORM 外部锚定——把审计哈希链锚点发布到对象存储（0=禁用；
+  # 启用则 AUDIT_ARCHIVE_S3_* 四要素必填，否则启动失败）
+  AUDIT_ARCHIVE_SWEEP_INTERVAL: "1h"
+  # 每轮发布锚点数（默认 100；发布可断点续传，批次跨轮单调推进）
+  AUDIT_ARCHIVE_BATCH_SIZE: "100"
+  # 对象存储服务端（MinIO 或 AWS S3；桶必须开启 object lock / retention）
+  AUDIT_ARCHIVE_S3_ENDPOINT: "https://minio.internal:9000"
+  AUDIT_ARCHIVE_S3_BUCKET: "vlogbin-audit-worm"
+  AUDIT_ARCHIVE_S3_REGION: ""
+  AUDIT_ARCHIVE_S3_USE_SSL: "true"
 ```
 
 ```yaml
@@ -90,10 +114,15 @@ metadata:
   namespace: vlogbin
 type: Opaque
 stringData:
-  CRYPTO_KEY: "<32-byte-hex-key>"
+  PSP_MASTER_KEY: "<32-byte-hex-key>"          # PSP 凭证加密主密钥（设置后才启用加密）
+  # PSP_MASTER_KEY_PREVIOUS: "<old-hex-key>,<older-hex-key>"  # 轮换时保留的旧密钥，仅解密回退（可选）
   ZITADEL_PAT: "<zitadel-pat>"
   LAGO_API_KEY: "<lago-api-key>"
   OPERATOR_TOKEN: "<operator-static-token>"
+  # WORM 对象存储凭证（仅当 AUDIT_ARCHIVE_SWEEP_INTERVAL > 0 时需要；
+  # 建议使用仅具备该桶 PUT 权限的专用访问键，无需读/列权限）
+  AUDIT_ARCHIVE_S3_ACCESS_KEY: "<s3-access-key>"
+  AUDIT_ARCHIVE_S3_SECRET_KEY: "<s3-secret-key>"
 ```
 
 ### 3.3 部署
@@ -272,6 +301,21 @@ curl http://localhost:8080/health
 curl http://localhost:8080/ready
 ```
 
+`/ready` 会**并行检查所有依赖**（`database` 必查；`RATE_LIMIT_BACKEND=redis` 时额外检查限流 Redis），任一依赖不可达即返回 503，响应体包含每个依赖的状态明细，例如：
+
+```json
+{
+  "status": "ready",
+  "checked_at": "2026-08-03T12:00:00.123456789Z",
+  "dependencies": {
+    "database":  {"status": "up", "latency_ms": 1.2},
+    "ratelimit": {"status": "up", "latency_ms": 0.4}
+  }
+}
+```
+
+> 注意：限流 Redis 故障时限流会 **fail-open**（请求放行但失去限流保护）。`/ready` 会如实返回 503 摘除实例，避免静默降级；通过 `readiness_checks_total{dependency="ratelimit",status="down"}` 可告警定位。
+
 ### 5.2 Prometheus 指标
 
 ```yaml
@@ -300,16 +344,49 @@ spec:
 | Outbox pending 事件 | > 1000 持续 10 分钟 |
 | 数据库连接池使用率 | > 80% |
 | Webhook 投递失败率 | > 5% |
+| DB 慢查询（`db_query_slow_total` 增量）| > 0 持续 5 分钟（需设置 `DB_SLOW_QUERY_THRESHOLD`）|
+| 限流后端错误（`rate_limiter_backend_errors_total` 增量）| > 0 持续 5 分钟（`RATE_LIMIT_BACKEND=redis` 时）|
+
+> DB 慢查询追踪：设置 `DB_SLOW_QUERY_THRESHOLD`（如 `200ms`）后，超过阈值的 SQL
+> 会以 Warn 级别记录到日志（含 SQL 文本、耗时、错误），并累加
+> `db_query_slow_total` 指标。SQL 参数不会出现在日志中。设为 `0`（默认）关闭追踪。
+
+> 限流拒绝：429 响应的 `Retry-After` 头反映当前固定窗口的实际剩余时间（精确到秒），
+> 客户端应据此退避重试。每次拒绝按层级累加 `http_requests_rate_limited_total{level}`
+> 指标（`ip`/`provider`/`environment`/`credential`/`endpoint`），在接入认证前即可按来源
+> IP 观测到 DoS 压力。per-IP 兜底默认 6000 req/min，可经 `RL_IP_LIMIT` 调整（`0` 关闭）；
+> 生产环境务必让可信反向代理覆写 `X-Forwarded-For`，防止客户端伪造来源 IP。
+
+> 分布式限流（多实例）：默认 `RATE_LIMIT_BACKEND=memory` 时计数器为进程内固定窗口，
+> 单实例部署语义正确；**多实例（HPA 副本数 > 1）必须设置 `RATE_LIMIT_BACKEND=redis`**，
+> 并配置 `REDIS_ADDR`（必填，缺省会拒绝启动）、`REDIS_PASSWORD`、`REDIS_DB`。Redis 后端以
+> Lua 脚本原子执行 `INCR`+`EXPIRE`，所有实例共享同一窗口，语义与内存版一致（窗口自首次
+> 请求起算）。**故障语义**：启动时 Redis 不可达直接退出（快速失败，防止静默降级）；运行期
+> Redis 故障 **fail-open**——请求放行不限流，同时累加 `rate_limiter_backend_errors_total`
+> 并以 Warn 记录日志，因此该指标必须纳入告警。键命名空间为 `ratelimit:<key>`，共享同一
+> Redis 的不同应用请确保键前缀互不冲突。
 
 ## 6. 生成加密密钥
 
 ```bash
-# 生成 32 字节加密密钥（用于 AES-256-GCM）
+# 生成 32 字节加密密钥（用于 AES-256-GCM，PSP 凭证加密）
 openssl rand -hex 32
 
 # 设置为环境变量
-export CRYPTO_KEY="<generated-key>"
+export PSP_MASTER_KEY="<generated-key>"
 ```
+
+### 6.1 主密钥轮换
+
+主密钥泄露或需要定期轮换时，**无需任何数据迁移**：
+
+1. 生成新密钥，设置 `PSP_MASTER_KEY=<new-key>`，同时把旧密钥追加到 `PSP_MASTER_KEY_PREVIOUS`（逗号分隔，可含多代旧密钥）
+2. 滚动重启：新凭证用新密钥加密，存量凭证自动经旧密钥解密回退（GCM 认证失败快速短路）
+3. 设置 `REENCRYPT_SWEEP_INTERVAL`（如 `30m`）启用**重加密收敛 worker**（仅当 `PSP_MASTER_KEY_PREVIOUS` 非空时生效）：自动扫描全部加密表（PSP 凭证、通知配置、认证 client secret），把旧密钥封存的密文重写为 active 密钥封存
+4. 观察指标收敛：`credentials_reencrypted_total{table}` 增长至停；读路径的 `credential_decrypt_fallback_total` 归零；若 `credentials_reencrypt_errors_total` 非零则存在**不可收敛行**（密钥丢失/数据损坏），需人工介入（该指标是唯一阻塞完整收敛的信号）
+5. 收敛后从 `PSP_MASTER_KEY_PREVIOUS` 移除旧密钥并重启，完成整轮轮换（可同时关闭 `REENCRYPT_SWEEP_INTERVAL`）
+
+> 注意：`PSP_MASTER_KEY_PREVIOUS` 中任一密钥格式非法（非 64 位 hex）都会导致**启动失败**（fail-fast），防止笔误静默弃用全部存量密文。
 
 ## 7. Docker 镜像构建
 

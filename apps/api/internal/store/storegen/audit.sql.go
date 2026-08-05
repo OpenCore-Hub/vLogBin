@@ -7,15 +7,305 @@ package storegen
 
 import (
 	"context"
+	"time"
 
 	uuid "github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const anchorAuditChain = `-- name: AnchorAuditChain :one
+SELECT
+    v.anchor_id::bigint      AS anchor_id,
+    -- tail_event_id / tail_hash are NULL when the chain is empty; COALESCE keeps
+    -- the sqlc columns non-nullable so the scan never fails on an empty chain.
+    COALESCE(v.tail_event_id, 0)::bigint AS tail_event_id,
+    COALESCE(v.tail_hash, '')::text      AS tail_hash,
+    v.events_covered::bigint AS events_covered
+FROM anchor_audit_chain($1::text) AS v
+`
+
+type AnchorAuditChainRow struct {
+	AnchorID      int64  `json:"anchor_id"`
+	TailEventID   int64  `json:"tail_event_id"`
+	TailHash      string `json:"tail_hash"`
+	EventsCovered int64  `json:"events_covered"`
+}
+
+// Operator-only checkpoint creation. Records (tail_event_id, tail_hash) for
+// external anchoring (WORM) and incremental verification.
+func (q *Queries) AnchorAuditChain(ctx context.Context, operator string) (AnchorAuditChainRow, error) {
+	row := q.db.QueryRow(ctx, anchorAuditChain, operator)
+	var i AnchorAuditChainRow
+	err := row.Scan(
+		&i.AnchorID,
+		&i.TailEventID,
+		&i.TailHash,
+		&i.EventsCovered,
+	)
+	return i, err
+}
+
+const auditChainState = `-- name: AuditChainState :one
+SELECT
+    (SELECT count(*)::bigint FROM audit_events)                AS total_events,
+    (SELECT tail_hash FROM audit_chain_tail WHERE id = 1)      AS tail_hash,
+    (SELECT tail_event_id FROM audit_chain_tail WHERE id = 1)  AS tail_event_id
+`
+
+type AuditChainStateRow struct {
+	TotalEvents int64       `json:"total_events"`
+	TailHash    pgtype.Text `json:"tail_hash"`
+	TailEventID pgtype.Int8 `json:"tail_event_id"`
+}
+
+// Current tamper-evident chain state: total events and tail hash/id
+// (migration 0031). NULL tail fields mean no events have been written yet.
+func (q *Queries) AuditChainState(ctx context.Context) (AuditChainStateRow, error) {
+	row := q.db.QueryRow(ctx, auditChainState)
+	var i AuditChainStateRow
+	err := row.Scan(&i.TotalEvents, &i.TailHash, &i.TailEventID)
+	return i, err
+}
+
+const auditEventActionCounts = `-- name: AuditEventActionCounts :many
+SELECT ae.action AS action, count(*) AS event_count
+FROM audit_events ae
+WHERE ae.provider_id = $1
+  AND ($2::text = '' OR ae.action = $2)
+  AND ($3::text = '' OR ae.actor_type = $3)
+  AND ($4::text = '' OR ae.actor_id = $4)
+  AND ($5::text = '' OR ae.target_type = $5)
+  AND ($6::text = '' OR ae.target_id = $6)
+  AND ($7::text = '' OR ae.created_at >= $7::timestamptz)
+  AND ($8::text = '' OR ae.created_at <= $8::timestamptz)
+GROUP BY ae.action
+ORDER BY event_count DESC, ae.action ASC
+`
+
+type AuditEventActionCountsParams struct {
+	ProviderID uuid.NullUUID `json:"provider_id"`
+	Action     string        `json:"action"`
+	ActorType  string        `json:"actor_type"`
+	ActorID    string        `json:"actor_id"`
+	TargetType string        `json:"target_type"`
+	TargetID   string        `json:"target_id"`
+	FromTime   string        `json:"from_time"`
+	ToTime     string        `json:"to_time"`
+}
+
+type AuditEventActionCountsRow struct {
+	Action     string `json:"action"`
+	EventCount int64  `json:"event_count"`
+}
+
+// Event counts grouped by action, most frequent first. Shares the filter set
+// with ListAuditEventsFiltered so a dashboard can drill from a count into the
+// matching rows.
+func (q *Queries) AuditEventActionCounts(ctx context.Context, arg AuditEventActionCountsParams) ([]AuditEventActionCountsRow, error) {
+	rows, err := q.db.Query(ctx, auditEventActionCounts,
+		arg.ProviderID,
+		arg.Action,
+		arg.ActorType,
+		arg.ActorID,
+		arg.TargetType,
+		arg.TargetID,
+		arg.FromTime,
+		arg.ToTime,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AuditEventActionCountsRow
+	for rows.Next() {
+		var i AuditEventActionCountsRow
+		if err := rows.Scan(&i.Action, &i.EventCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const auditEventActorTypeCounts = `-- name: AuditEventActorTypeCounts :many
+SELECT ae.actor_type AS actor_type, count(*) AS event_count
+FROM audit_events ae
+WHERE ae.provider_id = $1
+  AND ($2::text = '' OR ae.action = $2)
+  AND ($3::text = '' OR ae.actor_type = $3)
+  AND ($4::text = '' OR ae.actor_id = $4)
+  AND ($5::text = '' OR ae.target_type = $5)
+  AND ($6::text = '' OR ae.target_id = $6)
+  AND ($7::text = '' OR ae.created_at >= $7::timestamptz)
+  AND ($8::text = '' OR ae.created_at <= $8::timestamptz)
+GROUP BY ae.actor_type
+ORDER BY event_count DESC, ae.actor_type ASC
+`
+
+type AuditEventActorTypeCountsParams struct {
+	ProviderID uuid.NullUUID `json:"provider_id"`
+	Action     string        `json:"action"`
+	ActorType  string        `json:"actor_type"`
+	ActorID    string        `json:"actor_id"`
+	TargetType string        `json:"target_type"`
+	TargetID   string        `json:"target_id"`
+	FromTime   string        `json:"from_time"`
+	ToTime     string        `json:"to_time"`
+}
+
+type AuditEventActorTypeCountsRow struct {
+	ActorType  string `json:"actor_type"`
+	EventCount int64  `json:"event_count"`
+}
+
+// Event counts grouped by actor type (operator/credential/...), most frequent
+// first. Same filter set as the other dashboard queries.
+func (q *Queries) AuditEventActorTypeCounts(ctx context.Context, arg AuditEventActorTypeCountsParams) ([]AuditEventActorTypeCountsRow, error) {
+	rows, err := q.db.Query(ctx, auditEventActorTypeCounts,
+		arg.ProviderID,
+		arg.Action,
+		arg.ActorType,
+		arg.ActorID,
+		arg.TargetType,
+		arg.TargetID,
+		arg.FromTime,
+		arg.ToTime,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AuditEventActorTypeCountsRow
+	for rows.Next() {
+		var i AuditEventActorTypeCountsRow
+		if err := rows.Scan(&i.ActorType, &i.EventCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const auditEventTimeSeries = `-- name: AuditEventTimeSeries :many
+SELECT date_trunc($1::text, ae.created_at)::timestamptz AS bucket,
+       count(*) AS event_count
+FROM audit_events ae
+WHERE ae.provider_id = $2
+  AND ($3::text = '' OR ae.action = $3)
+  AND ($4::text = '' OR ae.actor_type = $4)
+  AND ($5::text = '' OR ae.actor_id = $5)
+  AND ($6::text = '' OR ae.target_type = $6)
+  AND ($7::text = '' OR ae.target_id = $7)
+  AND ($8::text = '' OR ae.created_at >= $8::timestamptz)
+  AND ($9::text = '' OR ae.created_at <= $9::timestamptz)
+GROUP BY 1
+ORDER BY 1
+`
+
+type AuditEventTimeSeriesParams struct {
+	Granularity string        `json:"granularity"`
+	ProviderID  uuid.NullUUID `json:"provider_id"`
+	Action      string        `json:"action"`
+	ActorType   string        `json:"actor_type"`
+	ActorID     string        `json:"actor_id"`
+	TargetType  string        `json:"target_type"`
+	TargetID    string        `json:"target_id"`
+	FromTime    string        `json:"from_time"`
+	ToTime      string        `json:"to_time"`
+}
+
+type AuditEventTimeSeriesRow struct {
+	Bucket     time.Time `json:"bucket"`
+	EventCount int64     `json:"event_count"`
+}
+
+// Event counts bucketed by date_trunc granularity (hour | day | week); the
+// granularity is validated at the HTTP layer. Buckets with zero events are
+// filled in by the Go service so charts render a contiguous axis.
+func (q *Queries) AuditEventTimeSeries(ctx context.Context, arg AuditEventTimeSeriesParams) ([]AuditEventTimeSeriesRow, error) {
+	rows, err := q.db.Query(ctx, auditEventTimeSeries,
+		arg.Granularity,
+		arg.ProviderID,
+		arg.Action,
+		arg.ActorType,
+		arg.ActorID,
+		arg.TargetType,
+		arg.TargetID,
+		arg.FromTime,
+		arg.ToTime,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AuditEventTimeSeriesRow
+	for rows.Next() {
+		var i AuditEventTimeSeriesRow
+		if err := rows.Scan(&i.Bucket, &i.EventCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countAuditEventsFiltered = `-- name: CountAuditEventsFiltered :one
+SELECT count(*) AS total
+FROM audit_events ae
+WHERE ae.provider_id = $1
+  AND ($2::text = '' OR ae.action = $2)
+  AND ($3::text = '' OR ae.actor_type = $3)
+  AND ($4::text = '' OR ae.actor_id = $4)
+  AND ($5::text = '' OR ae.target_type = $5)
+  AND ($6::text = '' OR ae.target_id = $6)
+  AND ($7::text = '' OR ae.created_at >= $7::timestamptz)
+  AND ($8::text = '' OR ae.created_at <= $8::timestamptz)
+`
+
+type CountAuditEventsFilteredParams struct {
+	ProviderID uuid.NullUUID `json:"provider_id"`
+	Action     string        `json:"action"`
+	ActorType  string        `json:"actor_type"`
+	ActorID    string        `json:"actor_id"`
+	TargetType string        `json:"target_type"`
+	TargetID   string        `json:"target_id"`
+	FromTime   string        `json:"from_time"`
+	ToTime     string        `json:"to_time"`
+}
+
+// Total events matching the same filter set as ListAuditEventsFiltered. The
+// audit dashboard renders this as its headline number; the HTTP layer
+// requires bounded from/to so a missing window cannot trigger a full-table
+// scan.
+func (q *Queries) CountAuditEventsFiltered(ctx context.Context, arg CountAuditEventsFilteredParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countAuditEventsFiltered,
+		arg.ProviderID,
+		arg.Action,
+		arg.ActorType,
+		arg.ActorID,
+		arg.TargetType,
+		arg.TargetID,
+		arg.FromTime,
+		arg.ToTime,
+	)
+	var total int64
+	err := row.Scan(&total)
+	return total, err
+}
+
 const insertAuditEvent = `-- name: InsertAuditEvent :one
 INSERT INTO audit_events (provider_id, environment_id, actor_type, actor_id, action, target_type, target_id, metadata, request_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, provider_id, environment_id, actor_type, actor_id, action, target_type, target_id, metadata, request_id, created_at
+RETURNING id, provider_id, environment_id, actor_type, actor_id, action, target_type, target_id, metadata, request_id, created_at, prev_hash, event_hash
 `
 
 type InsertAuditEventParams struct {
@@ -55,12 +345,89 @@ func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventPara
 		&i.Metadata,
 		&i.RequestID,
 		&i.CreatedAt,
+		&i.PrevHash,
+		&i.EventHash,
 	)
 	return i, err
 }
 
+const latestAuditAnchor = `-- name: LatestAuditAnchor :one
+SELECT
+    id,
+    tail_event_id,
+    tail_hash,
+    operator,
+    created_at
+FROM audit_chain_anchors
+ORDER BY id DESC
+LIMIT 1
+`
+
+type LatestAuditAnchorRow struct {
+	ID          int64     `json:"id"`
+	TailEventID int64     `json:"tail_event_id"`
+	TailHash    string    `json:"tail_hash"`
+	Operator    string    `json:"operator"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// Most recent anchor checkpoint; pgx.ErrNoRows when none exists yet.
+func (q *Queries) LatestAuditAnchor(ctx context.Context) (LatestAuditAnchorRow, error) {
+	row := q.db.QueryRow(ctx, latestAuditAnchor)
+	var i LatestAuditAnchorRow
+	err := row.Scan(
+		&i.ID,
+		&i.TailEventID,
+		&i.TailHash,
+		&i.Operator,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const listAuditAnchorsForPublish = `-- name: ListAuditAnchorsForPublish :many
+SELECT id, tail_event_id, tail_hash, operator, created_at, published_at, object_key
+FROM audit_chain_anchors
+WHERE published_at IS NULL
+ORDER BY id
+LIMIT $1::int
+`
+
+// Anchors not yet archived to WORM object storage, oldest first. The archiver
+// fetches one batch per sweep and uploads each anchor before marking it
+// published (see MarkAuditAnchorPublished). Anchors never expire and the set
+// is append-only, so batches advance monotonically by id; a small LIMIT keeps
+// each sweep bounded and the upload loop resumable after crashes.
+func (q *Queries) ListAuditAnchorsForPublish(ctx context.Context, batchSize int32) ([]AuditChainAnchor, error) {
+	rows, err := q.db.Query(ctx, listAuditAnchorsForPublish, batchSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AuditChainAnchor
+	for rows.Next() {
+		var i AuditChainAnchor
+		if err := rows.Scan(
+			&i.ID,
+			&i.TailEventID,
+			&i.TailHash,
+			&i.Operator,
+			&i.CreatedAt,
+			&i.PublishedAt,
+			&i.ObjectKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAuditEventsByProvider = `-- name: ListAuditEventsByProvider :many
-SELECT id, provider_id, environment_id, actor_type, actor_id, action, target_type, target_id, metadata, request_id, created_at FROM audit_events
+SELECT id, provider_id, environment_id, actor_type, actor_id, action, target_type, target_id, metadata, request_id, created_at, prev_hash, event_hash FROM audit_events
 WHERE provider_id = $1
 ORDER BY created_at DESC
 LIMIT $2
@@ -92,6 +459,8 @@ func (q *Queries) ListAuditEventsByProvider(ctx context.Context, arg ListAuditEv
 			&i.Metadata,
 			&i.RequestID,
 			&i.CreatedAt,
+			&i.PrevHash,
+			&i.EventHash,
 		); err != nil {
 			return nil, err
 		}
@@ -101,4 +470,176 @@ func (q *Queries) ListAuditEventsByProvider(ctx context.Context, arg ListAuditEv
 		return nil, err
 	}
 	return items, nil
+}
+
+const listAuditEventsFiltered = `-- name: ListAuditEventsFiltered :many
+SELECT ae.id, ae.provider_id, ae.environment_id, ae.actor_type, ae.actor_id, ae.action, ae.target_type, ae.target_id, ae.metadata, ae.request_id, ae.created_at, ae.prev_hash, ae.event_hash FROM audit_events ae
+WHERE ae.provider_id = $1
+  AND ($2::bigint = 0
+       OR (ae.created_at, ae.id) < (
+           SELECT ae2.created_at, ae2.id FROM audit_events ae2 WHERE ae2.id = $2))
+  AND ($3::text = '' OR ae.action = $3)
+  AND ($4::text = '' OR ae.actor_type = $4)
+  AND ($5::text = '' OR ae.actor_id = $5)
+  AND ($6::text = '' OR ae.target_type = $6)
+  AND ($7::text = '' OR ae.target_id = $7)
+  AND ($8::text = '' OR ae.created_at >= $8::timestamptz)
+  AND ($9::text = '' OR ae.created_at <= $9::timestamptz)
+ORDER BY ae.created_at DESC, ae.id DESC
+LIMIT $10
+`
+
+type ListAuditEventsFilteredParams struct {
+	ProviderID uuid.NullUUID `json:"provider_id"`
+	CursorID   int64         `json:"cursor_id"`
+	Action     string        `json:"action"`
+	ActorType  string        `json:"actor_type"`
+	ActorID    string        `json:"actor_id"`
+	TargetType string        `json:"target_type"`
+	TargetID   string        `json:"target_id"`
+	FromTime   string        `json:"from_time"`
+	ToTime     string        `json:"to_time"`
+	PageLimit  int32         `json:"page_limit"`
+}
+
+// Keyset-paginated, filterable audit log query (newest first). The cursor is
+// the primary key of the last row from the previous page; tuple comparison
+// on (created_at, id) keeps ordering stable when multiple events share a
+// timestamp within one transaction. Pass 0 as the cursor to start from the
+// newest. Empty strings for action/actor_type/actor_id/target_type/
+// target_id skip that filter; an empty from/to leaves the time bound open.
+func (q *Queries) ListAuditEventsFiltered(ctx context.Context, arg ListAuditEventsFilteredParams) ([]AuditEvent, error) {
+	rows, err := q.db.Query(ctx, listAuditEventsFiltered,
+		arg.ProviderID,
+		arg.CursorID,
+		arg.Action,
+		arg.ActorType,
+		arg.ActorID,
+		arg.TargetType,
+		arg.TargetID,
+		arg.FromTime,
+		arg.ToTime,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AuditEvent
+	for rows.Next() {
+		var i AuditEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProviderID,
+			&i.EnvironmentID,
+			&i.ActorType,
+			&i.ActorID,
+			&i.Action,
+			&i.TargetType,
+			&i.TargetID,
+			&i.Metadata,
+			&i.RequestID,
+			&i.CreatedAt,
+			&i.PrevHash,
+			&i.EventHash,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markAuditAnchorPublished = `-- name: MarkAuditAnchorPublished :execrows
+UPDATE audit_chain_anchors
+SET published_at = now(),
+    object_key   = $1::text
+WHERE id = $2::bigint
+  AND published_at IS NULL
+`
+
+type MarkAuditAnchorPublishedParams struct {
+	ObjectKey string `json:"object_key"`
+	AnchorID  int64  `json:"anchor_id"`
+}
+
+// Idempotent publish-marking: only transitions an unpublished anchor. The
+// WHERE published_at IS NULL guard makes the update safe under concurrent
+// sweepers; zero affected rows means another worker already archived it, so
+// callers treat it as success. The deterministic object_key allows re-upload
+// of the same content without creating duplicates.
+func (q *Queries) MarkAuditAnchorPublished(ctx context.Context, arg MarkAuditAnchorPublishedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markAuditAnchorPublished, arg.ObjectKey, arg.AnchorID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const purgeExpiredAuditEvents = `-- name: PurgeExpiredAuditEvents :one
+SELECT purge_audit_events($1::timestamptz, $2::bigint) AS deleted
+`
+
+type PurgeExpiredAuditEventsParams struct {
+	Cutoff  time.Time `json:"cutoff"`
+	MaxRows int64     `json:"max_rows"`
+}
+
+// Permanently deletes audit events older than cutoff via the operator-only
+// purge_audit_events function (migration 0030), which is the sole code path
+// allowed to mutate the append-only audit table. Returns the number of rows
+// deleted; max_rows bounds each batch so the retention sweeper can walk a
+// large backlog in short transactions.
+func (q *Queries) PurgeExpiredAuditEvents(ctx context.Context, arg PurgeExpiredAuditEventsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, purgeExpiredAuditEvents, arg.Cutoff, arg.MaxRows)
+	var deleted int64
+	err := row.Scan(&deleted)
+	return deleted, err
+}
+
+const verifyAuditChain = `-- name: VerifyAuditChain :one
+SELECT
+    v.ok::boolean           AS ok,
+    v.verified_from::bigint AS verified_from,
+    v.verified_to::bigint   AS verified_to,
+    v.verified_count::bigint AS verified_count,
+    -- broken_at is NULL when the segment is intact; COALESCE keeps the sqlc
+    -- column non-nullable so the scan never fails on a healthy chain.
+    COALESCE(v.broken_at, 0)::bigint AS broken_at,
+    v.reason::text          AS reason
+FROM audit_chain_verify($1::bigint, $2::bigint) AS v
+`
+
+type VerifyAuditChainParams struct {
+	FromID int64 `json:"from_id"`
+	ToID   int64 `json:"to_id"`
+}
+
+type VerifyAuditChainRow struct {
+	Ok            bool   `json:"ok"`
+	VerifiedFrom  int64  `json:"verified_from"`
+	VerifiedTo    int64  `json:"verified_to"`
+	VerifiedCount int64  `json:"verified_count"`
+	BrokenAt      int64  `json:"broken_at"`
+	Reason        string `json:"reason"`
+}
+
+// Operator-only chain verification. from_id: 0 (or <= pruned head) starts at
+// the first surviving row; otherwise that row's stored hash is trusted. to_id:
+// 0 means the current tail. Returns ok / range / broken_at / reason.
+func (q *Queries) VerifyAuditChain(ctx context.Context, arg VerifyAuditChainParams) (VerifyAuditChainRow, error) {
+	row := q.db.QueryRow(ctx, verifyAuditChain, arg.FromID, arg.ToID)
+	var i VerifyAuditChainRow
+	err := row.Scan(
+		&i.Ok,
+		&i.VerifiedFrom,
+		&i.VerifiedTo,
+		&i.VerifiedCount,
+		&i.BrokenAt,
+		&i.Reason,
+	)
+	return i, err
 }

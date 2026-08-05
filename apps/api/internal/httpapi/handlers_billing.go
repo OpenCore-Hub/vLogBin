@@ -116,6 +116,104 @@ func (s *Server) retireCatalogVersion(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"version": version})
 }
 
+// ---- catalog plans ----
+//
+// Plan-level CRUD operates on the current draft version (auto-created by
+// cloning the latest published version when absent). Read operations fall
+// back to the latest published version when no draft exists.
+
+func (s *Server) listCatalogPlans(w http.ResponseWriter, r *http.Request) {
+	tc, _ := tenant.FromContext(r.Context())
+	plans, err := s.svc.ListPlans(r.Context(), tc)
+	if err != nil {
+		s.serviceError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"plans": plans})
+}
+
+func (s *Server) createCatalogPlan(w http.ResponseWriter, r *http.Request) {
+	tc, _ := tenant.FromContext(r.Context())
+	var input domain.PlanInput
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	detail, err := s.svc.CreatePlan(r.Context(), tc, input)
+	if err != nil {
+		s.serviceError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, detail)
+}
+
+func (s *Server) updateCatalogPlan(w http.ResponseWriter, r *http.Request) {
+	tc, _ := tenant.FromContext(r.Context())
+	code := chi.URLParam(r, "code")
+	var input domain.PlanInput
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	detail, err := s.svc.UpdatePlan(r.Context(), tc, code, input)
+	if err != nil {
+		s.serviceError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
+}
+
+func (s *Server) deleteCatalogPlan(w http.ResponseWriter, r *http.Request) {
+	tc, _ := tenant.FromContext(r.Context())
+	code := chi.URLParam(r, "code")
+	if err := s.svc.DeletePlan(r.Context(), tc, code); err != nil {
+		s.serviceError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ---- catalog policies ----
+//
+// Policies are plan-level entitlement grants managed independently of plan
+// pricing, operating on the current draft version like plan CRUD.
+
+func (s *Server) listPlanEntitlements(w http.ResponseWriter, r *http.Request) {
+	tc, _ := tenant.FromContext(r.Context())
+	code := chi.URLParam(r, "code")
+	grants, err := s.svc.ListPlanEntitlements(r.Context(), tc, code)
+	if err != nil {
+		s.serviceError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"entitlements": grants})
+}
+
+func (s *Server) setPlanEntitlement(w http.ResponseWriter, r *http.Request) {
+	tc, _ := tenant.FromContext(r.Context())
+	code := chi.URLParam(r, "code")
+	key := chi.URLParam(r, "key")
+	var input domain.EntitlementInput
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	grant, err := s.svc.SetPlanEntitlement(r.Context(), tc, code, key, input)
+	if err != nil {
+		s.serviceError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"entitlement": grant})
+}
+
+func (s *Server) deletePlanEntitlement(w http.ResponseWriter, r *http.Request) {
+	tc, _ := tenant.FromContext(r.Context())
+	code := chi.URLParam(r, "code")
+	key := chi.URLParam(r, "key")
+	if err := s.svc.DeletePlanEntitlement(r.Context(), tc, code, key); err != nil {
+		s.serviceError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ---- customers ----
 
 type createCustomerRequest struct {
@@ -235,9 +333,9 @@ func (s *Server) ingestUsage(w http.ResponseWriter, r *http.Request) {
 }
 
 type reverseUsageRequest struct {
-	OriginalTransactionID  string `json:"original_transaction_id"`
-	ReversalTransactionID  string `json:"reversal_transaction_id,omitempty"`
-	Reason                 string `json:"reason,omitempty"`
+	OriginalTransactionID string `json:"original_transaction_id"`
+	ReversalTransactionID string `json:"reversal_transaction_id,omitempty"`
+	Reason                string `json:"reason,omitempty"`
 }
 
 func (s *Server) reverseUsage(w http.ResponseWriter, r *http.Request) {
@@ -439,6 +537,21 @@ func (s *Server) operatorListSubscriptions(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) operatorListCustomers(w http.ResponseWriter, r *http.Request) {
+	// Console customers page passes ?env= to read a single environment;
+	// without it the operator billing view keeps returning cross-environment.
+	if r.URL.Query().Get("env") != "" {
+		providerID, env, ok := s.providerEnvFromRequest(w, r)
+		if !ok {
+			return
+		}
+		customers, err := s.svc.ListCustomers(r.Context(), service.OperatorAuthContext(providerID, env), queryLimit(r, 100))
+		if err != nil {
+			s.serviceError(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"customers": customers})
+		return
+	}
 	providerID, err := parseUUIDParam(w, r, "id")
 	if err != nil {
 		return
@@ -462,6 +575,17 @@ func (s *Server) operatorListUsageEvents(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"usage_events": events})
+}
+
+// operatorOverviewStats returns cross-provider aggregates for the console
+// overview in a single request (R29: eliminates the web-side N+1 fan-out).
+func (s *Server) operatorOverviewStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := s.svc.OverviewStats(r.Context())
+	if err != nil {
+		s.serviceError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
 }
 
 // parseUUIDParam reads a chi URL param and parses it as a UUID, writing a

@@ -52,23 +52,36 @@ func TestIsOperatorFalse(t *testing.T) {
 	}
 }
 
-func TestCtxProviderSlug(t *testing.T) {
-	tc := Ctx{ProviderSlug: "acme-corp"}
-	if tc.ProviderSlug != "acme-corp" {
-		t.Fatalf("ProviderSlug = %q", tc.ProviderSlug)
+// TestCtxRoundTrip verifies that all Ctx fields survive a context
+// round-trip: WithContext stores the full Ctx, and FromContext
+// retrieves it intact. This catches regressions where a new field is
+// added to Ctx but not propagated through the context value.
+func TestCtxRoundTrip(t *testing.T) {
+	tc := Ctx{
+		CredentialID:    uuid.New(),
+		ProviderID:      uuid.New(),
+		EnvironmentID:   uuid.New(),
+		EnvironmentKind: "live",
+		Scopes:          []string{"read", "write", "billing:write"},
+		ProviderSlug:    "acme-corp",
+		LifecycleState:  "live.active",
+		Issuer:          "https://auth.example.com",
 	}
-}
 
-func TestCtxLifecycleState(t *testing.T) {
-	tc := Ctx{LifecycleState: "live.active"}
-	if tc.LifecycleState != "live.active" {
-		t.Fatalf("LifecycleState = %q", tc.LifecycleState)
+	got, ok := FromContext(WithContext(context.Background(), tc))
+	if !ok {
+		t.Fatal("FromContext returned ok=false")
 	}
-}
-
-func TestCtxIssuer(t *testing.T) {
-	tc := Ctx{Issuer: "https://auth.example.com"}
-	if tc.Issuer != "https://auth.example.com" {
-		t.Fatalf("Issuer = %q", tc.Issuer)
+	if got.ProviderSlug != tc.ProviderSlug {
+		t.Fatalf("ProviderSlug = %q, want %q", got.ProviderSlug, tc.ProviderSlug)
+	}
+	if got.LifecycleState != tc.LifecycleState {
+		t.Fatalf("LifecycleState = %q, want %q", got.LifecycleState, tc.LifecycleState)
+	}
+	if got.Issuer != tc.Issuer {
+		t.Fatalf("Issuer = %q, want %q", got.Issuer, tc.Issuer)
+	}
+	if len(got.Scopes) != len(tc.Scopes) {
+		t.Fatalf("Scopes length = %d, want %d", len(got.Scopes), len(tc.Scopes))
 	}
 }

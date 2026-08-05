@@ -7,6 +7,7 @@ package storegen
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	uuid "github.com/google/uuid"
@@ -57,6 +58,23 @@ func (q *Queries) CountUninvoicedUsage(ctx context.Context, providerID uuid.UUID
 	return column_1, err
 }
 
+const deleteEntitlementGrantByKey = `-- name: DeleteEntitlementGrantByKey :execrows
+DELETE FROM entitlement_grants WHERE plan_id = $1 AND key = $2
+`
+
+type DeleteEntitlementGrantByKeyParams struct {
+	PlanID uuid.UUID `json:"plan_id"`
+	Key    string    `json:"key"`
+}
+
+func (q *Queries) DeleteEntitlementGrantByKey(ctx context.Context, arg DeleteEntitlementGrantByKeyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteEntitlementGrantByKey, arg.PlanID, arg.Key)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteEntitlementOverride = `-- name: DeleteEntitlementOverride :execrows
 DELETE FROM entitlement_overrides WHERE subscription_id = $1 AND key = $2
 `
@@ -72,6 +90,15 @@ func (q *Queries) DeleteEntitlementOverride(ctx context.Context, arg DeleteEntit
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const deleteGrantsByPlan = `-- name: DeleteGrantsByPlan :exec
+DELETE FROM entitlement_grants WHERE plan_id = $1
+`
+
+func (q *Queries) DeleteGrantsByPlan(ctx context.Context, planID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteGrantsByPlan, planID)
+	return err
 }
 
 const deleteGrantsByVersion = `-- name: DeleteGrantsByVersion :exec
@@ -107,12 +134,38 @@ func (q *Queries) DeleteMetricsByVersion(ctx context.Context, catalogVersionID u
 	return err
 }
 
+const deletePlanByVersionAndCode = `-- name: DeletePlanByVersionAndCode :execrows
+DELETE FROM plans WHERE catalog_version_id = $1 AND code = $2
+`
+
+type DeletePlanByVersionAndCodeParams struct {
+	CatalogVersionID uuid.UUID `json:"catalog_version_id"`
+	Code             string    `json:"code"`
+}
+
+func (q *Queries) DeletePlanByVersionAndCode(ctx context.Context, arg DeletePlanByVersionAndCodeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deletePlanByVersionAndCode, arg.CatalogVersionID, arg.Code)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deletePlansByVersion = `-- name: DeletePlansByVersion :exec
 DELETE FROM plans WHERE catalog_version_id = $1
 `
 
 func (q *Queries) DeletePlansByVersion(ctx context.Context, catalogVersionID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deletePlansByVersion, catalogVersionID)
+	return err
+}
+
+const deletePricesByPlan = `-- name: DeletePricesByPlan :exec
+DELETE FROM prices WHERE plan_id = $1
+`
+
+func (q *Queries) DeletePricesByPlan(ctx context.Context, planID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deletePricesByPlan, planID)
 	return err
 }
 
@@ -216,6 +269,36 @@ func (q *Queries) GetCustomerByID(ctx context.Context, id uuid.UUID) (CustomerAc
 	return i, err
 }
 
+const getDraftCatalogVersionByTenant = `-- name: GetDraftCatalogVersionByTenant :one
+SELECT id, provider_id, environment_id, version, state, created_at, validated_at, published_at, retired_at FROM catalog_versions
+WHERE provider_id = $1 AND environment_id = $2 AND state = 'draft'
+ORDER BY version DESC
+LIMIT 1
+FOR UPDATE
+`
+
+type GetDraftCatalogVersionByTenantParams struct {
+	ProviderID    uuid.UUID `json:"provider_id"`
+	EnvironmentID uuid.UUID `json:"environment_id"`
+}
+
+func (q *Queries) GetDraftCatalogVersionByTenant(ctx context.Context, arg GetDraftCatalogVersionByTenantParams) (CatalogVersion, error) {
+	row := q.db.QueryRow(ctx, getDraftCatalogVersionByTenant, arg.ProviderID, arg.EnvironmentID)
+	var i CatalogVersion
+	err := row.Scan(
+		&i.ID,
+		&i.ProviderID,
+		&i.EnvironmentID,
+		&i.Version,
+		&i.State,
+		&i.CreatedAt,
+		&i.ValidatedAt,
+		&i.PublishedAt,
+		&i.RetiredAt,
+	)
+	return i, err
+}
+
 const getInvoiceByID = `-- name: GetInvoiceByID :one
 SELECT id, provider_id, environment_id, lago_id, number, customer_account_id, subscription_id, catalog_version_id, issuing_date, invoice_type, status, payment_status, currency, fees_amount_cents, coupons_amount_cents, credit_notes_amount_cents, sub_total_excluding_taxes_amount_cents, taxes_amount_cents, sub_total_including_taxes_amount_cents, total_amount_cents, file_url, web_url, lago_created_at, synced_at, finalized_at, voided_at, created_at, updated_at FROM invoices WHERE id = $1 AND provider_id = $2 AND environment_id = $3
 `
@@ -281,6 +364,35 @@ func (q *Queries) GetInvoiceStatusByLagoID(ctx context.Context, arg GetInvoiceSt
 	row := q.db.QueryRow(ctx, getInvoiceStatusByLagoID, arg.ProviderID, arg.EnvironmentID, arg.LagoID)
 	var i GetInvoiceStatusByLagoIDRow
 	err := row.Scan(&i.ID, &i.Status)
+	return i, err
+}
+
+const getLatestPublishedCatalogVersionByTenant = `-- name: GetLatestPublishedCatalogVersionByTenant :one
+SELECT id, provider_id, environment_id, version, state, created_at, validated_at, published_at, retired_at FROM catalog_versions
+WHERE provider_id = $1 AND environment_id = $2 AND state = 'published'
+ORDER BY version DESC
+LIMIT 1
+`
+
+type GetLatestPublishedCatalogVersionByTenantParams struct {
+	ProviderID    uuid.UUID `json:"provider_id"`
+	EnvironmentID uuid.UUID `json:"environment_id"`
+}
+
+func (q *Queries) GetLatestPublishedCatalogVersionByTenant(ctx context.Context, arg GetLatestPublishedCatalogVersionByTenantParams) (CatalogVersion, error) {
+	row := q.db.QueryRow(ctx, getLatestPublishedCatalogVersionByTenant, arg.ProviderID, arg.EnvironmentID)
+	var i CatalogVersion
+	err := row.Scan(
+		&i.ID,
+		&i.ProviderID,
+		&i.EnvironmentID,
+		&i.Version,
+		&i.State,
+		&i.CreatedAt,
+		&i.ValidatedAt,
+		&i.PublishedAt,
+		&i.RetiredAt,
+	)
 	return i, err
 }
 
@@ -519,13 +631,13 @@ RETURNING id, plan_id, catalog_version_id, provider_id, environment_id, key, val
 `
 
 type InsertEntitlementGrantParams struct {
-	PlanID           uuid.UUID `json:"plan_id"`
-	CatalogVersionID uuid.UUID `json:"catalog_version_id"`
-	ProviderID       uuid.UUID `json:"provider_id"`
-	EnvironmentID    uuid.UUID `json:"environment_id"`
-	Key              string    `json:"key"`
-	ValueType        string    `json:"value_type"`
-	Value            []byte    `json:"value"`
+	PlanID           uuid.UUID       `json:"plan_id"`
+	CatalogVersionID uuid.UUID       `json:"catalog_version_id"`
+	ProviderID       uuid.UUID       `json:"provider_id"`
+	EnvironmentID    uuid.UUID       `json:"environment_id"`
+	Key              string          `json:"key"`
+	ValueType        string          `json:"value_type"`
+	Value            json.RawMessage `json:"value"`
 }
 
 // ---- entitlement grants ----
@@ -767,13 +879,13 @@ RETURNING id, plan_id, catalog_version_id, provider_id, environment_id, metric_i
 `
 
 type InsertPriceParams struct {
-	PlanID           uuid.UUID     `json:"plan_id"`
-	CatalogVersionID uuid.UUID     `json:"catalog_version_id"`
-	ProviderID       uuid.UUID     `json:"provider_id"`
-	EnvironmentID    uuid.UUID     `json:"environment_id"`
-	MetricID         uuid.NullUUID `json:"metric_id"`
-	ChargeModel      string        `json:"charge_model"`
-	Properties       []byte        `json:"properties"`
+	PlanID           uuid.UUID       `json:"plan_id"`
+	CatalogVersionID uuid.UUID       `json:"catalog_version_id"`
+	ProviderID       uuid.UUID       `json:"provider_id"`
+	EnvironmentID    uuid.UUID       `json:"environment_id"`
+	MetricID         uuid.NullUUID   `json:"metric_id"`
+	ChargeModel      string          `json:"charge_model"`
+	Properties       json.RawMessage `json:"properties"`
 }
 
 // ---- prices ----
@@ -1203,6 +1315,76 @@ func (q *Queries) ListInvoiceLinesByInvoice(ctx context.Context, arg ListInvoice
 	return items, nil
 }
 
+const listInvoicesByCustomer = `-- name: ListInvoicesByCustomer :many
+SELECT i.id, i.number, i.lago_id, i.issuing_date, i.invoice_type, i.status, i.payment_status,
+       i.currency, i.total_amount_cents, i.customer_account_id, i.subscription_id, i.catalog_version_id,
+       ca.external_id AS customer_external_id, i.environment_id, e.kind AS environment_kind
+FROM invoices i
+JOIN customer_accounts ca ON ca.id = i.customer_account_id
+JOIN environments e ON e.id = i.environment_id
+WHERE i.customer_account_id = $1
+ORDER BY i.issuing_date DESC LIMIT $2
+`
+
+type ListInvoicesByCustomerParams struct {
+	CustomerAccountID uuid.UUID `json:"customer_account_id"`
+	Limit             int32     `json:"limit"`
+}
+
+type ListInvoicesByCustomerRow struct {
+	ID                 uuid.UUID     `json:"id"`
+	Number             string        `json:"number"`
+	LagoID             string        `json:"lago_id"`
+	IssuingDate        pgtype.Date   `json:"issuing_date"`
+	InvoiceType        string        `json:"invoice_type"`
+	Status             string        `json:"status"`
+	PaymentStatus      string        `json:"payment_status"`
+	Currency           string        `json:"currency"`
+	TotalAmountCents   int64         `json:"total_amount_cents"`
+	CustomerAccountID  uuid.UUID     `json:"customer_account_id"`
+	SubscriptionID     uuid.NullUUID `json:"subscription_id"`
+	CatalogVersionID   uuid.NullUUID `json:"catalog_version_id"`
+	CustomerExternalID string        `json:"customer_external_id"`
+	EnvironmentID      uuid.UUID     `json:"environment_id"`
+	EnvironmentKind    string        `json:"environment_kind"`
+}
+
+func (q *Queries) ListInvoicesByCustomer(ctx context.Context, arg ListInvoicesByCustomerParams) ([]ListInvoicesByCustomerRow, error) {
+	rows, err := q.db.Query(ctx, listInvoicesByCustomer, arg.CustomerAccountID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListInvoicesByCustomerRow
+	for rows.Next() {
+		var i ListInvoicesByCustomerRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.LagoID,
+			&i.IssuingDate,
+			&i.InvoiceType,
+			&i.Status,
+			&i.PaymentStatus,
+			&i.Currency,
+			&i.TotalAmountCents,
+			&i.CustomerAccountID,
+			&i.SubscriptionID,
+			&i.CatalogVersionID,
+			&i.CustomerExternalID,
+			&i.EnvironmentID,
+			&i.EnvironmentKind,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listInvoicesByProvider = `-- name: ListInvoicesByProvider :many
 SELECT i.id, i.number, i.lago_id, i.issuing_date, i.invoice_type, i.status, i.payment_status,
        i.currency, i.total_amount_cents, i.customer_account_id, i.subscription_id, i.catalog_version_id,
@@ -1495,6 +1677,65 @@ func (q *Queries) ListPricesByVersion(ctx context.Context, catalogVersionID uuid
 	return items, nil
 }
 
+const listSubscriptionsByCustomer = `-- name: ListSubscriptionsByCustomer :many
+SELECT s.id, s.external_id, ca.external_id AS customer_external_id, p.code AS plan_code,
+    s.catalog_version_id, s.status, e.kind AS environment_kind, s.started_at, s.terminated_at
+FROM subscriptions s
+JOIN customer_accounts ca ON ca.id = s.customer_account_id
+JOIN plans p ON p.id = s.plan_id
+JOIN environments e ON e.id = s.environment_id
+WHERE s.customer_account_id = $1
+ORDER BY s.started_at DESC
+LIMIT $2
+`
+
+type ListSubscriptionsByCustomerParams struct {
+	CustomerAccountID uuid.UUID `json:"customer_account_id"`
+	Limit             int32     `json:"limit"`
+}
+
+type ListSubscriptionsByCustomerRow struct {
+	ID                 uuid.UUID  `json:"id"`
+	ExternalID         string     `json:"external_id"`
+	CustomerExternalID string     `json:"customer_external_id"`
+	PlanCode           string     `json:"plan_code"`
+	CatalogVersionID   uuid.UUID  `json:"catalog_version_id"`
+	Status             string     `json:"status"`
+	EnvironmentKind    string     `json:"environment_kind"`
+	StartedAt          time.Time  `json:"started_at"`
+	TerminatedAt       *time.Time `json:"terminated_at"`
+}
+
+func (q *Queries) ListSubscriptionsByCustomer(ctx context.Context, arg ListSubscriptionsByCustomerParams) ([]ListSubscriptionsByCustomerRow, error) {
+	rows, err := q.db.Query(ctx, listSubscriptionsByCustomer, arg.CustomerAccountID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSubscriptionsByCustomerRow
+	for rows.Next() {
+		var i ListSubscriptionsByCustomerRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ExternalID,
+			&i.CustomerExternalID,
+			&i.PlanCode,
+			&i.CatalogVersionID,
+			&i.Status,
+			&i.EnvironmentKind,
+			&i.StartedAt,
+			&i.TerminatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSubscriptionsByProvider = `-- name: ListSubscriptionsByProvider :many
 SELECT s.id, s.external_id, ca.external_id AS customer_external_id, p.code AS plan_code,
     s.catalog_version_id, s.status, e.kind AS environment_kind, s.started_at, s.terminated_at
@@ -1581,6 +1822,65 @@ func (q *Queries) ListSubscriptionsByTenant(ctx context.Context, arg ListSubscri
 			&i.Status,
 			&i.StartedAt,
 			&i.TerminatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUsageEventsByCustomer = `-- name: ListUsageEventsByCustomer :many
+SELECT ue.id, ue.transaction_id, ue.kind, ue.metric_code,
+    ca.external_id AS customer_external_id, ue.environment_id, e.kind AS environment_kind,
+    ue.event_timestamp, ue.created_at
+FROM usage_events ue
+JOIN customer_accounts ca ON ca.id = ue.customer_account_id
+JOIN environments e ON e.id = ue.environment_id
+WHERE ue.customer_account_id = $1
+ORDER BY ue.created_at DESC
+LIMIT $2
+`
+
+type ListUsageEventsByCustomerParams struct {
+	CustomerAccountID uuid.UUID `json:"customer_account_id"`
+	Limit             int32     `json:"limit"`
+}
+
+type ListUsageEventsByCustomerRow struct {
+	ID                 uuid.UUID `json:"id"`
+	TransactionID      string    `json:"transaction_id"`
+	Kind               string    `json:"kind"`
+	MetricCode         string    `json:"metric_code"`
+	CustomerExternalID string    `json:"customer_external_id"`
+	EnvironmentID      uuid.UUID `json:"environment_id"`
+	EnvironmentKind    string    `json:"environment_kind"`
+	EventTimestamp     time.Time `json:"event_timestamp"`
+	CreatedAt          time.Time `json:"created_at"`
+}
+
+func (q *Queries) ListUsageEventsByCustomer(ctx context.Context, arg ListUsageEventsByCustomerParams) ([]ListUsageEventsByCustomerRow, error) {
+	rows, err := q.db.Query(ctx, listUsageEventsByCustomer, arg.CustomerAccountID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUsageEventsByCustomerRow
+	for rows.Next() {
+		var i ListUsageEventsByCustomerRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TransactionID,
+			&i.Kind,
+			&i.MetricCode,
+			&i.CustomerExternalID,
+			&i.EnvironmentID,
+			&i.EnvironmentKind,
+			&i.EventTimestamp,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1774,6 +2074,82 @@ func (q *Queries) UpdateCatalogVersionState(ctx context.Context, arg UpdateCatal
 	return i, err
 }
 
+const updatePlan = `-- name: UpdatePlan :one
+UPDATE plans
+SET name = $2, interval = $3, currency = $4
+WHERE id = $1
+RETURNING id, catalog_version_id, provider_id, environment_id, code, name, interval, currency
+`
+
+type UpdatePlanParams struct {
+	ID       uuid.UUID `json:"id"`
+	Name     string    `json:"name"`
+	Interval string    `json:"interval"`
+	Currency string    `json:"currency"`
+}
+
+func (q *Queries) UpdatePlan(ctx context.Context, arg UpdatePlanParams) (Plan, error) {
+	row := q.db.QueryRow(ctx, updatePlan,
+		arg.ID,
+		arg.Name,
+		arg.Interval,
+		arg.Currency,
+	)
+	var i Plan
+	err := row.Scan(
+		&i.ID,
+		&i.CatalogVersionID,
+		&i.ProviderID,
+		&i.EnvironmentID,
+		&i.Code,
+		&i.Name,
+		&i.Interval,
+		&i.Currency,
+	)
+	return i, err
+}
+
+const upsertEntitlementGrant = `-- name: UpsertEntitlementGrant :one
+INSERT INTO entitlement_grants (plan_id, catalog_version_id, provider_id, environment_id, key, value_type, value)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (plan_id, key) DO UPDATE SET value_type = EXCLUDED.value_type, value = EXCLUDED.value
+RETURNING id, plan_id, catalog_version_id, provider_id, environment_id, key, value_type, value
+`
+
+type UpsertEntitlementGrantParams struct {
+	PlanID           uuid.UUID       `json:"plan_id"`
+	CatalogVersionID uuid.UUID       `json:"catalog_version_id"`
+	ProviderID       uuid.UUID       `json:"provider_id"`
+	EnvironmentID    uuid.UUID       `json:"environment_id"`
+	Key              string          `json:"key"`
+	ValueType        string          `json:"value_type"`
+	Value            json.RawMessage `json:"value"`
+}
+
+func (q *Queries) UpsertEntitlementGrant(ctx context.Context, arg UpsertEntitlementGrantParams) (EntitlementGrant, error) {
+	row := q.db.QueryRow(ctx, upsertEntitlementGrant,
+		arg.PlanID,
+		arg.CatalogVersionID,
+		arg.ProviderID,
+		arg.EnvironmentID,
+		arg.Key,
+		arg.ValueType,
+		arg.Value,
+	)
+	var i EntitlementGrant
+	err := row.Scan(
+		&i.ID,
+		&i.PlanID,
+		&i.CatalogVersionID,
+		&i.ProviderID,
+		&i.EnvironmentID,
+		&i.Key,
+		&i.ValueType,
+		&i.Value,
+	)
+	return i, err
+}
+
 const upsertEntitlementOverride = `-- name: UpsertEntitlementOverride :one
 
 INSERT INTO entitlement_overrides (provider_id, environment_id, subscription_id, key, value_type, value, expires_at, reason)
@@ -1787,14 +2163,14 @@ RETURNING id, provider_id, environment_id, subscription_id, key, value_type, val
 `
 
 type UpsertEntitlementOverrideParams struct {
-	ProviderID     uuid.UUID  `json:"provider_id"`
-	EnvironmentID  uuid.UUID  `json:"environment_id"`
-	SubscriptionID uuid.UUID  `json:"subscription_id"`
-	Key            string     `json:"key"`
-	ValueType      string     `json:"value_type"`
-	Value          []byte     `json:"value"`
-	ExpiresAt      *time.Time `json:"expires_at"`
-	Reason         string     `json:"reason"`
+	ProviderID     uuid.UUID       `json:"provider_id"`
+	EnvironmentID  uuid.UUID       `json:"environment_id"`
+	SubscriptionID uuid.UUID       `json:"subscription_id"`
+	Key            string          `json:"key"`
+	ValueType      string          `json:"value_type"`
+	Value          json.RawMessage `json:"value"`
+	ExpiresAt      *time.Time      `json:"expires_at"`
+	Reason         string          `json:"reason"`
 }
 
 // ---- entitlement overrides ----

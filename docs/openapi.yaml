@@ -78,21 +78,35 @@ components:
     
     Provider:
       type: object
+      description: Provider（平台控制面视角，与 lib/api/types.ts Provider 对齐）
       properties:
         id:
           type: string
           format: uuid
+        slug:
+          type: string
         name:
           type: string
-        kind:
+        description:
           type: string
-          enum: [test, live]
-        home_region:
+          nullable: true
+        lifecycle_state:
+          type: string
+          description: 生命周期状态（REGISTERED / LIVE_REVIEW / LIVE_ACTIVE / RESTRICTED / SUSPENDED / RETIRED）
+        sla_tier:
+          type: string
+        home_region_id:
+          type: string
+          format: uuid
+        home_region_code:
           type: string
         cell_id:
           type: string
           format: uuid
         created_at:
+          type: string
+          format: date-time
+        updated_at:
           type: string
           format: date-time
     
@@ -114,6 +128,7 @@ components:
     
     Subscription:
       type: object
+      description: 订阅（operator 视图，与 lib/api/types.ts Subscription 对齐；provider 域入参端点不复用此 schema）
       properties:
         id:
           type: string
@@ -124,9 +139,21 @@ components:
           type: string
         plan_code:
           type: string
+        catalog_version_id:
+          type: string
+          format: uuid
         status:
           type: string
           enum: [active, terminated]
+        environment_kind:
+          type: string
+          enum: [test, live]
+        started_at:
+          type: string
+          format: date-time
+        terminated_at:
+          type: string
+          format: date-time
     
     UsageEvent:
       type: object
@@ -332,6 +359,748 @@ components:
           type: string
           enum: [ok, warning, exceeded]
 
+    # ---- operator 域实体（与 apps/web/src/lib/api/types.ts 逐一对齐）----
+    Environment:
+      type: object
+      description: 环境（test / live 双环境模型）
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [test, live]
+        status:
+          type: string
+        issuer:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    Region:
+      type: object
+      description: 区域（region registry）
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        jurisdiction:
+          type: string
+
+    CatalogVersion:
+      type: object
+      description: Catalog 版本列表行（轻量视图）
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+        state:
+          type: string
+          enum: [draft, validated, published, retired]
+        environment_id:
+          type: string
+          format: uuid
+        environment_kind:
+          type: string
+          enum: [test, live]
+        metrics_count:
+          type: integer
+        plans_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        published_at:
+          type: string
+          format: date-time
+
+    CatalogVersionMeta:
+      type: object
+      description: Catalog 版本全量元数据
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+        state:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        validated_at:
+          type: string
+          format: date-time
+        published_at:
+          type: string
+          format: date-time
+        retired_at:
+          type: string
+          format: date-time
+
+    CatalogVersionDetail:
+      type: object
+      description: Catalog 版本详情（版本 + 全部组成元素）
+      properties:
+        version:
+          $ref: '#/components/schemas/CatalogVersionMeta'
+        metrics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Metric'
+        plans:
+          type: array
+          items:
+            $ref: '#/components/schemas/Plan'
+        prices:
+          type: array
+          items:
+            $ref: '#/components/schemas/Price'
+        entitlement_grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntitlementGrant'
+
+    Metric:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+        aggregation_type:
+          type: string
+        field_name:
+          type: string
+        billable:
+          type: boolean
+
+    Plan:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+        interval:
+          type: string
+        currency:
+          type: string
+
+    Price:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        charge_model:
+          type: string
+          enum: [fixed, per_unit, tiered]
+        metric_code:
+          type: string
+        properties:
+          type: object
+
+    EntitlementGrant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+        value_type:
+          type: string
+        value:
+          nullable: true
+
+    PriceInput:
+      type: object
+      description: 套餐价格入参（fixed 固定价 / per_unit 按量 / tiered 阶梯价）
+      required: [charge_model, properties]
+      properties:
+        metric_code:
+          type: string
+          description: per_unit / tiered 必填；引用当前目录版本中的 metric
+        charge_model:
+          type: string
+          enum: [fixed, per_unit, tiered]
+        properties:
+          type: object
+          description: fixed=amount_cents+currency；per_unit=unit_amount_cents；tiered=tiers[]
+
+    EntitlementInput:
+      type: object
+      description: 套餐权益入参（PlanInput.entitlements 可选）
+      required: [key, value_type, value]
+      properties:
+        key:
+          type: string
+        value_type:
+          type: string
+          enum: [boolean, numeric, period]
+        value:
+          description: 按 value_type 的 JSON 值
+
+    PlanInput:
+      type: object
+      description: 套餐创建/更新入参（plan code 不可变；更新时 body code 必须与路径一致）
+      required: [code, name, interval, currency, prices]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        interval:
+          type: string
+          enum: [weekly, monthly, yearly]
+        currency:
+          type: string
+          description: 3 位 ISO 4217 货币代码
+        prices:
+          type: array
+          items:
+            $ref: '#/components/schemas/PriceInput'
+        entitlements:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntitlementInput'
+
+    PlanDetail:
+      type: object
+      description: Console 控制面套餐详情（prices 的 metric_code 已解析，便于前端直接渲染/编辑）
+      properties:
+        plan:
+          $ref: '#/components/schemas/Plan'
+        prices:
+          type: array
+          items:
+            $ref: '#/components/schemas/Price'
+        entitlement_grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntitlementGrant'
+
+    PlanCollection:
+      type: object
+      description: Plans 页面一次请求的全量载荷（当前 draft 版本，无 draft 回退 latest published）
+      properties:
+        plans:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanDetail'
+        metrics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Metric'
+
+    Credential:
+      type: object
+      description: API 密钥（key_hash 永不下发，仅 key_prefix 标识）
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        key_prefix:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        allowed_cidrs:
+          type: array
+          items:
+            type: string
+        environment_id:
+          type: string
+          format: uuid
+        environment_kind:
+          type: string
+          enum: [test, live]
+        environment_issuer:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    Invoice:
+      type: object
+      description: 发票（Lago 同步）
+      properties:
+        id:
+          type: string
+          format: uuid
+        number:
+          type: string
+        lago_id:
+          type: string
+        issuing_date:
+          type: string
+          format: date
+        invoice_type:
+          type: string
+        status:
+          type: string
+        payment_status:
+          type: string
+        currency:
+          type: string
+        total_amount_cents:
+          type: integer
+          format: int64
+        customer_external_id:
+          type: string
+        customer_account_id:
+          type: string
+          format: uuid
+        subscription_id:
+          type: string
+          format: uuid
+        catalog_version_id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
+        environment_kind:
+          type: string
+          enum: [test, live]
+
+    AuditEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        provider_id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
+        actor_type:
+          type: string
+        actor_id:
+          type: string
+        action:
+          type: string
+        target_type:
+          type: string
+        target_id:
+          type: string
+        metadata:
+          nullable: true
+        request_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    Customer:
+      type: object
+      description: 客户（operator 视图）
+      properties:
+        id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        account_type:
+          type: string
+          enum: [individual, business]
+        display_name:
+          type: string
+        environment_id:
+          type: string
+          format: uuid
+        environment_kind:
+          type: string
+          enum: [test, live]
+        created_at:
+          type: string
+          format: date-time
+
+    CustomerCreateInput:
+      type: object
+      description: 客户创建入参（external_id 在 provider 环境内唯一）
+      required: [external_id, account_type, display_name]
+      properties:
+        external_id:
+          type: string
+        account_type:
+          type: string
+          enum: [individual, business]
+        display_name:
+          type: string
+
+    CustomerDetail:
+      type: object
+      description: 客户详情（一次请求返回客户 + 订阅 / 用量 / 账单，同环境）
+      properties:
+        customer:
+          $ref: '#/components/schemas/Customer'
+        subscriptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Subscription'
+        usage_events:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageEventRecord'
+        invoices:
+          type: array
+          items:
+            $ref: '#/components/schemas/Invoice'
+
+    UsageEventRecord:
+      type: object
+      description: 用量事件（operator 视图，对应 lib/api/types.ts 的 UsageEvent；openapi 同名 UsageEvent 为 provider 域入参 schema）
+      properties:
+        id:
+          type: string
+          format: uuid
+        transaction_id:
+          type: string
+        kind:
+          type: string
+          enum: [ingestion, reversal]
+        metric_code:
+          type: string
+        customer_external_id:
+          type: string
+        environment_id:
+          type: string
+          format: uuid
+        environment_kind:
+          type: string
+          enum: [test, live]
+        event_timestamp:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    Capability:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+        capability:
+          type: string
+        status:
+          type: string
+        granted_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+        granted_by:
+          type: string
+        reason:
+          type: string
+
+    WebhookEndpoint:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
+        url:
+          type: string
+        secret:
+          type: string
+        enabled:
+          type: boolean
+        events:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+
+    WebhookDelivery:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        endpoint_id:
+          type: string
+          format: uuid
+        outbox_event_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        attempts:
+          type: integer
+        response_status:
+          type: integer
+        response_body:
+          type: string
+        delivered_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    Workspace:
+      type: object
+      description: 工作区（平台控制面多租户单元）
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WorkspaceMembership:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        user_sub:
+          type: string
+        role:
+          type: string
+          enum: [provider_admin, provider_developer, provider_billing]
+        status:
+          type: string
+          enum: [active, suspended, removed]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    HostedAuthConfig:
+      type: object
+      description: OIDC 应用（Console 控制面视图；client_secret 永不随列表返回）
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        client_id:
+          type: string
+        enabled:
+          type: boolean
+        redirect_uris:
+          type: array
+          items:
+            type: string
+            format: uri
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    HostedAuthCreateResult:
+      type: object
+      description: 创建 / 轮换密钥后的应用响应（明文 client_secret 仅返回一次，R17）
+      allOf:
+        - $ref: '#/components/schemas/HostedAuthConfig'
+        - type: object
+          properties:
+            client_secret:
+              type: string
+              description: 明文客户端密钥，仅在创建/轮换成功时返回一次
+            issuer_url:
+              type: string
+              format: uri
+
+    TrendPoint:
+      type: object
+      description: 趋势序列单日数据点；date 为 ISO-8601 日期（YYYY-MM-DD，UTC）
+      properties:
+        date:
+          type: string
+          format: date
+        value:
+          type: integer
+          format: int64
+
+    OverviewTrends:
+      type: object
+      description: 概览趋势序列（M2），两序列均为后端补零后的连续日轴
+      properties:
+        revenue:
+          type: array
+          description: 近 30 天 finalized 发票按出票日汇总金额（cents）
+          items:
+            $ref: '#/components/schemas/TrendPoint'
+        usage_events:
+          type: array
+          description: 近 30 天 ingestion 事件按入库日计数
+          items:
+            $ref: '#/components/schemas/TrendPoint'
+
+    OverviewStats:
+      type: object
+      description: 概览聚合统计（R29，跨所有 provider 单请求聚合）
+      properties:
+        published_versions:
+          type: integer
+        active_subscriptions:
+          type: integer
+        customers:
+          type: integer
+        revenue_cents:
+          type: integer
+          format: int64
+        trends:
+          $ref: '#/components/schemas/OverviewTrends'
+
+    LifecycleTarget:
+      type: string
+      description: Provider 生命周期流转目标
+      enum: [LIVE_REVIEW, LIVE_ACTIVE, RESTRICTED, SUSPENDED]
+
+    CreateProviderInput:
+      type: object
+      required: [slug, name, home_region_code]
+      properties:
+        slug:
+          type: string
+          pattern: '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$'
+        name:
+          type: string
+        home_region_code:
+          type: string
+        description:
+          type: string
+
+    ActivateProviderInput:
+      type: object
+      required: [provider_id, home_region_code]
+      properties:
+        provider_id:
+          type: string
+          format: uuid
+        home_region_code:
+          type: string
+        reason:
+          type: string
+
+    LifecycleInput:
+      type: object
+      required: [to]
+      properties:
+        to:
+          $ref: '#/components/schemas/LifecycleTarget'
+        reason:
+          type: string
+
+    SignupInput:
+      type: object
+      properties:
+        email:
+          type: string
+        name:
+          type: string
+
+    CreateProviderResult:
+      type: object
+      properties:
+        provider:
+          $ref: '#/components/schemas/Provider'
+          nullable: true
+        testEnvironment:
+          $ref: '#/components/schemas/Environment'
+          nullable: true
+        apiKey:
+          type: string
+          nullable: true
+
+    LifecycleResult:
+      type: object
+      properties:
+        provider:
+          $ref: '#/components/schemas/Provider'
+          nullable: true
+        environment:
+          $ref: '#/components/schemas/Environment'
+          nullable: true
+        apiKey:
+          type: string
+          nullable: true
+
+    SignupResult:
+      type: object
+      properties:
+        workspace:
+          $ref: '#/components/schemas/Workspace'
+          nullable: true
+        membership:
+          $ref: '#/components/schemas/WorkspaceMembership'
+          nullable: true
+        provider:
+          $ref: '#/components/schemas/Provider'
+          nullable: true
+
   parameters:
     RequestId:
       name: X-Request-ID
@@ -339,6 +1108,42 @@ components:
       schema:
         type: string
         format: uuid
+    ProviderID:
+      name: provider_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Env:
+      name: env
+      in: query
+      required: true
+      schema:
+        type: string
+        enum: [test, live]
+      description: 目标环境（test/live），由 API 侧解析为该 provider 的环境 ID
+    VersionID:
+      name: version_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PlanCode:
+      name: plan_code
+      in: path
+      required: true
+      schema:
+        type: string
+      description: 套餐代码（不可变标识符）
+    CustomerExternalID:
+      name: customer_external_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: 客户外部 ID（provider 环境内唯一）
 
 tags:
   - name: Providers
@@ -375,6 +1180,12 @@ tags:
     description: Data export and deletion proof
   - name: API Version
     description: API version info
+  - name: Operator
+    description: Operator 控制面（providers / catalog / regions / overview）
+  - name: Workspaces
+    description: 工作区（operator 会话域，RLS 保护）
+  - name: Signup
+    description: 注册供给（R11）
 
 paths:
   /api-version:
@@ -579,3 +1390,662 @@ paths:
       responses:
         '200':
           description: Deletion proof generated
+
+  # ---- operator 控制面（OIDC JWT，/v1/operator/*）----
+  /operator/providers:
+    get:
+      tags: [Operator]
+      summary: List providers
+      responses:
+        '200':
+          description: Provider list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Provider'
+    post:
+      tags: [Operator]
+      summary: Create a provider (REGISTERED)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProviderInput'
+      responses:
+        '201':
+          description: Provider created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateProviderResult'
+        '409':
+          description: Slug already taken
+
+  /operator/providers/{provider_id}:
+    get:
+      tags: [Operator]
+      summary: Get provider detail
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+      responses:
+        '200':
+          description: Provider detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Provider'
+
+  /operator/providers/{provider_id}/activate:
+    post:
+      tags: [Operator]
+      summary: Activate a provider (assigns home region, creates environments)
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActivateProviderInput'
+      responses:
+        '200':
+          description: Provider activated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateProviderResult'
+        '409':
+          description: Invalid lifecycle transition
+
+  /operator/providers/{provider_id}/lifecycle:
+    post:
+      tags: [Operator]
+      summary: Transition provider lifecycle state
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LifecycleInput'
+      responses:
+        '200':
+          description: Lifecycle transitioned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LifecycleResult'
+        '409':
+          description: Invalid transition
+
+  /operator/providers/{provider_id}/catalog/versions:
+    get:
+      tags: [Operator]
+      summary: List catalog versions
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+      responses:
+        '200':
+          description: Catalog version list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CatalogVersion'
+
+  /operator/providers/{provider_id}/catalog/versions/{version_id}:
+    get:
+      tags: [Operator]
+      summary: Get catalog version detail
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/VersionID'
+      responses:
+        '200':
+          description: Catalog version detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogVersionDetail'
+
+  /operator/providers/{provider_id}/subscriptions:
+    get:
+      tags: [Operator]
+      summary: List subscriptions
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+      responses:
+        '200':
+          description: Subscription list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscriptions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Subscription'
+
+  /operator/providers/{provider_id}/customers:
+    get:
+      tags: [Operator]
+      summary: List customers (cross-environment, or a single environment with ?env=)
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - name: env
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [test, live]
+          description: 传入时只返回该环境的客户；缺省返回跨环境 operator 视图
+      responses:
+        '200':
+          description: Customer list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  customers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Customer'
+    post:
+      tags: [Operator]
+      summary: Create a customer in the given environment
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerCreateInput'
+      responses:
+        '201':
+          description: Customer created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  customer:
+                    $ref: '#/components/schemas/Customer'
+        '400':
+          description: Invalid input
+        '404':
+          description: Unknown provider or environment
+        '409':
+          description: Customer external_id already exists in this environment
+
+  /operator/providers/{provider_id}/customers/{customer_external_id}:
+    get:
+      tags: [Operator]
+      summary: Get customer detail with subscriptions, usage events and invoices
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+        - $ref: '#/components/parameters/CustomerExternalID'
+      responses:
+        '200':
+          description: Customer detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerDetail'
+        '404':
+          description: Unknown customer, provider, or environment
+
+  /operator/providers/{provider_id}/usage-events:
+    get:
+      tags: [Operator]
+      summary: List usage events
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+      responses:
+        '200':
+          description: Usage event list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UsageEventRecord'
+
+  /operator/providers/{provider_id}/audit-events:
+    get:
+      tags: [Operator]
+      summary: List audit events
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+      responses:
+        '200':
+          description: Audit event list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditEvent'
+
+  /operator/providers/{provider_id}/credentials:
+    get:
+      tags: [Operator]
+      summary: List API credentials
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+      responses:
+        '200':
+          description: Credential list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  credentials:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Credential'
+
+  /operator/providers/{provider_id}/credentials/{credential_id}/revoke:
+    post:
+      tags: [Operator]
+      summary: Revoke a credential
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - name: credential_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Credential revoked
+
+  /operator/providers/{provider_id}/invoices:
+    get:
+      tags: [Operator]
+      summary: List invoices
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+      responses:
+        '200':
+          description: Invoice list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invoices:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Invoice'
+
+  /operator/providers/{provider_id}/capabilities:
+    get:
+      tags: [Operator]
+      summary: List provider capabilities
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+      responses:
+        '200':
+          description: Capability list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  capabilities:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Capability'
+
+  /operator/providers/{provider_id}/webhooks:
+    get:
+      tags: [Operator]
+      summary: List webhook endpoints
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+      responses:
+        '200':
+          description: Webhook endpoint list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  endpoints:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WebhookEndpoint'
+
+  /operator/providers/{provider_id}/webhook-deliveries:
+    get:
+      tags: [Operator]
+      summary: List webhook deliveries
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+      responses:
+        '200':
+          description: Webhook delivery list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deliveries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WebhookDelivery'
+
+  /operator/regions:
+    get:
+      tags: [Operator]
+      summary: List regions
+      responses:
+        '200':
+          description: Region list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  regions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Region'
+
+  /operator/overview-stats:
+    get:
+      tags: [Operator]
+      summary: Get overview aggregate stats (R29)
+      responses:
+        '200':
+          description: Overview stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OverviewStats'
+
+  # ---- OIDC Application 管理（Console 控制面，§8 M2 Applications）----
+  /operator/providers/{provider_id}/auth/zitadel/apps:
+    get:
+      tags: [Operator]
+      summary: List OIDC applications for a provider environment
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+      responses:
+        '200':
+          description: Application list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apps:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/HostedAuthConfig'
+        '400':
+          description: Invalid provider id or env
+        '404':
+          description: Unknown provider or environment
+
+  /operator/providers/{provider_id}/auth/zitadel/setup:
+    post:
+      tags: [Operator]
+      summary: Create an OIDC application (ZITADEL project + app)
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, redirect_uris]
+              properties:
+                name:
+                  type: string
+                redirect_uris:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    format: uri
+      responses:
+        '201':
+          description: Application created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  app:
+                    $ref: '#/components/schemas/HostedAuthCreateResult'
+        '400':
+          description: Invalid input
+
+  /operator/providers/{provider_id}/auth/zitadel/rotate-secret:
+    post:
+      tags: [Operator]
+      summary: Rotate the OIDC client secret (plaintext returned once)
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+      responses:
+        '200':
+          description: Secret rotated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  app:
+                    $ref: '#/components/schemas/HostedAuthCreateResult'
+        '404':
+          description: No application configured
+
+  /operator/providers/{provider_id}/auth/zitadel/redirect-uris:
+    put:
+      tags: [Operator]
+      summary: Update OIDC redirect URIs without rotating the secret
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [redirect_uris]
+              properties:
+                redirect_uris:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    format: uri
+      responses:
+        '200':
+          description: Redirect URIs updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  app:
+                    $ref: '#/components/schemas/HostedAuthConfig'
+
+  /operator/providers/{provider_id}/auth/zitadel:
+    delete:
+      tags: [Operator]
+      summary: Delete the OIDC application (ZITADEL project included)
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+      responses:
+        '204':
+          description: Application deleted
+        '404':
+          description: No application configured
+
+  # ---- Plans 控制面（Console，§8 M2）----
+  /operator/providers/{provider_id}/catalog/plans:
+    get:
+      tags: [Operator]
+      summary: List plans with full pricing detail and available metrics
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+      responses:
+        '200':
+          description: Plan collection (plans + metrics)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanCollection'
+        '400':
+          description: Invalid provider id or env
+        '404':
+          description: Unknown provider or environment
+    post:
+      tags: [Operator]
+      summary: Create a plan in the current draft catalog version
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanInput'
+      responses:
+        '201':
+          description: Plan created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan:
+                    $ref: '#/components/schemas/PlanDetail'
+        '400':
+          description: Invalid plan structure
+        '404':
+          description: Unknown provider or environment
+        '409':
+          description: Plan code already exists
+
+  /operator/providers/{provider_id}/catalog/plans/{plan_code}:
+    get:
+      tags: [Operator]
+      summary: Get one plan with resolved pricing detail
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+        - $ref: '#/components/parameters/PlanCode'
+      responses:
+        '200':
+          description: Plan detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan:
+                    $ref: '#/components/schemas/PlanDetail'
+        '404':
+          description: Unknown plan, provider, or environment
+    put:
+      tags: [Operator]
+      summary: Update a plan (staged into a new draft when published content is immutable)
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+        - $ref: '#/components/parameters/PlanCode'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanInput'
+      responses:
+        '200':
+          description: Plan updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan:
+                    $ref: '#/components/schemas/PlanDetail'
+        '400':
+          description: Invalid plan structure or immutable code mismatch
+        '404':
+          description: Unknown plan, provider, or environment
+    delete:
+      tags: [Operator]
+      summary: Delete a plan from the current draft catalog version
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+        - $ref: '#/components/parameters/PlanCode'
+      responses:
+        '204':
+          description: Plan deleted
+        '404':
+          description: Unknown plan, provider, or environment
+
+  # ---- 工作区（operator 会话域，RLS 仅 operator 事务可见）----
+  /me/workspaces:
+    get:
+      tags: [Workspaces]
+      summary: List my workspaces
+      responses:
+        '200':
+          description: Workspace list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workspaces:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Workspace'
+
+  # ---- 注册供给（R11）----
+  /signup:
+    post:
+      tags: [Signup]
+      summary: Provision a default workspace for the platform user
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupInput'
+      responses:
+        '200':
+          description: Workspace provisioned (idempotent for returning users)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignupResult'

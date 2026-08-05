@@ -3,6 +3,8 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -99,7 +101,9 @@ func TestDecodeJSONValid(t *testing.T) {
 	r := httptest.NewRequest("POST", "/", strings.NewReader(`{"name":"test"}`))
 	w := httptest.NewRecorder()
 
-	var v struct{ Name string `json:"name"` }
+	var v struct {
+		Name string `json:"name"`
+	}
 	if !decodeJSON(w, r, &v) {
 		t.Fatal("decodeJSON should return true for valid JSON")
 	}
@@ -259,7 +263,7 @@ func TestBodyLimitMiddleware(t *testing.T) {
 }
 
 func TestCORSMiddleware(t *testing.T) {
-	handler := corsMiddleware([]string{"*"})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := corsMiddleware(func() []string { return []string{"*"} })(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -324,15 +328,28 @@ func TestRequestIDMiddlewarePreservesExisting(t *testing.T) {
 }
 
 func TestRecoverMiddleware(t *testing.T) {
-	// Test that recover middleware catches panics. Use a simple handler
-	// that the recover wrapper catches. The Server.log may be nil, so we
-	// just verify the panic doesn't crash the test.
-	defer func() {
-		if r := recover(); r != nil {
-			t.Fatalf("recover middleware should have caught the panic: %v", r)
-		}
-	}()
+	// Verify that recoverMiddleware catches a panic and returns 500.
+	srv := &Server{log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	panicky := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panic("boom")
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/v1/whatever", nil)
 
-	// The recoverMiddleware uses s.log which may be nil. We test the
-	// middleware behavior via integration tests instead.
+	srv.recoverMiddleware(panicky).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	errObj, ok := body["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected error object, got %v", body)
+	}
+	if errObj["code"] != "internal" {
+		t.Fatalf("error.code = %v, want internal", errObj["code"])
+	}
 }

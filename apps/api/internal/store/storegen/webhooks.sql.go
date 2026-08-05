@@ -18,16 +18,26 @@ UPDATE webhook_deliveries
 SET next_attempt_at = now() + interval '60 seconds',
     attempts = attempts + 1
 WHERE id IN (
-    SELECT id FROM webhook_deliveries
-    WHERE (status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= now()))
-       OR (status = 'failed' AND next_attempt_at IS NOT NULL AND next_attempt_at <= now())
-    ORDER BY created_at
+    SELECT wd.id
+    FROM webhook_deliveries wd
+    JOIN providers p ON p.id = wd.provider_id
+    WHERE p.lifecycle_state NOT IN ('SUSPENDED', 'OFFBOARDING')
+      AND ((wd.status = 'pending' AND (wd.next_attempt_at IS NULL OR wd.next_attempt_at <= now()))
+        OR (wd.status = 'failed' AND wd.next_attempt_at IS NOT NULL AND wd.next_attempt_at <= now()))
+    ORDER BY wd.created_at
     LIMIT $1
-    FOR UPDATE SKIP LOCKED
+    FOR UPDATE OF wd SKIP LOCKED
 )
 RETURNING id, endpoint_id, outbox_event_id, provider_id, environment_id, status, attempts, response_status, response_body, next_attempt_at, delivered_at, created_at
 `
 
+// Lifecycle-aware delivery (design baseline §7.4): deliveries for providers
+// in SUSPENDED or OFFBOARDING state are NOT claimed, so no HTTP call is made
+// while the provider is not operational. The rows stay 'pending' (backlog) and
+// are delivered automatically once the provider reactivates (SUSPENDED ->
+// LIVE_ACTIVE). RESTRICTED keeps delivering: it is a limited but operational
+// state. FOR UPDATE OF wd locks only webhook_deliveries rows so provider
+// lifecycle transitions never contend on this lease.
 func (q *Queries) ClaimPendingWebhookDeliveries(ctx context.Context, limit int32) ([]WebhookDelivery, error) {
 	rows, err := q.db.Query(ctx, claimPendingWebhookDeliveries, limit)
 	if err != nil {
@@ -51,6 +61,40 @@ func (q *Queries) ClaimPendingWebhookDeliveries(ctx context.Context, limit int32
 			&i.DeliveredAt,
 			&i.CreatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countWebhookDeliveriesByStatus = `-- name: CountWebhookDeliveriesByStatus :many
+SELECT status, COUNT(*)::bigint AS count
+FROM webhook_deliveries
+GROUP BY status
+`
+
+type CountWebhookDeliveriesByStatusRow struct {
+	Status string `json:"status"`
+	Count  int64  `json:"count"`
+}
+
+// Backlog gauge for Prometheus: total webhook_deliveries rows grouped by
+// delivery status (pending / failed / delivered / dead_letter). Refreshed
+// periodically by the metrics backlog reporter.
+func (q *Queries) CountWebhookDeliveriesByStatus(ctx context.Context) ([]CountWebhookDeliveriesByStatusRow, error) {
+	rows, err := q.db.Query(ctx, countWebhookDeliveriesByStatus)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountWebhookDeliveriesByStatusRow
+	for rows.Next() {
+		var i CountWebhookDeliveriesByStatusRow
+		if err := rows.Scan(&i.Status, &i.Count); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -123,6 +167,28 @@ func (q *Queries) CreateWebhookEndpoint(ctx context.Context, arg CreateWebhookEn
 	return i, err
 }
 
+const deleteExpiredWebhookDeliveries = `-- name: DeleteExpiredWebhookDeliveries :execrows
+DELETE FROM webhook_deliveries
+WHERE created_at < $1
+  AND (status = 'delivered'
+    OR status = 'dead_letter'
+    OR (status = 'failed' AND next_attempt_at IS NULL))
+`
+
+// Retention policy: delete terminal webhook deliveries (delivered | dead_letter |
+// failed with retries exhausted) older than the retention cutoff. Pending rows and
+// failed rows still inside their retry window (next_attempt_at set) are never
+// deleted — they may still be delivered or replayed. The terminal-state guard makes
+// the sweep race-safe: a delivery replayed to 'pending' by the operator between the
+// sweep's snapshot and this DELETE is immediately out of scope.
+func (q *Queries) DeleteExpiredWebhookDeliveries(ctx context.Context, cutoff time.Time) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredWebhookDeliveries, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteWebhookEndpoint = `-- name: DeleteWebhookEndpoint :exec
 DELETE FROM webhook_endpoints
 WHERE id = $1 AND provider_id = $2 AND environment_id = $3
@@ -140,7 +206,7 @@ func (q *Queries) DeleteWebhookEndpoint(ctx context.Context, arg DeleteWebhookEn
 }
 
 const findUndeliveredOutboxEvents = `-- name: FindUndeliveredOutboxEvents :many
-SELECT oe.id, oe.provider_id, oe.environment_id, oe.aggregate_type, oe.aggregate_id, oe.event_type, oe.payload, oe.payload_hash, oe.transaction_id, oe.status, oe.attempts, oe.created_at, oe.published_at, oe.next_attempt_at
+SELECT oe.id, oe.provider_id, oe.environment_id, oe.aggregate_type, oe.aggregate_id, oe.event_type, oe.payload, oe.payload_hash, oe.transaction_id, oe.status, oe.attempts, oe.created_at, oe.published_at, oe.next_attempt_at, oe.last_error
 FROM outbox_events oe
 WHERE oe.status = 'published'
   AND NOT EXISTS (SELECT 1 FROM webhook_deliveries wd WHERE wd.outbox_event_id = oe.id)
@@ -172,6 +238,7 @@ func (q *Queries) FindUndeliveredOutboxEvents(ctx context.Context, limit int32) 
 			&i.CreatedAt,
 			&i.PublishedAt,
 			&i.NextAttemptAt,
+			&i.LastError,
 		); err != nil {
 			return nil, err
 		}
@@ -184,7 +251,7 @@ func (q *Queries) FindUndeliveredOutboxEvents(ctx context.Context, limit int32) 
 }
 
 const getOutboxEventByIDForWebhook = `-- name: GetOutboxEventByIDForWebhook :one
-SELECT id, provider_id, environment_id, aggregate_type, aggregate_id, event_type, payload, payload_hash, transaction_id, status, attempts, created_at, published_at, next_attempt_at FROM outbox_events
+SELECT id, provider_id, environment_id, aggregate_type, aggregate_id, event_type, payload, payload_hash, transaction_id, status, attempts, created_at, published_at, next_attempt_at, last_error FROM outbox_events
 WHERE id = $1 AND provider_id = $2 AND environment_id = $3
 `
 
@@ -212,6 +279,40 @@ func (q *Queries) GetOutboxEventByIDForWebhook(ctx context.Context, arg GetOutbo
 		&i.CreatedAt,
 		&i.PublishedAt,
 		&i.NextAttemptAt,
+		&i.LastError,
+	)
+	return i, err
+}
+
+const getWebhookDelivery = `-- name: GetWebhookDelivery :one
+SELECT id, endpoint_id, outbox_event_id, provider_id, environment_id, status, attempts, response_status, response_body, next_attempt_at, delivered_at, created_at FROM webhook_deliveries
+WHERE id = $1 AND provider_id = $2
+`
+
+type GetWebhookDeliveryParams struct {
+	ID         uuid.UUID `json:"id"`
+	ProviderID uuid.UUID `json:"provider_id"`
+}
+
+// Scoped lookup used to pre-check a replay: the row must belong to the
+// provider named in the URL so a stale/mismatched delivery id cannot be
+// replayed onto the wrong tenant.
+func (q *Queries) GetWebhookDelivery(ctx context.Context, arg GetWebhookDeliveryParams) (WebhookDelivery, error) {
+	row := q.db.QueryRow(ctx, getWebhookDelivery, arg.ID, arg.ProviderID)
+	var i WebhookDelivery
+	err := row.Scan(
+		&i.ID,
+		&i.EndpointID,
+		&i.OutboxEventID,
+		&i.ProviderID,
+		&i.EnvironmentID,
+		&i.Status,
+		&i.Attempts,
+		&i.ResponseStatus,
+		&i.ResponseBody,
+		&i.NextAttemptAt,
+		&i.DeliveredAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -498,4 +599,46 @@ func (q *Queries) MarkWebhookRetry(ctx context.Context, arg MarkWebhookRetryPara
 		arg.NextAttemptAt,
 	)
 	return err
+}
+
+const replayWebhookDelivery = `-- name: ReplayWebhookDelivery :one
+UPDATE webhook_deliveries
+SET status = 'pending',
+    attempts = 0,
+    next_attempt_at = NULL,
+    response_status = NULL,
+    response_body = NULL,
+    delivered_at = NULL
+WHERE id = $1 AND provider_id = $2
+  AND status IN ('dead_letter', 'failed')
+RETURNING id, endpoint_id, outbox_event_id, provider_id, environment_id, status, attempts, response_status, response_body, next_attempt_at, delivered_at, created_at
+`
+
+type ReplayWebhookDeliveryParams struct {
+	ID         uuid.UUID `json:"id"`
+	ProviderID uuid.UUID `json:"provider_id"`
+}
+
+// Requeue a terminal delivery (dead_letter | failed) as 'pending' for
+// immediate redelivery: attempts reset, backoff cleared, response trace
+// wiped, delivered_at cleared. The status guard makes the update optimistic —
+// concurrent replays serialize and only the first one applies.
+func (q *Queries) ReplayWebhookDelivery(ctx context.Context, arg ReplayWebhookDeliveryParams) (WebhookDelivery, error) {
+	row := q.db.QueryRow(ctx, replayWebhookDelivery, arg.ID, arg.ProviderID)
+	var i WebhookDelivery
+	err := row.Scan(
+		&i.ID,
+		&i.EndpointID,
+		&i.OutboxEventID,
+		&i.ProviderID,
+		&i.EnvironmentID,
+		&i.Status,
+		&i.Attempts,
+		&i.ResponseStatus,
+		&i.ResponseBody,
+		&i.NextAttemptAt,
+		&i.DeliveredAt,
+		&i.CreatedAt,
+	)
+	return i, err
 }

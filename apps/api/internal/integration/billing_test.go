@@ -6,10 +6,12 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/billing"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/circuitbreaker"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/outbox"
 	"github.com/google/uuid"
 )
@@ -113,10 +115,10 @@ func createCustomerAndSubscription(t *testing.T, apiKey, catalogVersionID string
 
 	subExt := "sub-" + uuid.NewString()[:8]
 	status, body = apiReq(t, "POST", "/v1/subscriptions", apiKey, map[string]any{
-		"external_id":         subExt,
+		"external_id":          subExt,
 		"customer_external_id": custExt,
-		"catalog_version_id":  catalogVersionID,
-		"plan_code":           "starter",
+		"catalog_version_id":   catalogVersionID,
+		"plan_code":            "starter",
 	})
 	if status != http.StatusCreated {
 		t.Fatalf("create subscription: status %d, body %v", status, body)
@@ -552,12 +554,185 @@ func TestBillingCrossTenantIsolation(t *testing.T) {
 
 	// Provider B cannot create a subscription with A's catalog_version_id.
 	status, body = apiReq(t, "POST", "/v1/subscriptions", keyB, map[string]any{
-		"external_id":         "evil-sub",
+		"external_id":          "evil-sub",
 		"customer_external_id": custExtB,
-		"catalog_version_id":  versionA,
-		"plan_code":           "starter",
+		"catalog_version_id":   versionA,
+		"plan_code":            "starter",
 	})
 	if status == http.StatusCreated {
 		t.Fatal("provider B must not create subscription with provider A's catalog version")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Catalog publishing is gated on the provider lifecycle: a suspended (or
+// otherwise non-serving) provider must not be able to publish a catalog
+// version, because publishing is an external product commitment.
+// ---------------------------------------------------------------------------
+
+func TestCatalogPublishRequiresActiveProvider(t *testing.T) {
+	slug := "cat-gate-" + uuid.NewString()[:8]
+	providerID, apiKey := createProviderAPI(t, slug)
+
+	// Prepare a validated draft while the provider is fully active.
+	status, body := apiReq(t, "POST", "/v1/catalog/versions", apiKey, map[string]any{})
+	if status != http.StatusCreated {
+		t.Fatalf("create catalog version: status %d, body %v", status, body)
+	}
+	versionID := body["version"].(map[string]any)["id"].(string)
+
+	status, body = apiReq(t, "PUT", "/v1/catalog/versions/"+versionID+"/content", apiKey, catalogContent())
+	if status != http.StatusOK {
+		t.Fatalf("replace content: status %d, body %v", status, body)
+	}
+	status, body = apiReq(t, "POST", "/v1/catalog/versions/"+versionID+"/validate", apiKey, nil)
+	if status != http.StatusOK {
+		t.Fatalf("validate: status %d, body %v", status, body)
+	}
+
+	// Suspend the provider (TEST_ACTIVE → LIVE_REVIEW → SUSPENDED).
+	transitionTo(t, providerID, "LIVE_REVIEW")
+	transitionTo(t, providerID, "SUSPENDED")
+
+	// Publish must be refused while the provider is suspended.
+	status, body = apiReq(t, "POST", "/v1/catalog/versions/"+versionID+"/publish", apiKey, nil)
+	if status != http.StatusConflict {
+		t.Fatalf("publish on suspended provider: status %d, want 409, body %v", status, body)
+	}
+	if code := errorCode(body); code != "provider_not_writable" {
+		t.Fatalf("code = %q, want provider_not_writable", code)
+	}
+
+	// Once the provider is serving traffic again the same draft can be
+	// published: the gate must be state-based, not a one-way trap.
+	transitionTo(t, providerID, "LIVE_ACTIVE")
+	status, body = apiReq(t, "POST", "/v1/catalog/versions/"+versionID+"/publish", apiKey, nil)
+	if status != http.StatusOK {
+		t.Fatalf("publish after reactivation: status %d, want 200, body %v", status, body)
+	}
+	if body["version"].(map[string]any)["state"] != "published" {
+		t.Fatalf("state = %v, want published", body["version"].(map[string]any)["state"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The provider API is read-only while the provider is suspended: every write
+// method is rejected with 409 provider_not_writable while reads still pass,
+// and writes are restored once the provider is serving traffic again.
+// ---------------------------------------------------------------------------
+
+func TestSuspendedProviderWritesBlocked(t *testing.T) {
+	slug := "write-gate-" + uuid.NewString()[:8]
+	providerID, apiKey := createProviderAPI(t, slug)
+	transitionTo(t, providerID, "LIVE_REVIEW")
+	transitionTo(t, providerID, "SUSPENDED")
+
+	// Reads still work while suspended (inspection / audit).
+	status, body := apiReq(t, "GET", "/v1/whoami", apiKey, nil)
+	if status != http.StatusOK {
+		t.Fatalf("whoami while suspended: status %d, body %v", status, body)
+	}
+
+	// Every write method is rejected with 409 provider_not_writable.
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{"POST", "/v1/catalog/versions"},
+		{"POST", "/v1/subscriptions"},
+		{"POST", "/v1/usage/ingest"},
+		{"POST", "/v1/credentials"},
+	} {
+		status, body := apiReq(t, tc.method, tc.path, apiKey, nil)
+		if status != http.StatusConflict {
+			t.Fatalf("%s %s on suspended provider: status %d, want 409, body %v", tc.method, tc.path, status, body)
+		}
+		if code := errorCode(body); code != "provider_not_writable" {
+			t.Fatalf("%s %s: code = %q, want provider_not_writable", tc.method, tc.path, code)
+		}
+	}
+
+	// Writes come back once the provider is serving traffic again.
+	transitionTo(t, providerID, "LIVE_ACTIVE")
+	status, body = apiReq(t, "POST", "/v1/catalog/versions", apiKey, map[string]any{})
+	if status != http.StatusCreated {
+		t.Fatalf("create catalog version after reactivation: status %d, want 201, body %v", status, body)
+	}
+}
+
+// countingFailingAdapter is a billing adapter that always fails but counts
+// every invocation, for asserting that an open circuit breaker stops calls
+// to a dead billing engine.
+type countingFailingAdapter struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (a *countingFailingAdapter) Name() string { return "counting-failing" }
+
+func (a *countingFailingAdapter) DeliverUsageEvent(context.Context, billing.UsageEvent) error {
+	a.mu.Lock()
+	a.calls++
+	a.mu.Unlock()
+	return errors.New("simulated billing engine outage")
+}
+
+func (a *countingFailingAdapter) ListInvoices(context.Context, int32) ([]billing.InvoiceSync, int32, error) {
+	return nil, 0, nil
+}
+
+func (a *countingFailingAdapter) Calls() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.calls
+}
+
+// TestOutboxRelayCircuitBreakerFastFails verifies that once the billing
+// engine trips the relay's circuit breaker open, pending outbox events are
+// fast-failed (scheduled for backoff retry) without a single real adapter
+// call — the relay stops hammering a dead dependency and lets it recover.
+func TestOutboxRelayCircuitBreakerFastFails(t *testing.T) {
+	providerID, apiKey := createProviderAPI(t, "obx-cb-"+uuid.NewString()[:8])
+	versionID := createPublishedCatalog(t, apiKey)
+	custExt, _ := createCustomerAndSubscription(t, apiKey, versionID)
+
+	// Two usage events → two consecutive adapter failures trip the breaker
+	// (FailureThreshold=2).
+	for range 2 {
+		txID := "obx-cb-tx-" + uuid.NewString()[:8]
+		status, _ := ingestUsage(t, apiKey, txID, custExt, "api_calls",
+			time.Now().UTC().Format(time.RFC3339Nano), map[string]any{"count": 1})
+		if status != http.StatusCreated {
+			t.Fatalf("ingest usage: status %d", status)
+		}
+	}
+
+	adapter := &countingFailingAdapter{}
+	relay := newTestRelay(adapter)
+	relay.WithCircuitBreaker(circuitbreaker.Options{
+		FailureThreshold: 2,
+		OpenTimeout:      5 * time.Minute, // stays open for the whole test
+	})
+
+	if err := relay.DrainOnce(testCtx); err != nil {
+		t.Fatalf("drain: %v", err)
+	}
+	// Both events failed: exactly 2 adapter calls, breaker now open.
+	if got := adapter.Calls(); got != 2 {
+		t.Fatalf("adapter calls = %d, want 2", got)
+	}
+
+	// Reset the retry backoff so the events are claimable again; the open
+	// breaker must fast-fail them without calling the adapter.
+	if _, err := superPool.Exec(testCtx,
+		"UPDATE outbox_events SET next_attempt_at = now() - interval '1 minute' WHERE event_type = 'usage.accepted' AND provider_id = $1",
+		providerID); err != nil {
+		t.Fatalf("reset outbox retry: %v", err)
+	}
+	if err := relay.DrainOnce(testCtx); err != nil {
+		t.Fatalf("drain after trip: %v", err)
+	}
+	if got := adapter.Calls(); got != 2 {
+		t.Fatalf("adapter calls = %d while breaker open, want 2 (must fast-fail)", got)
 	}
 }

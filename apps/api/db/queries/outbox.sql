@@ -17,7 +17,8 @@ LIMIT $3;
 -- name: CountUnconfirmedOutbox :one
 -- Counts outbox events that are pending or failed (not yet delivered)
 -- for a provider. Used by CompleteFailover to report replay counts
--- (spec Section 14: "切换后重放未确认 Outbox").
+-- (spec Section 14: "切换后重放未确认 Outbox"). Dead-lettered events are
+-- terminal and deliberately excluded from replay.
 SELECT COUNT(*) FROM outbox_events
 WHERE provider_id = $1 AND status IN ('pending', 'failed');
 
@@ -45,7 +46,8 @@ LIMIT $6;
 -- caller delivers events OUTSIDE this transaction and then marks each
 -- event's outcome (published / retry / dead-letter) in a separate short
 -- transaction. If the relay crashes, the 120s lease expires and another
--- instance re-claims — at-least-once delivery.
+-- instance re-claims — at-least-once delivery. Terminal dead-lettered rows
+-- (status='dead_letter') are never claimed.
 UPDATE outbox_events
 SET next_attempt_at = now() + interval '120 seconds'
 WHERE id IN (
@@ -68,4 +70,36 @@ UPDATE outbox_events SET status = 'failed', attempts = attempts + 1 WHERE id = $
 UPDATE outbox_events SET status = 'failed', attempts = attempts + 1, next_attempt_at = $2 WHERE id = $1;
 
 -- name: MarkOutboxEventDeadLetter :exec
-UPDATE outbox_events SET status = 'failed', attempts = attempts + 1, next_attempt_at = NULL WHERE id = $1;
+-- Terminal failure: permanently fails an event (max attempts reached or an
+-- unparseable payload). status='dead_letter' is a true terminal state — the
+-- relay never re-claims dead-lettered rows (see ClaimDueOutboxEvents) and the
+-- reconciliation check CountDeadLetterOutbox surfaces them. last_error records
+-- the final failure cause for operator visibility.
+UPDATE outbox_events
+SET status = 'dead_letter',
+    attempts = attempts + 1,
+    next_attempt_at = NULL,
+    last_error = $2
+WHERE id = $1;
+
+-- name: CountOutboxEventsByStatus :many
+-- Backlog gauge for Prometheus: total outbox_events rows grouped by
+-- delivery status (pending / failed / published / dead_letter). Refreshed
+-- periodically by the metrics backlog reporter.
+SELECT status, COUNT(*)::bigint AS count
+FROM outbox_events
+GROUP BY status;
+
+-- name: DeleteExpiredOutboxEvents :execrows
+-- Retention policy: delete outbox events that have left the delivery pipeline
+-- (published, or terminal dead-lettered, or failed with retries exhausted —
+-- next_attempt_at NULL) older than the retention cutoff. Pending events and
+-- failed events still inside their retry window (next_attempt_at set) are never
+-- deleted: the relay may still claim and deliver them. Terminal webhook
+-- deliveries referencing these events are swept first by
+-- DeleteExpiredWebhookDeliveries.
+DELETE FROM outbox_events
+WHERE created_at < sqlc.arg(cutoff)
+  AND (status = 'published'
+    OR status = 'dead_letter'
+    OR (status = 'failed' AND next_attempt_at IS NULL));
