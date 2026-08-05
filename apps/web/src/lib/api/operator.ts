@@ -900,6 +900,49 @@ export async function deleteCatalogPlan(
   );
 }
 
+/** 列出套餐当前 draft 的权益授权（Policies 页）。 */
+export async function listPlanEntitlements(
+  providerId: string,
+  env: "test" | "live",
+  code: string,
+): Promise<EntitlementGrant[]> {
+  const data = await request<{ entitlements?: unknown }>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/catalog/plans/${encodeURIComponent(code)}/entitlements?env=${env}`,
+  );
+  if (!Array.isArray(data.entitlements)) return [];
+  return data.entitlements
+    .map(asEntitlementGrant)
+    .filter((g): g is EntitlementGrant => g !== null);
+}
+
+/** 创建或更新一条 plan 级权益授权（Policies 页）。 */
+export async function setPlanEntitlement(
+  providerId: string,
+  env: "test" | "live",
+  code: string,
+  key: string,
+  input: EntitlementInput,
+): Promise<EntitlementGrant | null> {
+  const data = await request<{ entitlement?: unknown }>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/catalog/plans/${encodeURIComponent(code)}/entitlements/${encodeURIComponent(key)}?env=${env}`,
+    { method: "PUT", body: JSON.stringify(input) },
+  );
+  return asEntitlementGrant(data.entitlement);
+}
+
+/** 删除一条 plan 级权益授权（Policies 页）。 */
+export async function deletePlanEntitlement(
+  providerId: string,
+  env: "test" | "live",
+  code: string,
+  key: string,
+): Promise<void> {
+  await request<unknown>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/catalog/plans/${encodeURIComponent(code)}/entitlements/${encodeURIComponent(key)}?env=${env}`,
+    { method: "DELETE" },
+  );
+}
+
 export async function listSubscriptions(
   providerId: string,
 ): Promise<Subscription[]> {

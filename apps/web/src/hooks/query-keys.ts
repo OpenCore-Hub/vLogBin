@@ -14,4 +14,6 @@ export const consoleQueryKeys = {
   ) => ["console", "events", providerId, env, type, aggregateType] as const,
   audit: (providerId: string | null, filters: Record<string, string>) =>
     ["console", "audit", providerId, filters] as const,
+  policies: (providerId: string | null, env: Env, planCode: string) =>
+    ["console", "policies", providerId, env, planCode] as const,
 } as const;
