@@ -383,7 +383,7 @@
 | M0 基座 | 目录 / tokens / 认证 / 官网 / Console 布局 / Ops 迁移 / 引导 | ✅ 已完成（静态验收，待提交） |
 | M1 控制面 API | `apps/api` 新增 Console 端点（最大前置依赖） | ✅ 已完成（候选 29-33） |
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
-| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 44） |
+| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 45） |
 
 ### M0 — 基座（✅ 已完成，待提交）
 
@@ -518,12 +518,19 @@
   - 前端：`/console/settings` 三个心智页签（基础 = workspace 名称/slug，workspace 优先于 provider 映射；安全 = 自定义域名注册/验证/吊销/删除 + Token 复制；高级 = email/sms 通知渠道表单 + 删除）；侧边栏「工作区」新增「设置」
   - §11：openapi.yaml 新增 `NotificationConfig` / `NotificationConfigInput` schemas + 6 处 operator paths，YAML 引用完整性通过（54 paths / 63 schemas，missing=[]）
   - 验证：集成测试 `operator_settings_test.go` +3（域名生命周期 / 通知配置生命周期 / 校验矩阵）✅；Go build / vet / 全量单测 ✅；全量集成回归（跳过已知 flaky `TestOutboxRelayDeliversUsage`）✅；tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **43/43 全绿** ✅（新增 `16-settings.spec.ts`）
+- [x] 运营商台增强：审核队列、风险、Cell 运维（`/ops` M3）— 候选 45
+  - `/ops` 重构为三个页签路由：`/ops` Providers（保留原有列表与新建入口，保持轻量）/ `/ops/reviews` 审核 / `/ops/cells` Cell 运维
+  - 审核页签：LIVE_REVIEW 且无 approved 审核的 Provider 待审队列 + 8 项 go-live checklist 风险审核提交弹窗；风险审核历史；JIT 支持会话列表
+  - Cell 运维页签：Cell 列表 + 新建 Cell（region/type/status）+ 状态更新弹窗 + Provider→Cell 分配表单；故障切换与 Cell 迁移跨 Provider 汇总表
+  - 前端类型/客户端补齐：`RiskReview` / `SupportSession` / `Cell` / `CellFailover` / `CellMigration` + `listRiskReviews` / `submitRiskReview` / `listSupportSessions` / `listCells` / `createCell` / `updateCellStatus` / `assignProviderCell` / `listFailovers` / `listCellMigrations`
+  - §11：openapi.yaml 新增 `RiskReview` / `CellFailover` / `CellMigration` schemas，YAML 引用完整性校验通过
+  - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **45/45 全绿** ✅（新增 `17-ops.spec.ts`：页签路由 + 新建 Cell）
 
 ### M3 — 完善面（🔄 进行中）
 
 - [x] Developers：API Keys / Webhooks / Events 页面（§8 表标 M2，推进以 §9 路线图为准，依赖 M1 端点）— 候选 43
 - [x] Settings 页面（§6.6.2 按心智分组：基础 / 安全 / 高级）— 候选 44
-- [ ] 运营商台增强：审核队列、风险、Cell 运维（`/ops` M3）
+- [x] 运营商台增强：审核队列、风险、Cell 运维（`/ops` M3）— 候选 45
 - [ ] 客户门户 Portal（§8.2：账单 / 用量 / 支付；客户级 token 数据域隔离；独立客户会话）
 - [ ] E2E 全量 + 暗色主题打磨 + 审计日志前端
 - [ ] 客户端 React Query 缓存（staleTime）+ `hooks/` 扩充（useActionState 封装）

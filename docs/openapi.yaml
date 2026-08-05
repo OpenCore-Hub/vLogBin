@@ -217,6 +217,38 @@ components:
         expires_at:
           type: string
           format: date-time
+
+    RiskReview:
+      type: object
+      description: Provider go-live 风险审核记录（operator 内部评级）
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+        risk_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        checks:
+          type: object
+          additionalProperties:
+            type: boolean
+        decision:
+          type: string
+          enum: [approved, rejected]
+        reason:
+          type: string
+        reviewed_by:
+          type: string
+        reviewed_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
     
     TeamMember:
       type: object
@@ -398,6 +430,87 @@ components:
         status:
           type: string
           enum: [active, draining, inactive]
+
+    CellFailover:
+      type: object
+      description: Cell 故障切换记录
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+        from_cell_id:
+          type: string
+          format: uuid
+        to_cell_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        reason:
+          type: string
+        initiated_by:
+          type: string
+        fencing_token:
+          type: string
+        replayed_usage:
+          type: integer
+        replayed_outbox:
+          type: integer
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+
+    CellMigration:
+      type: object
+      description: Cell 迁移任务
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+        from_cell_id:
+          type: string
+          format: uuid
+        to_cell_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        scheduled_at:
+          type: string
+          format: date-time
+        precheck_passed:
+          type: boolean
+        data_integrity_hash:
+          type: string
+        record_count:
+          type: integer
+        reason:
+          type: string
+        initiated_by:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        error_message:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
     
     MeteredPricingRule:
       type: object
