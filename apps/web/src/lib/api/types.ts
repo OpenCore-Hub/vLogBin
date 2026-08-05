@@ -186,6 +186,25 @@ export interface CustomerDetail {
   invoices: Invoice[];
 }
 
+/** 客户门户 Dashboard（仅当前客户自己的数据 + workspace 品牌）。 */
+export interface PortalDashboard {
+  provider_name: string;
+  provider_slug: string;
+  customer: Customer;
+  subscriptions: Subscription[];
+  usage_events: UsageEvent[];
+  invoices: Invoice[];
+}
+
+export interface PortalSessionInfo {
+  valid: boolean;
+  provider_id: string;
+  environment_id: string;
+  environment_kind: string;
+  customer_external_id: string;
+  expires_at?: string;
+}
+
 /** 用量事件（operator 视图；openapi 中对应 UsageEventRecord，同名 UsageEvent 为 provider 域入参）。 */
 export interface UsageEvent {
   id: string;
