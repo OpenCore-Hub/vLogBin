@@ -383,7 +383,7 @@
 | M0 基座 | 目录 / tokens / 认证 / 官网 / Console 布局 / Ops 迁移 / 引导 | ✅ 已完成（静态验收，待提交） |
 | M1 控制面 API | `apps/api` 新增 Console 端点（最大前置依赖） | ✅ 已完成（候选 29-33） |
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
-| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 47） |
+| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 48） |
 
 ### M0 — 基座（✅ 已完成，待提交）
 
@@ -540,6 +540,13 @@
   - 组件升级：Button 全圆角 + 品牌阴影 + active scale；DataTable / Dialog / EmptyState / SuccessPanel / Input 全部 2xl 圆角与内高光；Sidebar 激活项品牌岛式高亮 + 半透明毛玻璃；Topbar 柔和阴影
   - 官网：悬浮玻璃导航岛、非对称 Editorial Hero、Bento 能力网格、编辑式三步流程、双圈终端窗口、CTA 深色玻璃容器；全页 staggered reveal 动效（`animate-reveal[-delay-*]`，仅 transform/opacity/filter，尊重 reduced-motion）
   - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **46/46 全绿** ✅
+- [x] 审计日志前端（E2E 全量 + 暗色主题打磨已完成于候选 47）— 候选 48
+  - `/console/audit`：审计事件 DataTable（keyset 分页 + 加载更多 + 动作/执行者/目标/时间窗筛选）
+  - 审计哈希链面板：事件总数 / 尾事件 / 最近锚点 / 尾哈希 + 一键验证完整性（成功显示链完整，失败显示断点与原因）
+  - 近 7 天统计卡：总事件、高频动作、执行者类型
+  - client 补齐：`queryAuditEvents` / `getAuditStats` / `getAuditChain` / `verifyAuditChain`；侧边栏新增「审计日志」
+  - §11：openapi.yaml 新增 `AuditStats` / `AuditCount` / `AuditSeriesPoint` / `AuditChainState` / `AuditChainVerifyResult` schemas + 4 paths，YAML 引用完整性通过（61 paths / 74 schemas，missing=[]）
+  - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **47/47 全绿** ✅（新增 `19-audit.spec.ts`）
 
 ### M3 — 完善面（🔄 进行中）
 
@@ -548,6 +555,7 @@
 - [x] 运营商台增强：审核队列、风险、Cell 运维（`/ops` M3）— 候选 45
 - [x] 客户门户 Portal（§8.2：账单 / 用量 / 支付；客户级 token 数据域隔离；独立客户会话）— 候选 46
 - [x] 全球视觉天花板：去模版化 + 高端质感 + 品牌动效 — 候选 47
+- [x] E2E 全量 + 暗色主题打磨 + 审计日志前端 — 候选 48
 - [ ] E2E 全量 + 暗色主题打磨 + 审计日志前端
 - [ ] 客户端 React Query 缓存（staleTime）+ `hooks/` 扩充（useActionState 封装）
 

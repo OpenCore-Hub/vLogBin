@@ -999,6 +999,90 @@ components:
           type: string
           format: date-time
 
+    AuditStats:
+      type: object
+      properties:
+        total:
+          type: integer
+          format: int64
+        by_action:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditCount'
+        by_actor_type:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditCount'
+        series:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditSeriesPoint'
+
+    AuditCount:
+      type: object
+      properties:
+        key:
+          type: string
+        count:
+          type: integer
+          format: int64
+
+    AuditSeriesPoint:
+      type: object
+      properties:
+        bucket:
+          type: string
+          format: date-time
+        count:
+          type: integer
+          format: int64
+
+    AuditChainState:
+      type: object
+      properties:
+        total_events:
+          type: integer
+          format: int64
+        tail_hash:
+          type: string
+          nullable: true
+        tail_event_id:
+          type: integer
+          format: int64
+          nullable: true
+        last_anchor_id:
+          type: integer
+          format: int64
+        last_anchor_event_id:
+          type: integer
+          format: int64
+        last_anchor_hash:
+          type: string
+        last_anchor_at:
+          type: string
+          format: date-time
+
+    AuditChainVerifyResult:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        verified_from:
+          type: integer
+          format: int64
+        verified_to:
+          type: integer
+          format: int64
+        verified_count:
+          type: integer
+          format: int64
+        broken_at:
+          type: integer
+          format: int64
+          nullable: true
+        reason:
+          type: string
+
     Customer:
       type: object
       description: 客户（operator 视图）
@@ -2130,6 +2214,146 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/AuditEvent'
+
+  /operator/providers/{provider_id}/audit:
+    get:
+      tags: [Operator]
+      summary: List audit events with keyset pagination and filters
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: action
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: actor_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: actor_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: target_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: target_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Audit page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  audit_events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditEvent'
+                  next_cursor:
+                    type: integer
+                    format: int64
+                    nullable: true
+
+  /operator/providers/{provider_id}/audit/stats:
+    get:
+      tags: [Operator]
+      summary: Audit dashboard aggregates (bounded window required)
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: granularity
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [hour, day, week]
+      responses:
+        '200':
+          description: Audit stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditStats'
+
+  /operator/audit/chain:
+    get:
+      tags: [Operator]
+      summary: Audit hash chain state
+      responses:
+        '200':
+          description: Chain state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditChainState'
+
+  /operator/audit/chain/verify:
+    get:
+      tags: [Operator]
+      summary: Verify the audit hash chain
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditChainVerifyResult'
 
   /operator/providers/{provider_id}/credentials:
     get:
