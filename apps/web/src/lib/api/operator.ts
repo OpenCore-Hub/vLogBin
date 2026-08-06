@@ -63,6 +63,7 @@ import type {
   OverviewTrends,
   TrendPoint,
   AnalyticsDashboard,
+  ReconciliationResult,
   Capability,
   CustomDomain,
   WebhookEndpoint,
@@ -122,6 +123,7 @@ export type {
   OverviewTrends,
   TrendPoint,
   AnalyticsDashboard,
+  ReconciliationResult,
   Capability,
   CustomDomain,
   WebhookEndpoint,
@@ -922,6 +924,31 @@ export async function getAnalyticsDashboard(
       : [],
     generated_at: str(data.generated_at),
   };
+}
+
+/** 最近对账结果（operator 全局，最多 100 条）。 */
+export async function listReconciliationResults(): Promise<ReconciliationResult[]> {
+  const data = await request<{ reconciliation_results?: unknown }>(
+    "/v1/operator/reconciliation-results",
+  );
+  if (!Array.isArray(data.reconciliation_results)) return [];
+  return data.reconciliation_results
+    .map((raw) => {
+      const rec = asRecord(raw);
+      if (!rec) return null;
+      return {
+        id: typeof rec.id === "string" ? rec.id : "",
+        check_name: typeof rec.check_name === "string" ? rec.check_name : "",
+        status: typeof rec.status === "string" ? rec.status : "error",
+        expected_count: Number(rec.expected_count) || 0,
+        actual_count: Number(rec.actual_count) || 0,
+        drift_count: Number(rec.drift_count) || 0,
+        details: rec.details,
+        checked_at:
+          typeof rec.checked_at === "string" ? rec.checked_at : undefined,
+      } as ReconciliationResult;
+    })
+    .filter((r): r is ReconciliationResult => r !== null);
 }
 
 export async function getProvider(

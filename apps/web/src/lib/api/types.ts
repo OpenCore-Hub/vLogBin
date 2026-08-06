@@ -640,6 +640,18 @@ export interface AnalyticsDashboard {
   generated_at: string;
 }
 
+/** 对账结果（operator 全局财务/用量一致性检查）。 */
+export interface ReconciliationResult {
+  id: string;
+  check_name: string;
+  status: string; // "ok" | "drift" | "error"
+  expected_count: number;
+  actual_count: number;
+  drift_count: number;
+  details: unknown;
+  checked_at: string;
+}
+
 // ===== 结果 / 输入类型 =====
 
 /** 创建 / 激活 Provider 的结果。 */
