@@ -5,6 +5,14 @@ INSERT INTO workspaces (slug, name, created_by)
 VALUES ($1, $2, $3)
 RETURNING *;
 
+-- name: CreateWorkspaceIfFree :one
+-- Slug allocation with transactional safety: a conflicting slug leaves the
+-- transaction usable so callers can fall back to a suffixed candidate.
+INSERT INTO workspaces (slug, name, created_by)
+VALUES ($1, $2, $3)
+ON CONFLICT (slug) DO NOTHING
+RETURNING *;
+
 -- name: GetWorkspaceByID :one
 SELECT * FROM workspaces WHERE id = $1;
 

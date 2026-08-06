@@ -52,6 +52,35 @@ func (q *Queries) CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams
 	return i, err
 }
 
+const createWorkspaceIfFree = `-- name: CreateWorkspaceIfFree :one
+INSERT INTO workspaces (slug, name, created_by)
+VALUES ($1, $2, $3)
+ON CONFLICT (slug) DO NOTHING
+RETURNING id, slug, name, created_by, created_at, updated_at
+`
+
+type CreateWorkspaceIfFreeParams struct {
+	Slug      string `json:"slug"`
+	Name      string `json:"name"`
+	CreatedBy string `json:"created_by"`
+}
+
+// Slug allocation with transactional safety: a conflicting slug leaves the
+// transaction usable so callers can fall back to a suffixed candidate.
+func (q *Queries) CreateWorkspaceIfFree(ctx context.Context, arg CreateWorkspaceIfFreeParams) (Workspace, error) {
+	row := q.db.QueryRow(ctx, createWorkspaceIfFree, arg.Slug, arg.Name, arg.CreatedBy)
+	var i Workspace
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createWorkspaceMember = `-- name: CreateWorkspaceMember :one
 INSERT INTO workspace_members (workspace_id, user_sub, role)
 VALUES ($1, $2, $3)

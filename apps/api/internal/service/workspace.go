@@ -14,7 +14,6 @@ import (
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store/storegen"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // slugInvalidChars matches characters that are not allowed in a workspace
@@ -181,12 +180,11 @@ func createWorkspaceWithFreeSlug(ctx context.Context, q *store.Queries, slug, na
 	}
 	var lastErr error
 	for _, cand := range candidates {
-		ws, err := q.CreateWorkspace(ctx, storegen.CreateWorkspaceParams{Slug: cand, Name: name, CreatedBy: createdBy})
+		ws, err := q.CreateWorkspaceIfFree(ctx, storegen.CreateWorkspaceIfFreeParams{Slug: cand, Name: name, CreatedBy: createdBy})
 		if err == nil {
 			return ws, nil
 		}
-		var pgErr *pgconn.PgError
-		if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+		if !isNoRows(err) {
 			return storegen.Workspace{}, err
 		}
 		lastErr = err
