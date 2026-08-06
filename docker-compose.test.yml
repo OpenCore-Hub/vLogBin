@@ -82,8 +82,8 @@ services:
       ZITADEL_FIRSTINSTANCE_PATPATH: /zitadel/bootstrap/platform-sa.pat
       # --- Login V2 configuration (requires zitadel-login container) ---
       ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "true"
-      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_BASEURI: http://localhost:8080/ui/v2/login/
-      ZITADEL_OIDC_DEFAULTLOGINURLV2: http://localhost:8080/ui/v2/login/login?authRequest=
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_BASEURI: ${ZITADEL_CUSTOM_LOGIN_BASE_URI:-http://localhost:8080/ui/v2/login/}
+      ZITADEL_OIDC_DEFAULTLOGINURLV2: ${ZITADEL_CUSTOM_LOGIN_URL:-http://localhost:8080/ui/v2/login/login?authRequest=}
       ZITADEL_OIDC_DEFAULTLOGOUTURLV2: http://localhost:8080/ui/v2/login/logout?post_logout_redirect=
       ZITADEL_SAML_DEFAULTLOGINURLV2: http://localhost:8080/ui/v2/login/login?samlRequest=
       # --- Login client PAT (auto-created by start-from-init) ---

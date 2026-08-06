@@ -47,6 +47,14 @@ function errorState(
   err: unknown,
   fallback: string,
 ): CustomSignupActionState {
+  if (
+    err instanceof Error &&
+    "digest" in err &&
+    typeof err.digest === "string" &&
+    err.digest.startsWith("NEXT_REDIRECT")
+  ) {
+    throw err;
+  }
   if (err instanceof ZitadelApiError) {
     const message =
       err.code === "conflict"
