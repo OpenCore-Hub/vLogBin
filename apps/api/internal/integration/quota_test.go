@@ -33,9 +33,9 @@ func TestQuotaReserveCommitRelease(t *testing.T) {
 
 	// Reserve 300.
 	status, body = apiReq(t, "POST", "/v1/subscriptions/"+subID+"/quota/reserve", apiKey, map[string]any{
-		"quota_key":       "api_calls",
-		"amount":          300,
-		"reservation_id":  "res-1",
+		"quota_key":          "api_calls",
+		"amount":             300,
+		"reservation_id":     "res-1",
 		"expires_in_seconds": 0,
 	})
 	if status != http.StatusCreated {
@@ -488,5 +488,71 @@ func TestQuotaListReservations(t *testing.T) {
 	reservations := body["quota_reservations"].([]any)
 	if len(reservations) != 2 {
 		t.Fatalf("expected 2 reservations, got %d", len(reservations))
+	}
+}
+
+func TestOperatorQuotaControlPlane(t *testing.T) {
+	providerID, apiKey := createProviderAPI(t, "opq-"+uuid.NewString()[:8])
+	versionID := createPublishedCatalog(t, apiKey)
+	_, subID := createCustomerAndSubscription(t, apiKey, versionID)
+	base := "/v1/operator/providers/" + providerID + "/subscriptions/" + subID
+
+	// Provider configures a hard limit and reserves quota through the API.
+	status, body := apiReq(t, "PUT", "/v1/subscriptions/"+subID+"/quota-limits/api_calls", apiKey, map[string]any{
+		"limit_value": 1000,
+		"period_type": "monthly",
+	})
+	if status != http.StatusOK {
+		t.Fatalf("set limit: status %d, body %v", status, body)
+	}
+	status, _ = apiReq(t, "POST", "/v1/subscriptions/"+subID+"/quota/reserve", apiKey, map[string]any{
+		"quota_key":      "api_calls",
+		"amount":         300,
+		"reservation_id": "opq-res-1",
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("reserve: status %d", status)
+	}
+
+	// Operator overview returns the limit with live usage in one request.
+	status, body = apiReq(t, "GET", base+"/quota?env=test", operatorToken, nil)
+	if status != http.StatusOK {
+		t.Fatalf("operator quota overview: status %d, body %v", status, body)
+	}
+	limits := body["quota_limits"].([]any)
+	if len(limits) != 1 {
+		t.Fatalf("quota limits = %d, want 1; body %v", len(limits), body)
+	}
+	limit := limits[0].(map[string]any)
+	if limit["quota_key"] != "api_calls" {
+		t.Fatalf("quota_key = %v, want api_calls", limit["quota_key"])
+	}
+	if int64(limit["limit_value"].(float64)) != 1000 ||
+		int64(limit["committed"].(float64)) != 0 ||
+		int64(limit["reserved"].(float64)) != 300 {
+		t.Fatalf("usage = %v, want limit=1000 committed=0 reserved=300", limit)
+	}
+
+	// Operator can see the reservation ledger.
+	status, body = apiReq(t, "GET", base+"/quota/reservations?env=test", operatorToken, nil)
+	if status != http.StatusOK {
+		t.Fatalf("operator reservations: status %d, body %v", status, body)
+	}
+	reservations := body["quota_reservations"].([]any)
+	if len(reservations) != 1 {
+		t.Fatalf("reservations = %d, want 1", len(reservations))
+	}
+
+	// Operator can update the limit and delete it.
+	status, body = apiReq(t, "PUT", base+"/quota-limits/api_calls?env=test", operatorToken, map[string]any{
+		"limit_value": 2000,
+		"period_type": "monthly",
+	})
+	if status != http.StatusOK || int64(body["limit_value"].(float64)) != 2000 {
+		t.Fatalf("operator update limit: status %d, body %v", status, body)
+	}
+	status, _ = apiReq(t, "DELETE", base+"/quota-limits/api_calls?env=test", operatorToken, nil)
+	if status != http.StatusNoContent {
+		t.Fatalf("operator delete limit: status %d, want 204", status)
 	}
 }

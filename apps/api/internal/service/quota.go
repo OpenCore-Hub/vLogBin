@@ -11,8 +11,8 @@ import (
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store/storegen"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/tenant"
-	"github.com/jackc/pgx/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // SetQuotaLimitInput configures a hard quota limit for a subscription.
@@ -31,6 +31,20 @@ type QuotaUsageResult struct {
 	Limit      int64               `json:"limit"`
 	PeriodType string              `json:"period_type"`
 	LimitRow   storegen.QuotaLimit `json:"limit_row"`
+}
+
+// QuotaLimitUsage is a quota limit plus its live committed/reserved usage.
+// Operator quota console renders these as one table without N+1.
+type QuotaLimitUsage struct {
+	ID             uuid.UUID `json:"id"`
+	SubscriptionID uuid.UUID `json:"subscription_id"`
+	QuotaKey       string    `json:"quota_key"`
+	LimitValue     int64     `json:"limit_value"`
+	PeriodType     string    `json:"period_type"`
+	Committed      int64     `json:"committed"`
+	Reserved       int64     `json:"reserved"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // SetQuotaLimit creates or updates a hard quota limit for a subscription.
@@ -117,6 +131,45 @@ func (s *Service) ListQuotaLimits(ctx context.Context, tc tenant.Ctx, subscripti
 		})
 		out = limits
 		return err
+	})
+	return out, err
+}
+
+// ListQuotaLimitsWithUsage returns each quota limit with current
+// committed/reserved usage in a single tenant transaction.
+func (s *Service) ListQuotaLimitsWithUsage(ctx context.Context, tc tenant.Ctx, subscriptionID uuid.UUID) ([]QuotaLimitUsage, error) {
+	out := []QuotaLimitUsage{}
+	err := s.store.WithTenant(ctx, tc, func(tx pgx.Tx, q *store.Queries) error {
+		if _, err := q.GetSubscriptionByID(ctx, subscriptionID); err != nil {
+			return mapErr(err, "subscription %s", subscriptionID)
+		}
+		limits, err := q.ListQuotaLimitsBySubscription(ctx, storegen.ListQuotaLimitsBySubscriptionParams{
+			ProviderID: tc.ProviderID, EnvironmentID: tc.EnvironmentID, SubscriptionID: subscriptionID,
+		})
+		if err != nil {
+			return err
+		}
+		out = make([]QuotaLimitUsage, 0, len(limits))
+		for _, limit := range limits {
+			usage, err := q.GetQuotaUsage(ctx, storegen.GetQuotaUsageParams{
+				SubscriptionID: subscriptionID, QuotaKey: limit.QuotaKey,
+			})
+			if err != nil {
+				return mapErr(err, "quota usage %q", limit.QuotaKey)
+			}
+			out = append(out, QuotaLimitUsage{
+				ID:             limit.ID,
+				SubscriptionID: limit.SubscriptionID,
+				QuotaKey:       limit.QuotaKey,
+				LimitValue:     limit.LimitValue,
+				PeriodType:     limit.PeriodType,
+				Committed:      usage.Committed,
+				Reserved:       usage.Reserved,
+				CreatedAt:      limit.CreatedAt,
+				UpdatedAt:      limit.UpdatedAt,
+			})
+		}
+		return nil
 	})
 	return out, err
 }

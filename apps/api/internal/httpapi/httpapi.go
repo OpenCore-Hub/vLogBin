@@ -248,6 +248,11 @@ func (s *Server) Router() chi.Router {
 			r.Post("/providers/{id}/customers/{externalId}/portal-token", s.operatorIssuePortalToken)
 			r.Get("/providers/{id}/usage-events", s.operatorListUsageEvents)
 			r.Get("/providers/{id}/invoices", s.operatorListInvoices)
+			// Console Quota control plane (hard quota ledger, ?env= scoped).
+			r.Get("/providers/{id}/subscriptions/{subscriptionId}/quota", s.operatorQuotaLimits)
+			r.Get("/providers/{id}/subscriptions/{subscriptionId}/quota/reservations", s.operatorListQuotaReservations)
+			r.Put("/providers/{id}/subscriptions/{subscriptionId}/quota-limits/{key}", s.operatorSetQuotaLimit)
+			r.Delete("/providers/{id}/subscriptions/{subscriptionId}/quota-limits/{key}", s.operatorDeleteQuotaLimit)
 			// Console Invoices control plane (§8 M2), environment-scoped via ?env=.
 			r.Get("/providers/{id}/invoices/{invoiceId}", s.operatorGetInvoice)
 			// Console Events stream (§8 M3), environment-scoped via ?env=.
