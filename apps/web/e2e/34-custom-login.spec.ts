@@ -24,7 +24,7 @@ test("real ZITADEL custom login reaches OIDC callback", async ({ page }) => {
   await page.getByRole("button", { name: "登录" }).click();
 
   await page.waitForURL(
-    (url) => url.pathname === "/auth/callback" && url.searchParams.has("code"),
+    (url) => url.pathname === "/callback" && url.searchParams.has("code"),
     { timeout: 60_000 },
   );
 });

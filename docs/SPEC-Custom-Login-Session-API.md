@@ -195,7 +195,7 @@ sequenceDiagram
     W->>Z: POST /v2/oidc/auth_requests/{auth_request_id} { session }
     Z-->>W: callbackUrl
     W-->>B: 302 callbackUrl
-    B->>W: /auth/callback?code=...
+    B->>W: /callback?code=...
     W->>Z: POST /oauth/v2/token（exchangeCode）
     W->>A: provisionWorkspace
     W-->>B: 写入 vLogBin session cookie
@@ -328,7 +328,7 @@ Authorization: Bearer <LOGIN_CLIENT_JWT>
 
 - 单元：zod schema、错误映射、token cookie 加解密、`isSessionValid` 全分支。
 - MFA 回归：password-only 拒绝、TOTP-only 拒绝、U2F-only 拒绝、passwordless 通过、密码+MFA 通过、policy forceMFA 分支。
-- 集成：mock ZITADEL Connect/gRPC 的 create/set/get/delete/callback 全链路，覆盖凭据轮换与过期。
+- 集成：契约探针 + 真实 ZITADEL 的 create/set/get/delete/callback 全链路，覆盖凭据轮换与过期。
 - E2E：真实 ZITADEL + Playwright，覆盖登录名、密码、TOTP、OTP email/SMS、Passkey、登出、过期、账号选择器。
 - 契约探针：对目标 ZITADEL 版本实际调用五个 Session 端点，锁定响应字段与错误 id，作为 CI 第一步。
 - 版本门禁：CI 断言 ZITADEL ≥4.6.0、`EnableRelationalTables` 未启用、`v2beta` 未被引用。

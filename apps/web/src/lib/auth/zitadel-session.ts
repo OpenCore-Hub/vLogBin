@@ -800,7 +800,7 @@ export function isSafeCallbackUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     const expected = new URL(
-      authConfig.zitadel.redirectUri || `${authConfig.baseUrl}/auth/callback`,
+      authConfig.zitadel.redirectUri || `${authConfig.baseUrl}/callback`,
     );
     return (
       parsed.origin === expected.origin &&

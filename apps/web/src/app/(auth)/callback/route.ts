@@ -11,10 +11,10 @@ import {
 } from "../login/login-state";
 
 function fail(error: string, description?: string): NextResponse {
-  const url = new URL("/auth/error", "http://localhost");
+  const url = new URL("/error", "http://localhost");
   url.searchParams.set("error", error);
   if (description) url.searchParams.set("description", description);
-  return NextResponse.redirect(url.pathname + url.search);
+  return NextResponse.redirect(url.toString());
 }
 
 export async function GET(req: NextRequest) {

@@ -44,7 +44,7 @@ export const authConfig = {
     clientSecret: str(process.env.ZITADEL_CLIENT_SECRET),
     redirectUri: str(
       process.env.ZITADEL_REDIRECT_URI,
-      `${str(process.env.APP_BASE_URL, "http://localhost:3000").replace(/\/+$/, "")}/auth/callback`,
+      `${str(process.env.APP_BASE_URL, "http://localhost:3000").replace(/\/+$/, "")}/callback`,
     ),
     postLogoutRedirectUri: str(
       process.env.ZITADEL_POST_LOGOUT_REDIRECT_URI,
