@@ -10,6 +10,10 @@ import {
   setLoginFlow,
 } from "@/lib/auth/login-flow";
 import {
+  forgetSession,
+  rememberSession,
+} from "@/lib/auth/zitadel-sessions-store";
+import {
   ZitadelApiError,
   createCallback,
   createSession,
@@ -17,10 +21,13 @@ import {
   getSession,
   listAuthenticationMethodTypes,
   requestOtpChallenge,
+  requestWebAuthnChallenge,
   searchUsers,
   setSession,
+  submitWebAuthnAssertion,
   validateSession,
 } from "@/lib/auth/zitadel-session";
+import { authConfig } from "@/lib/auth/config";
 import { AuthenticationMethodType } from "@zitadel/proto/zitadel/user/v2/user_service_pb";
 import {
   CustomLoginActionState,
@@ -100,6 +107,13 @@ async function completeFlow(flow: LoginFlowData): Promise<never> {
     });
   }
   await clearLoginFlow();
+  await rememberSession({
+    sessionId: flow.sessionId,
+    sessionToken: flow.sessionToken,
+    loginName: flow.loginName ?? "",
+    userId: flow.userId ?? "",
+    organizationId: flow.organizationId,
+  });
   redirect(callback.callbackUrl);
 }
 
@@ -347,5 +361,116 @@ export async function submitCustomLoginMfa(
     };
   } catch (err) {
     return errorState(prev, err, "验证码校验失败，请重试。");
+  }
+}
+
+export async function requestCustomLoginWebAuthn(
+  prev: CustomLoginActionState,
+  formData: FormData,
+): Promise<CustomLoginActionState> {
+  const flow = await getLoginFlow();
+  if (!flow) {
+    return { ...initialState, error: "登录状态已过期，请重新开始。" };
+  }
+  const method = String(formData.get("method") ?? "");
+  if (method !== "passkey" && method !== "u2f") {
+    return { ...prev, error: "不支持的安全密钥类型。" };
+  }
+  try {
+    const domain = new URL(authConfig.baseUrl).hostname;
+    const updated = await requestWebAuthnChallenge({
+      sessionId: flow.sessionId,
+      sessionToken: flow.sessionToken,
+      method,
+      domain,
+    });
+    const nextFlow: LoginFlowData = {
+      ...flow,
+      sessionToken: updated.sessionToken,
+    };
+    await setLoginFlow(nextFlow);
+    return {
+      ok: false,
+      step: "mfa",
+      loginName: prev.loginName,
+      userId: prev.userId,
+      sessionId: flow.sessionId,
+      mfaMethods: [method === "passkey" ? "PASSKEY" : "U2F"],
+      webAuthnOptions: updated.options,
+    };
+  } catch (err) {
+    return errorState(prev, err, "安全密钥验证启动失败，请重试。");
+  }
+}
+
+export async function submitCustomLoginWebAuthn(
+  assertionData: unknown,
+): Promise<void> {
+  const flow = await getLoginFlow();
+  if (!flow) {
+    throw new ZitadelApiError("登录状态已过期，请重新开始。", "session-invalid");
+  }
+  const updated = await submitWebAuthnAssertion({
+    sessionId: flow.sessionId,
+    sessionToken: flow.sessionToken,
+    assertionData,
+  });
+  const nextFlow: LoginFlowData = {
+    ...flow,
+    sessionToken: updated.sessionToken,
+  };
+  await setLoginFlow(nextFlow);
+  const session = await getSession({
+    sessionId: updated.sessionId,
+    sessionToken: updated.sessionToken,
+  });
+  const validation = await validateSession(session);
+  if (!validation.valid) {
+    throw new ZitadelApiError(
+      validation.reason === "mfa-required"
+        ? "多因素验证未完成，请重试。"
+        : "登录尚未完成，请重新开始。",
+      validation.reason === "mfa-required" ? "mfa-required" : "session-invalid",
+    );
+  }
+  await completeFlow(nextFlow);
+}
+
+export async function continueWithSavedSession(
+  _prev: CustomLoginActionState,
+  formData: FormData,
+): Promise<CustomLoginActionState> {
+  const authRequestId = String(formData.get("authRequestId") ?? "").trim();
+  const next = safeNext(String(formData.get("next") ?? ""));
+  const sessionId = String(formData.get("sessionId") ?? "").trim();
+  const sessionToken = String(formData.get("sessionToken") ?? "").trim();
+  const loginName = String(formData.get("loginName") ?? "").trim();
+  const userId = String(formData.get("userId") ?? "").trim();
+  const organizationId = String(formData.get("organizationId") ?? "").trim();
+
+  if (!authRequestId || !sessionId || !sessionToken || !userId || !loginName) {
+    return { ...initialState, error: "会话信息不完整，请重新登录。" };
+  }
+
+  try {
+    const session = await getSession({ sessionId, sessionToken });
+    const validation = await validateSession(session);
+    if (!validation.valid) {
+      await forgetSession(sessionId);
+      return { ...initialState, error: "会话已失效，请重新登录。" };
+    }
+    const flow: LoginFlowData = {
+      sessionId,
+      sessionToken,
+      loginName,
+      userId,
+      organizationId: organizationId || undefined,
+      authRequestId,
+      next,
+    };
+    await setLoginFlow(flow);
+    return await completeFlow(flow);
+  } catch (err) {
+    return errorState(initialState, err, "继续会话失败，请重新登录。");
   }
 }

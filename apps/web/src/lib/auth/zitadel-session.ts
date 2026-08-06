@@ -14,6 +14,8 @@ import {
 import {
   RequestChallenges,
   RequestChallengesSchema,
+  RequestChallenges_WebAuthNSchema,
+  UserVerificationRequirement,
 } from "@zitadel/proto/zitadel/session/v2/challenge_pb";
 import {
   Checks,
@@ -21,6 +23,7 @@ import {
   CheckOTPSchema,
   CheckTOTPSchema,
   CheckUserSchema,
+  CheckWebAuthNSchema,
   CreateSessionRequestSchema,
   DeleteSessionRequestSchema,
   GetSessionRequestSchema,
@@ -143,6 +146,7 @@ export interface SetSessionInput {
   totpCode?: string;
   otpEmailCode?: string;
   otpSmsCode?: string;
+  webAuthNAssertionData?: unknown;
   challenges?: RequestChallenges;
   lifetimeSeconds?: number;
 }
@@ -335,6 +339,11 @@ function checksMessage(input: CreateSessionInput | SetSessionInput): Checks | un
   }
   if ("otpSmsCode" in input && input.otpSmsCode) {
     checks.otpSms = create(CheckOTPSchema, { code: input.otpSmsCode });
+  }
+  if ("webAuthNAssertionData" in input && input.webAuthNAssertionData) {
+    checks.webAuthN = create(CheckWebAuthNSchema, {
+      credentialAssertionData: input.webAuthNAssertionData as never,
+    });
   }
   return Object.keys(checks).length > 0 ? (checks as Checks) : undefined;
 }
@@ -535,6 +544,61 @@ export async function requestOtpChallenge(input: {
     challenges,
   });
   return { sessionToken: result.sessionToken };
+}
+
+export async function requestWebAuthnChallenge(input: {
+  sessionId: string;
+  sessionToken: string;
+  method: "passkey" | "u2f";
+  domain: string;
+}): Promise<{ sessionToken: string; options: unknown }> {
+  isCustomLoginActive();
+  try {
+    const clients = await getZitadelClients();
+    const response = await clients.session.setSession(
+      create(SetSessionRequestSchema, {
+        sessionId: input.sessionId,
+        sessionToken: input.sessionToken,
+        metadata: {},
+        challenges: create(RequestChallengesSchema, {
+          webAuthN: create(RequestChallenges_WebAuthNSchema, {
+            domain: input.domain,
+            userVerificationRequirement:
+              input.method === "passkey"
+                ? UserVerificationRequirement.REQUIRED
+                : UserVerificationRequirement.DISCOURAGED,
+          }),
+        }),
+      }),
+    );
+    if (
+      !response.sessionToken ||
+      !response.challenges?.webAuthN?.publicKeyCredentialRequestOptions
+    ) {
+      throw new ZitadelApiError(
+        "ZITADEL 未返回 WebAuthN challenge。",
+        "invalid-response",
+      );
+    }
+    return {
+      sessionToken: response.sessionToken,
+      options: response.challenges.webAuthN.publicKeyCredentialRequestOptions,
+    };
+  } catch (err) {
+    throw toApiError(err);
+  }
+}
+
+export async function submitWebAuthnAssertion(input: {
+  sessionId: string;
+  sessionToken: string;
+  assertionData: unknown;
+}): Promise<CreateSessionResult> {
+  return setSession({
+    sessionId: input.sessionId,
+    sessionToken: input.sessionToken,
+    webAuthNAssertionData: input.assertionData,
+  });
 }
 
 export async function getSession(input: {

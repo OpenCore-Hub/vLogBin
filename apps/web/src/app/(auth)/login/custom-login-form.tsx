@@ -1,11 +1,14 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import {
+  continueWithSavedSession,
+  requestCustomLoginWebAuthn,
   requestCustomLoginOtp,
   submitCustomLoginIdentifier,
   submitCustomLoginMfa,
   submitCustomLoginPassword,
+  submitCustomLoginWebAuthn,
 } from "./custom-login-actions";
 import { CustomLoginActionState } from "./login-state";
 import { LoginSettingsSnapshot } from "@/lib/auth/zitadel-session";
@@ -24,20 +27,40 @@ const passwordInitial: CustomLoginActionState = {
 };
 const otpInitial: CustomLoginActionState = { ok: false, step: "mfa" };
 const mfaInitial: CustomLoginActionState = { ok: false, step: "mfa" };
+const webAuthnInitial: CustomLoginActionState = { ok: false, step: "mfa" };
+
+function bufferToBase64Url(value: ArrayBuffer): string {
+  const bytes = new Uint8Array(value);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
 
 export function CustomLoginForm({
   authRequestId,
   next,
   loginSettings,
+  savedSessions,
 }: {
   authRequestId: string;
   next: string;
   loginSettings: LoginSettingsSnapshot;
+  savedSessions: Array<{
+    sessionId: string;
+    sessionToken: string;
+    loginName: string;
+    userId: string;
+    organizationId?: string;
+  }>;
 }) {
   const [identifierState, identifierAction, identifierPending] = useActionState(
     submitCustomLoginIdentifier,
     identifierInitial,
   );
+  const [savedSessionState, savedSessionAction, savedSessionPending] =
+    useActionState(continueWithSavedSession, identifierInitial);
   const [passwordState, passwordAction, passwordPending] = useActionState(
     submitCustomLoginPassword,
     passwordInitial,
@@ -50,6 +73,57 @@ export function CustomLoginForm({
     submitCustomLoginMfa,
     mfaInitial,
   );
+  const [webAuthnState, webAuthnAction, webAuthnPending] = useActionState(
+    requestCustomLoginWebAuthn,
+    webAuthnInitial,
+  );
+  const [, startWebAuthnSubmit] = useTransition();
+  const [webAuthnError, setWebAuthnError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const options = webAuthnState.webAuthnOptions as
+      | PublicKeyCredentialRequestOptions
+      | undefined;
+    if (!options) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const assertion = await navigator.credentials.get({ publicKey: options });
+        if (cancelled || !assertion) return;
+        const credential = assertion as PublicKeyCredential;
+        const response = credential.response as AuthenticatorAssertionResponse;
+        const payload = {
+          id: credential.id,
+          rawId: bufferToBase64Url(credential.rawId),
+          type: credential.type,
+          response: {
+            authenticatorData: bufferToBase64Url(response.authenticatorData),
+            clientDataJSON: bufferToBase64Url(response.clientDataJSON),
+            signature: bufferToBase64Url(response.signature),
+            userHandle: response.userHandle
+              ? bufferToBase64Url(response.userHandle)
+              : null,
+          },
+        };
+        startWebAuthnSubmit(() => {
+          void submitCustomLoginWebAuthn(payload).catch((err) => {
+            setWebAuthnError(
+              err instanceof Error ? err.message : "安全密钥验证失败，请重试。",
+            );
+          });
+        });
+      } catch (err) {
+        if (!cancelled) {
+          setWebAuthnError(
+            err instanceof Error ? err.message : "安全密钥验证失败，请重试。",
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [webAuthnState.webAuthnOptions, startWebAuthnSubmit]);
 
   if (!loginSettings.allowUsernamePassword) {
     return (
@@ -61,43 +135,81 @@ export function CustomLoginForm({
 
   if (identifierState.step !== "password") {
     return (
-      <form action={identifierAction} className="space-y-4">
-        <input type="hidden" name="authRequestId" value={authRequestId} />
-        <input type="hidden" name="next" value={next} />
-        <Field
-          label="登录标识"
-          htmlFor="custom-login-identifier"
-          hint="使用用户名、邮箱或手机号登录"
-        >
-          <div className="relative">
-            <UsersIcon
-              size={15}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-            />
-            <Input
-              id="custom-login-identifier"
-              name="identifier"
-              autoComplete="username"
-              autoFocus
-              required
-              maxLength={200}
-              className="pl-9"
-            />
+      <div className="space-y-4">
+        {savedSessions.length > 0 && (
+          <div className="space-y-3">
+            {savedSessions.map((session) => (
+              <form key={session.sessionId} action={savedSessionAction}>
+                <input type="hidden" name="authRequestId" value={authRequestId} />
+                <input type="hidden" name="next" value={next} />
+                <input type="hidden" name="sessionId" value={session.sessionId} />
+                <input
+                  type="hidden"
+                  name="sessionToken"
+                  value={session.sessionToken}
+                />
+                <input type="hidden" name="loginName" value={session.loginName} />
+                <input type="hidden" name="userId" value={session.userId} />
+                <input
+                  type="hidden"
+                  name="organizationId"
+                  value={session.organizationId ?? ""}
+                />
+                <Button
+                  type="submit"
+                  size="lg"
+                  variant="secondary"
+                  loading={savedSessionPending}
+                  className="w-full"
+                >
+                  <UsersIcon size={15} />
+                  继续使用 {session.loginName}
+                </Button>
+              </form>
+            ))}
           </div>
-        </Field>
-        {identifierState.error && (
-          <Alert variant="danger">{identifierState.error}</Alert>
         )}
-        <Button
-          type="submit"
-          size="lg"
-          loading={identifierPending}
-          className="w-full"
-        >
-          <UsersIcon size={15} />
-          继续
-        </Button>
-      </form>
+        <form action={identifierAction} className="space-y-4">
+          <input type="hidden" name="authRequestId" value={authRequestId} />
+          <input type="hidden" name="next" value={next} />
+          <Field
+            label="登录标识"
+            htmlFor="custom-login-identifier"
+            hint="使用用户名、邮箱或手机号登录"
+          >
+            <div className="relative">
+              <UsersIcon
+                size={15}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                id="custom-login-identifier"
+                name="identifier"
+                autoComplete="username"
+                autoFocus
+                required
+                maxLength={200}
+                className="pl-9"
+              />
+            </div>
+          </Field>
+          {identifierState.error && (
+            <Alert variant="danger">{identifierState.error}</Alert>
+          )}
+          {savedSessionState.error && (
+            <Alert variant="danger">{savedSessionState.error}</Alert>
+          )}
+          <Button
+            type="submit"
+            size="lg"
+            loading={identifierPending}
+            className="w-full"
+          >
+            <UsersIcon size={15} />
+            继续
+          </Button>
+        </form>
+      </div>
     );
   }
 
@@ -144,23 +256,10 @@ export function CustomLoginForm({
   const methods = passwordState.mfaMethods ?? [];
   const hasTotp = methods.includes("TOTP");
   const showCodeForm = hasTotp || otpState.otpRequested;
-  const hasPasskeyOnly =
-    methods.length > 0 &&
-    methods.every((m) => m === "PASSKEY" || m === "U2F");
-
-  if (hasPasskeyOnly) {
-    return (
-      <div className="space-y-4">
-        <Alert variant="warning" title="需要安全密钥">
-          该账号需要安全密钥验证，请使用 ZITADEL 托管登录页完成登录。
-        </Alert>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-4">
-      {showCodeForm ? (
+      {showCodeForm && (
         <form action={mfaAction} className="space-y-4">
           <input
             type="hidden"
@@ -204,38 +303,66 @@ export function CustomLoginForm({
             验证
           </Button>
         </form>
-      ) : (
-        <div className="space-y-3">
-          {methods.includes("OTP_EMAIL") && (
-            <form action={otpAction}>
-              <input type="hidden" name="method" value="otpEmail" />
-              <Button
-                type="submit"
-                size="lg"
-                variant="secondary"
-                loading={otpPending}
-                className="w-full"
-              >
-                发送邮箱验证码
-              </Button>
-            </form>
-          )}
-          {methods.includes("OTP_SMS") && (
-            <form action={otpAction}>
-              <input type="hidden" name="method" value="otpSms" />
-              <Button
-                type="submit"
-                size="lg"
-                variant="secondary"
-                loading={otpPending}
-                className="w-full"
-              >
-                发送短信验证码
-              </Button>
-            </form>
-          )}
-        </div>
       )}
+      <div className="space-y-3">
+        {!otpState.otpRequested && methods.includes("OTP_EMAIL") && (
+          <form action={otpAction}>
+            <input type="hidden" name="method" value="otpEmail" />
+            <Button
+              type="submit"
+              size="lg"
+              variant="secondary"
+              loading={otpPending}
+              className="w-full"
+            >
+              发送邮箱验证码
+            </Button>
+          </form>
+        )}
+        {!otpState.otpRequested && methods.includes("OTP_SMS") && (
+          <form action={otpAction}>
+            <input type="hidden" name="method" value="otpSms" />
+            <Button
+              type="submit"
+              size="lg"
+              variant="secondary"
+              loading={otpPending}
+              className="w-full"
+            >
+              发送短信验证码
+            </Button>
+          </form>
+        )}
+        {methods.includes("PASSKEY") && (
+          <form action={webAuthnAction}>
+            <input type="hidden" name="method" value="passkey" />
+            <Button
+              type="submit"
+              size="lg"
+              variant="secondary"
+              loading={webAuthnPending}
+              className="w-full"
+            >
+              使用 Passkey
+            </Button>
+          </form>
+        )}
+        {methods.includes("U2F") && (
+          <form action={webAuthnAction}>
+            <input type="hidden" name="method" value="u2f" />
+            <Button
+              type="submit"
+              size="lg"
+              variant="secondary"
+              loading={webAuthnPending}
+              className="w-full"
+            >
+              使用安全密钥
+            </Button>
+          </form>
+        )}
+        {webAuthnError && <Alert variant="danger">{webAuthnError}</Alert>}
+      </div>
     </div>
   );
 }

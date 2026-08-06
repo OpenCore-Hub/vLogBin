@@ -15,7 +15,13 @@ import {
 import {
   getAuthRequest,
   getLoginSettings,
+  getSession,
+  validateSession,
 } from "@/lib/auth/zitadel-session";
+import {
+  RememberedSession,
+  getRememberedSessions,
+} from "@/lib/auth/zitadel-sessions-store";
 import { LockIcon, TerminalIcon } from "@/components/ui/icons";
 
 export const metadata: Metadata = {
@@ -37,6 +43,7 @@ export default async function LoginPage({
   const customLoginReady = isCustomLoginConfigured();
   let authRequest: Awaited<ReturnType<typeof getAuthRequest>> | null = null;
   let loginSettings: Awaited<ReturnType<typeof getLoginSettings>> | null = null;
+  const savedSessions: RememberedSession[] = [];
   let customLoginError: string | null = null;
   if (
     authConfig.mode === "oidc-custom-login" &&
@@ -48,6 +55,27 @@ export default async function LoginPage({
         getAuthRequest(authRequestParam),
         getLoginSettings(),
       ]);
+      const remembered = await getRememberedSessions();
+      for (const candidate of remembered) {
+        if (
+          authRequest.hintUserId &&
+          candidate.userId !== authRequest.hintUserId
+        ) {
+          continue;
+        }
+        try {
+          const session = await getSession({
+            sessionId: candidate.sessionId,
+            sessionToken: candidate.sessionToken,
+          });
+          const validation = await validateSession(session);
+          if (validation.valid) {
+            savedSessions.push(candidate);
+          }
+        } catch {
+          // 过期/失效会话由继续会话 action 清理，登录页保持可操作。
+        }
+      }
     } catch {
       customLoginError = "登录请求已失效，请重新开始。";
     }
@@ -98,6 +126,7 @@ export default async function LoginPage({
                 authRequestId={authRequest.id}
                 next={safeNext}
                 loginSettings={loginSettings}
+                savedSessions={savedSessions}
               />
             ) : (
               <Alert variant="danger" title="登录不可用">
