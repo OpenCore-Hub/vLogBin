@@ -62,6 +62,12 @@ WHERE provider_id = $1
 ORDER BY created_at DESC
 LIMIT $2;
 
+-- name: ListAllSupportSessions :many
+-- Operator console: cross-provider JIT access queue.
+SELECT * FROM support_sessions
+ORDER BY created_at DESC, id DESC
+LIMIT $1;
+
 -- name: ListActiveSupportSessions :many
 SELECT * FROM support_sessions
 WHERE provider_id = $1 AND environment_id = $2 AND status = 'active'

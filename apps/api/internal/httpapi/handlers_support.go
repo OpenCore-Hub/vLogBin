@@ -126,6 +126,19 @@ func (s *Server) operatorListSupportSessions(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, map[string]any{"support_sessions": sessions})
 }
 
+// operatorListAllSupportSessions — GET /v1/operator/support-sessions
+func (s *Server) operatorListAllSupportSessions(w http.ResponseWriter, r *http.Request) {
+	sessions, err := s.svc.ListAllSupportSessions(r.Context(), queryLimit(r, 500))
+	if err != nil {
+		s.serviceError(w, r, err)
+		return
+	}
+	if sessions == nil {
+		sessions = []storegen.SupportSession{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"support_sessions": sessions})
+}
+
 // ---- Provider routes (API key with support:approve scope) ----
 
 // providerApproveSupportSession — POST /v1/support-sessions/{id}/approve

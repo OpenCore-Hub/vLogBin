@@ -4,14 +4,15 @@ import (
 	"net/http"
 
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/service"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store/storegen"
 )
 
 type riskReviewRequest struct {
-	RiskScore  int              `json:"risk_score"`
-	Checks     map[string]bool  `json:"checks"`
-	Decision   string           `json:"decision"`
-	Reason     string           `json:"reason"`
-	ReviewedBy string           `json:"reviewed_by"`
+	RiskScore  int             `json:"risk_score"`
+	Checks     map[string]bool `json:"checks"`
+	Decision   string          `json:"decision"`
+	Reason     string          `json:"reason"`
+	ReviewedBy string          `json:"reviewed_by"`
 }
 
 // operatorSubmitRiskReview — POST /v1/operator/providers/{id}/risk-review
@@ -48,6 +49,19 @@ func (s *Server) operatorListRiskReviews(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		s.serviceError(w, r, err)
 		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"reviews": reviews})
+}
+
+// operatorListLatestRiskReviews — GET /v1/operator/risk-reviews
+func (s *Server) operatorListLatestRiskReviews(w http.ResponseWriter, r *http.Request) {
+	reviews, err := s.svc.ListLatestRiskReviews(r.Context())
+	if err != nil {
+		s.serviceError(w, r, err)
+		return
+	}
+	if reviews == nil {
+		reviews = []storegen.ProviderRiskReview{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"reviews": reviews})
 }

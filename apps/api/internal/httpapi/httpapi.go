@@ -268,6 +268,7 @@ func (s *Server) Router() chi.Router {
 			// Provider risk review (go-live gate, architecture §15).
 			r.Post("/providers/{id}/risk-review", s.operatorSubmitRiskReview)
 			r.Get("/providers/{id}/risk-reviews", s.operatorListRiskReviews)
+			r.Get("/risk-reviews", s.operatorListLatestRiskReviews)
 			// OIDC Application management (Console control plane, §8 M2).
 			r.Get("/providers/{id}/auth/zitadel/apps", s.operatorListHostedAuthConfigs)
 			r.Post("/providers/{id}/auth/zitadel/setup", s.operatorSetupHostedAuth)
@@ -309,6 +310,7 @@ func (s *Server) Router() chi.Router {
 			// JIT Support Access (operator-managed).
 			r.Post("/providers/{id}/support-sessions", s.requestSupportSession)
 			r.Get("/providers/{id}/support-sessions", s.operatorListSupportSessions)
+			r.Get("/support-sessions", s.operatorListAllSupportSessions)
 			r.Post("/support-sessions/{sessionId}/first-approve", s.firstApproveEmergency)
 			r.Post("/support-sessions/{sessionId}/second-approve", s.secondApproveEmergency)
 			r.Post("/support-sessions/{sessionId}/revoke", s.operatorRevokeSupportSession)

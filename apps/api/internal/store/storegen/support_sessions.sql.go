@@ -272,6 +272,51 @@ func (q *Queries) ListActiveSupportSessions(ctx context.Context, arg ListActiveS
 	return items, nil
 }
 
+const listAllSupportSessions = `-- name: ListAllSupportSessions :many
+SELECT id, provider_id, environment_id, access_type, status, requested_by, reason, requested_scopes, approved_by, second_approver, granted_at, expires_at, revoked_at, revoked_by, revoke_reason, created_at, updated_at FROM support_sessions
+ORDER BY created_at DESC, id DESC
+LIMIT $1
+`
+
+// Operator console: cross-provider JIT access queue.
+func (q *Queries) ListAllSupportSessions(ctx context.Context, limit int32) ([]SupportSession, error) {
+	rows, err := q.db.Query(ctx, listAllSupportSessions, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SupportSession
+	for rows.Next() {
+		var i SupportSession
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProviderID,
+			&i.EnvironmentID,
+			&i.AccessType,
+			&i.Status,
+			&i.RequestedBy,
+			&i.Reason,
+			&i.RequestedScopes,
+			&i.ApprovedBy,
+			&i.SecondApprover,
+			&i.GrantedAt,
+			&i.ExpiresAt,
+			&i.RevokedAt,
+			&i.RevokedBy,
+			&i.RevokeReason,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSupportSessionsByProvider = `-- name: ListSupportSessionsByProvider :many
 SELECT id, provider_id, environment_id, access_type, status, requested_by, reason, requested_scopes, approved_by, second_approver, granted_at, expires_at, revoked_at, revoked_by, revoke_reason, created_at, updated_at FROM support_sessions
 WHERE provider_id = $1

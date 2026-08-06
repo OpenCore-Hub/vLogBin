@@ -78,6 +78,43 @@ func (q *Queries) LatestProviderRiskReview(ctx context.Context, providerID uuid.
 	return i, err
 }
 
+const listLatestProviderRiskReviews = `-- name: ListLatestProviderRiskReviews :many
+SELECT DISTINCT ON (provider_id) id, provider_id, risk_score, checks, decision, reason, reviewed_by, reviewed_at, created_at
+FROM provider_risk_reviews
+ORDER BY provider_id, reviewed_at DESC, id DESC
+`
+
+// Operator review queue: one row per provider (newest review).
+func (q *Queries) ListLatestProviderRiskReviews(ctx context.Context) ([]ProviderRiskReview, error) {
+	rows, err := q.db.Query(ctx, listLatestProviderRiskReviews)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProviderRiskReview
+	for rows.Next() {
+		var i ProviderRiskReview
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProviderID,
+			&i.RiskScore,
+			&i.Checks,
+			&i.Decision,
+			&i.Reason,
+			&i.ReviewedBy,
+			&i.ReviewedAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProviderRiskReviews = `-- name: ListProviderRiskReviews :many
 SELECT id, provider_id, risk_score, checks, decision, reason, reviewed_by, reviewed_at, created_at
 FROM provider_risk_reviews

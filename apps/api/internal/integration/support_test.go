@@ -427,6 +427,42 @@ func TestSupportSessionOperatorListView(t *testing.T) {
 	}
 }
 
+func TestSupportSessionOperatorAggregateList(t *testing.T) {
+	providerA, _ := createProviderAPI(t, "sup-agg-a-"+uuid.NewString()[:8])
+	providerB, _ := createProviderAPI(t, "sup-agg-b-"+uuid.NewString()[:8])
+	reasonA := "aggregate session a " + uuid.NewString()[:8]
+	reasonB := "aggregate session b " + uuid.NewString()[:8]
+
+	create := func(providerID, envID, reason string) {
+		t.Helper()
+		status, body := apiReq(t, "POST", "/v1/operator/providers/"+providerID+"/support-sessions", operatorToken, map[string]any{
+			"environment_id":   envID,
+			"access_type":      "standard",
+			"reason":           reason,
+			"requested_scopes": []string{"read"},
+			"duration_seconds": 600,
+		})
+		if status != http.StatusCreated {
+			t.Fatalf("request %s: status %d, body %v", reason, status, body)
+		}
+	}
+	create(providerA, getTestEnvID(t, providerA), reasonA)
+	create(providerB, getTestEnvID(t, providerB), reasonB)
+
+	status, body := apiReq(t, "GET", "/v1/operator/support-sessions", operatorToken, nil)
+	if status != http.StatusOK {
+		t.Fatalf("aggregate support sessions: status %d, body %v", status, body)
+	}
+	sessions := body["support_sessions"].([]any)
+	reasons := make(map[string]bool, len(sessions))
+	for _, item := range sessions {
+		reasons[item.(map[string]any)["reason"].(string)] = true
+	}
+	if !reasons[reasonA] || !reasons[reasonB] {
+		t.Fatalf("aggregate missing sessions: reasons=%v, want %q and %q", reasons, reasonA, reasonB)
+	}
+}
+
 func TestSupportSessionApproveNonStandardFails(t *testing.T) {
 	providerID, apiKey := createProviderAPI(t, "sup-nst-"+uuid.NewString()[:8])
 	envID := getTestEnvID(t, providerID)

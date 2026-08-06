@@ -26,13 +26,13 @@ var ErrRiskReviewConflict = errors.New("risk review conflict")
 // §15). Keys are the storage keys in provider_risk_reviews.checks; values are
 // the human-readable checklist items.
 var RiskReviewChecks = []string{
-	"email_and_company_domain",   // 邮箱与企业域名归属
-	"tos_dpa",                    // 服务条款与数据处理协议
-	"custom_domain_ownership",    // 自定义域所有权
-	"payment_tax_connection",     // Payment/Tax Connection 有效
-	"webhook_destination",        // Webhook 目的地验证
-	"initial_quota",              // 初始配额已分配
-	"security_contact",           // 安全联系人已登记
+	"email_and_company_domain", // 邮箱与企业域名归属
+	"tos_dpa",                  // 服务条款与数据处理协议
+	"custom_domain_ownership",  // 自定义域所有权
+	"payment_tax_connection",   // Payment/Tax Connection 有效
+	"webhook_destination",      // Webhook 目的地验证
+	"initial_quota",            // 初始配额已分配
+	"security_contact",         // 安全联系人已登记
 	// risk_score 为第 8 项（独立列，0=低风险，100=高风险），不在此清单中。
 }
 
@@ -154,6 +154,21 @@ func (s *Service) ListRiskReviews(ctx context.Context, providerID uuid.UUID) ([]
 		return nil, err
 	}
 	return out, nil
+}
+
+// ListLatestRiskReviews returns the newest risk review per provider (operator
+// review queue). Used by /ops/reviews to avoid a per-provider N+1 fan-out.
+func (s *Service) ListLatestRiskReviews(ctx context.Context) ([]storegen.ProviderRiskReview, error) {
+	var out []storegen.ProviderRiskReview
+	err := s.store.WithOperator(ctx, func(tx pgx.Tx, q *store.Queries) error {
+		rows, err := q.ListLatestProviderRiskReviews(ctx)
+		if err != nil {
+			return err
+		}
+		out = rows
+		return nil
+	})
+	return out, err
 }
 
 // requireApprovedReview returns nil when the provider's latest risk review is

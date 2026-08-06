@@ -106,6 +106,61 @@ func TestRiskReviewGoLiveGate(t *testing.T) {
 	}
 }
 
+// TestRiskReviewAggregateLatestPerProvider: the operator review queue returns
+// exactly one row per provider, always the newest review.
+func TestRiskReviewAggregateLatestPerProvider(t *testing.T) {
+	ids := make([]string, 2)
+	for i := range ids {
+		ids[i] = insertRegisteredProvider(t)
+		status, body := apiReq(t, "POST", "/v1/operator/providers/"+ids[i]+"/activate",
+			operatorToken, map[string]any{"home_region_code": regionCode})
+		if status != http.StatusOK {
+			t.Fatalf("activate %d: status %d, body %v", i, status, body)
+		}
+		toLiveReview(t, ids[i])
+	}
+
+	submitReview := func(providerID, decision, reviewedBy string) {
+		t.Helper()
+		status, body := apiReq(t, "POST", "/v1/operator/providers/"+providerID+"/risk-review", operatorToken,
+			map[string]any{
+				"risk_score":  30,
+				"checks":      allChecks(),
+				"decision":    decision,
+				"reason":      decision + " review",
+				"reviewed_by": reviewedBy,
+			})
+		if status != http.StatusCreated {
+			t.Fatalf("submit %s: status %d, body %v", decision, status, body)
+		}
+	}
+
+	// Provider A gets rejected then approved; provider B gets one rejection.
+	submitReview(ids[0], "rejected", "op-agg-1")
+	submitReview(ids[0], "approved", "op-agg-2")
+	submitReview(ids[1], "rejected", "op-agg-3")
+
+	status, body := apiReq(t, "GET", "/v1/operator/risk-reviews", operatorToken, nil)
+	if status != http.StatusOK {
+		t.Fatalf("aggregate risk reviews: status %d, body %v", status, body)
+	}
+	reviews := body["reviews"].([]any)
+	byProvider := make(map[string]map[string]any, len(reviews))
+	for _, item := range reviews {
+		review := item.(map[string]any)
+		byProvider[review["provider_id"].(string)] = review
+	}
+	if len(byProvider) != 2 {
+		t.Fatalf("aggregate rows = %d, want 1 per provider (2); body %v", len(byProvider), body)
+	}
+	if byProvider[ids[0]]["decision"] != "approved" {
+		t.Errorf("provider A latest decision = %v, want approved", byProvider[ids[0]]["decision"])
+	}
+	if byProvider[ids[1]]["decision"] != "rejected" {
+		t.Errorf("provider B latest decision = %v, want rejected", byProvider[ids[1]]["decision"])
+	}
+}
+
 // TestRiskReviewValidation: invalid submissions are rejected before touching
 // the database — unknown decisions, out-of-range scores, incomplete checklists
 // on approval, and missing reviewers.

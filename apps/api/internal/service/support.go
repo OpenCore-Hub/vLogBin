@@ -10,9 +10,9 @@ import (
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store/storegen"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/tenant"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/google/uuid"
 )
 
 // SupportSessionMaxDuration is the maximum allowed duration for a standard
@@ -101,11 +101,11 @@ func (s *Service) RequestSupportSession(ctx context.Context, in RequestSupportSe
 		}
 
 		if err := emitOutboxTx(ctx, q, in.ProviderID, in.EnvironmentID, "support_session", ss.ID.String(), "support.requested", map[string]any{
-			"session_id":     ss.ID.String(),
-			"access_type":    in.AccessType,
-			"requested_by":   in.RequestedBy,
-			"reason":         in.Reason,
-			"expires_at":     expiresAt.UTC().Format(time.RFC3339Nano),
+			"session_id":   ss.ID.String(),
+			"access_type":  in.AccessType,
+			"requested_by": in.RequestedBy,
+			"reason":       in.Reason,
+			"expires_at":   expiresAt.UTC().Format(time.RFC3339Nano),
 		}); err != nil {
 			return err
 		}
@@ -156,9 +156,9 @@ func (s *Service) ApproveSupportSession(ctx context.Context, tc tenant.Ctx, sess
 		}
 
 		if err := emitOutboxTx(ctx, q, tc.ProviderID, tc.EnvironmentID, "support_session", sessionID.String(), "support.approved", map[string]any{
-			"session_id":   sessionID.String(),
-			"approved_by":  tc.CredentialID.String(),
-			"access_type":  ss.AccessType,
+			"session_id":  sessionID.String(),
+			"approved_by": tc.CredentialID.String(),
+			"access_type": ss.AccessType,
 		}); err != nil {
 			return err
 		}
@@ -259,7 +259,7 @@ func (s *Service) EmergencyFirstApprove(ctx context.Context, sessionID uuid.UUID
 		}
 
 		if err := emitOutboxTx(ctx, q, ss.ProviderID, ss.EnvironmentID, "support_session", sessionID.String(), "support.first_approved", map[string]any{
-			"session_id":    sessionID.String(),
+			"session_id":     sessionID.String(),
 			"first_approver": approver,
 		}); err != nil {
 			return err
@@ -320,10 +320,10 @@ func (s *Service) EmergencySecondApprove(ctx context.Context, sessionID uuid.UUI
 		}
 
 		if err := emitOutboxTx(ctx, q, ss.ProviderID, ss.EnvironmentID, "support_session", sessionID.String(), "support.approved", map[string]any{
-			"session_id":     sessionID.String(),
+			"session_id":      sessionID.String(),
 			"second_approver": approver,
 			"first_approver":  ss.ApprovedBy.String,
-			"access_type":    ss.AccessType,
+			"access_type":     ss.AccessType,
 		}); err != nil {
 			return err
 		}
@@ -467,6 +467,21 @@ func (s *Service) ListSupportSessionsByProvider(ctx context.Context, providerID 
 		})
 		out = ss
 		return err
+	})
+	return out, err
+}
+
+// ListAllSupportSessions returns the operator-facing JIT access queue across
+// all providers. Keeps the review console at O(1) requests instead of N+1.
+func (s *Service) ListAllSupportSessions(ctx context.Context, limit int32) ([]storegen.SupportSession, error) {
+	var out []storegen.SupportSession
+	err := s.store.WithOperator(ctx, func(tx pgx.Tx, q *store.Queries) error {
+		ss, err := q.ListAllSupportSessions(ctx, limit)
+		if err != nil {
+			return err
+		}
+		out = ss
+		return nil
 	})
 	return out, err
 }
