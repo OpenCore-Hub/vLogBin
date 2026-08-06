@@ -387,6 +387,7 @@
 | 审计导出 | 审计页新增 CSV / JSON 下载（保留当前筛选窗口）；`/console/audit/export` route 代理 operator export 流并带 Content-Disposition；日期表单自动转 RFC3339 | ✅ 已完成（候选 62） |
 | E2E 稳定性加固 | Playwright worker 级会话复用（57 条用例只登录一次）；dev 栈限流余量提升（credential / IP 20000/分），消除全量串行 429 | ✅ 已完成（候选 63） |
 | Analytics 控制面 | operator dashboard 端点（revenue / MAU / conversion / churn / anomalies 一次返回）+ `/console/analytics` 摘要卡与五张明细表；openapi 64 paths / 75 schemas；集成测试 + E2E | ✅ 已完成（候选 64） |
+| 订阅控制面 | `/console/billing/subscriptions`：订阅数/活跃/已终止/客户数摘要卡 + DataTable（订阅 ID、客户、套餐、状态、环境、时间，状态筛选）；复用既有 subscriptions 端点；侧边栏新增订阅；E2E route 清理加固 | ✅ 已完成（候选 65） |
 
 ## 四、Web 前端重构任务追踪（设计基线 v1.4）
 
@@ -400,7 +401,7 @@
 | M1 控制面 API | `apps/api` 新增 Console 端点（最大前置依赖） | ✅ 已完成（候选 29-33） |
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
 | M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | ✅ 已完成（候选 43-58） |
-| M4 生产级 | 多 workspace 切换 / 用量控制面 / 全局错误与加载边界 / 审计导出 / E2E 稳定性 / Analytics / 后续生产硬化 | 🔄 进行中（候选 64） |
+| M4 生产级 | 多 workspace 切换 / 用量控制面 / 全局错误与加载边界 / 审计导出 / E2E 稳定性 / Analytics / 订阅控制面 / 后续生产硬化 | 🔄 进行中（候选 65） |
 
 ### M0 — 基座（✅ 已完成，待提交）
 
@@ -680,6 +681,14 @@
   - 集成测试：`operator_analytics_test.go`（空载荷字段契约 + missing env 400）
   - E2E：`29-analytics.spec.ts`
   - 验证：Go build/vet ✅；集成回归 ✅；tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **58/58 全绿** ✅
+- [x] 订阅控制面 — 候选 65
+  - `/console/billing/subscriptions`：订阅数 / 活跃 / 已终止 / 客户数摘要卡
+  - DataTable：订阅 ID / 客户 / 套餐 / 状态 / 环境 / 开始与终止时间，搜索 + 排序 + 状态筛选 URL 化
+  - 数据复用既有 `/v1/operator/providers/{id}/subscriptions`，按当前环境过滤
+  - 侧边栏 Billing 分组新增「订阅」
+  - E2E：`30-subscriptions.spec.ts`（建目录 + 客户 + 订阅 → 列表渲染）
+  - E2E helper：route.continue 与 context.close 竞态加固
+  - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **59/59 全绿** ✅
 
 ### 技术债 / 结构偏差（M0 遗留，随里程碑消化）
 
