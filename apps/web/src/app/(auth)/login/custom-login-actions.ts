@@ -29,10 +29,17 @@ import {
   validateSession,
 } from "@/lib/auth/zitadel-session";
 import { authConfig } from "@/lib/auth/config";
+import {
+  buildAuthorizationUrl,
+  generatePkcePair,
+  generateState,
+} from "@/lib/auth/oidc";
 import { AuthenticationMethodType } from "@zitadel/proto/zitadel/user/v2/user_service_pb";
 import {
   CustomLoginActionState,
   OIDC_NEXT_COOKIE,
+  OIDC_STATE_COOKIE,
+  OIDC_VERIFIER_COOKIE,
 } from "./login-state";
 
 const initialState: CustomLoginActionState = { ok: false, step: "identifier" };
@@ -69,6 +76,34 @@ function errorState(
     };
   }
   return { ...prev, ok: false, error: fallback };
+}
+
+function isInfrastructureError(err: unknown): boolean {
+  return (
+    err instanceof ZitadelApiError &&
+    ["unavailable", "transport", "not-configured"].includes(err.code)
+  );
+}
+
+async function redirectToHostedOidc(next?: string): Promise<never> {
+  const state = generateState();
+  const pkce = generatePkcePair();
+  const jar = await cookies();
+  const cookieBase = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: 600,
+  };
+  jar.set(OIDC_STATE_COOKIE, state, cookieBase);
+  jar.set(OIDC_VERIFIER_COOKIE, pkce.verifier, cookieBase);
+  jar.set(OIDC_NEXT_COOKIE, safeNext(next) ?? "/console", cookieBase);
+  const url = await buildAuthorizationUrl({
+    state,
+    codeChallenge: pkce.challenge,
+  });
+  redirect(url);
 }
 
 function methodLabel(method: AuthenticationMethodType): string {
@@ -204,6 +239,9 @@ export async function submitCustomLoginIdentifier(
       sessionId: created.sessionId,
     };
   } catch (err) {
+    if (isInfrastructureError(err)) {
+      return await redirectToHostedOidc(next);
+    }
     return errorState(initialState, err, "登录失败，请稍后重试。");
   }
 }
@@ -263,6 +301,9 @@ export async function submitCustomLoginPassword(
           : "登录尚未完成，请重新开始。",
     };
   } catch (err) {
+    if (isInfrastructureError(err)) {
+      return await redirectToHostedOidc(flow.next);
+    }
     return errorState(prev, err, "密码校验失败，请重试。");
   }
 }
@@ -303,6 +344,9 @@ export async function requestCustomLoginOtp(
       otpRequested: true,
     };
   } catch (err) {
+    if (isInfrastructureError(err)) {
+      return await redirectToHostedOidc(flow.next);
+    }
     return errorState(prev, err, "验证码发送失败，请重试。");
   }
 }
@@ -368,6 +412,9 @@ export async function submitCustomLoginMfa(
           : "登录尚未完成，请重新开始。",
     };
   } catch (err) {
+    if (isInfrastructureError(err)) {
+      return await redirectToHostedOidc(flow.next);
+    }
     return errorState(prev, err, "验证码校验失败，请重试。");
   }
 }
@@ -407,6 +454,9 @@ export async function requestCustomLoginWebAuthn(
       webAuthnOptions: updated.options,
     };
   } catch (err) {
+    if (isInfrastructureError(err)) {
+      return await redirectToHostedOidc(flow.next);
+    }
     return errorState(prev, err, "安全密钥验证启动失败，请重试。");
   }
 }
@@ -479,6 +529,9 @@ export async function continueWithSavedSession(
     await setLoginFlow(flow);
     return await completeLoginFlow(flow);
   } catch (err) {
+    if (isInfrastructureError(err)) {
+      return await redirectToHostedOidc(next);
+    }
     return errorState(initialState, err, "继续会话失败，请重新登录。");
   }
 }
