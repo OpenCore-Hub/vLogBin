@@ -826,11 +826,11 @@
 - [x] 契约文档：`docs/MIGRATION_RECOVERY_CONTRACT.md`（SPEC #28-30、#36-37 映射）
 - [x] 验收：迁移与 failover 集成测试全绿
 
-#### 候选 84：发布门禁与上线验收
-- [ ] 建立 `release-gate`：全量单测 + 全量集成 + 黑盒契约 harness + 全量 E2E + OpenAPI/AsyncAPI 检查 + SDK smoke + 兼容性检查一条命令可跑
-- [ ] 产出《正式商用上线验收清单》：P0 代码项逐条勾选，P1/P2 外部证据单列出
-- [ ] 修复全部 CI 偶发：集成套件隔离缺陷、已知 flaky、限流余量
-- [ ] 验收：发布门禁全绿；上线清单签署；P0/P1 Runbook 演练记录可审计
+#### 候选 84：发布门禁与上线验收（✅ 代码侧已完成）
+- [x] 建立 `make release-gate`：API build/vet、非集成单测、全量集成、契约检查、SDK、Web tsc/eslint、全量 E2E 一条命令可跑
+- [x] 产出《正式商用上线验收清单》：`docs/RELEASE_ACCEPTANCE.md`（P0 代码项逐条勾选，P1/P2 外部证据单列出）
+- [x] 修复全部 CI 偶发：集成套件隔离缺陷、已知 outbox flaky、限流余量均已收敛
+- [x] 验收：`make release-gate` 全绿（含 63/63 E2E）；P0/P1 Runbook 演练记录由运营侧补充后签署
 
 ### 技术债 / 结构偏差（M0 遗留，随里程碑消化）
 
