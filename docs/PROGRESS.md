@@ -767,12 +767,13 @@
 - [x] 集成测试断言错误信封与错误码目录一致（`scripts/check-error-codes.py` 覆盖 100%）
 - [x] 验收：`make contract` 全绿；全量集成全绿；错误码目录 59/59
 
-#### 候选 76：SDK 生成与官方客户端
-- [ ] 建立 OpenAPI→SDK 生成管线，优先 TypeScript/Node、Python、Go
-- [ ] SDK 覆盖 API Key/OIDC 认证、分页、游标、Idempotency-Key、错误信封解析
-- [ ] 提供 Webhook 验签 helper（timestamp + HMAC + replay window）与事件流 client
-- [ ] 发布包元数据、版本策略、最小/推荐版本说明与端到端 smoke tests
-- [ ] 验收：SDK smoke tests 对 dev API 全绿；生成物与 OpenAPI 契约 diff 为 0
+#### 候选 76：SDK 生成与官方客户端（🔄 Go SDK 已完成，TS/Python 待补）
+- [x] 建立 `sdk/go` 官方 Go SDK：API Key 认证、请求封装、分页/游标、Idempotency-Key
+- [x] 统一错误信封解析：`*APIError` 含 Code / Message / RequestID / RetryAfter / Details
+- [x] Webhook 验签 helper：`VerifyWebhookSignature` / `VerifyWebhookSignatureWithin`（timestamp + HMAC + replay window）
+- [x] 事件流 client：`StreamEvents` cursor 分页 + `has_more` 续读
+- [x] SDK smoke tests：认证头 / 幂等键 / 错误信封 / 用量上报 / Webhook 验签全绿（`make sdk`）
+- [ ] TypeScript/Node 与 Python SDK、OpenAPI→SDK 生成管线、包发布与生成物 diff 检查（后续候选）
 
 #### 候选 77：Webhook 与事件流对外契约
 - [ ] 正式化 Webhook 交付契约：签名头、timestamp、schema version、event type、重试、退避、suspend、dead_letter、replay
