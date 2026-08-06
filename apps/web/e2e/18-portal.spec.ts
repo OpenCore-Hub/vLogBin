@@ -39,7 +39,8 @@ test.describe("Customer Portal", () => {
     await expect(page.getByText("暂无用量事件", { exact: true })).toBeVisible();
 
     await page.getByRole("tab", { name: "支付" }).click();
-    await expect(page.getByText("支付方式暂未配置", { exact: true })).toBeVisible();
+    await expect(page.getByText("暂无支付记录", { exact: true })).toBeVisible();
+    await expect(page.getByText("尚未接入支付渠道", { exact: false })).toBeVisible();
 
     await page.getByRole("button", { name: "退出" }).click();
     await expect(page.getByRole("heading", { name: "客户门户" })).toBeVisible();

@@ -5,8 +5,9 @@ import type { PortalDashboard } from "@/lib/api/types";
 import { formatDate, formatMoney } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { EmptyState, ErrorState } from "@/components/ui/feedback";
+import { EmptyState, ErrorState, InfoNote } from "@/components/ui/feedback";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { Card } from "@/components/ui/card";
 import { Tabs, TabPanel } from "@/components/ui/tabs";
 import {
   CreditCardIcon,
@@ -19,6 +20,12 @@ const INVOICE_STATUS: Record<string, "success" | "neutral" | "warning" | "danger
   finalized: "success",
   voided: "neutral",
   draft: "warning",
+  pending: "warning",
+  failed: "danger",
+};
+
+const PAYMENT_STATUS: Record<string, "success" | "warning" | "danger" | "neutral"> = {
+  succeeded: "success",
   pending: "warning",
   failed: "danger",
 };
@@ -95,7 +102,7 @@ export function PortalClient({
           <UsageTab dashboard={dashboard} />
         </TabPanel>
         <TabPanel id="portal" value="payment" selected={tab === "payment"}>
-          <PaymentTab />
+          <PaymentTab dashboard={dashboard} />
         </TabPanel>
       </div>
     </main>
@@ -190,12 +197,101 @@ function UsageTab({ dashboard }: { dashboard: PortalDashboard }) {
   );
 }
 
-function PaymentTab() {
+function PaymentTab({ dashboard }: { dashboard: PortalDashboard }) {
+  const invoices = dashboard.invoices;
+  const succeeded = invoices
+    .filter((i) => i.payment_status === "succeeded")
+    .reduce((sum, i) => sum + i.total_amount_cents, 0);
+  const pending = invoices
+    .filter((i) => i.status !== "voided" && i.payment_status === "pending")
+    .reduce((sum, i) => sum + i.total_amount_cents, 0);
+  const failed = invoices
+    .filter((i) => i.status !== "voided" && i.payment_status === "failed")
+    .reduce((sum, i) => sum + i.total_amount_cents, 0);
+
+  const summary = [
+    { label: "已支付", value: formatMoney(succeeded) },
+    { label: "待支付", value: formatMoney(pending) },
+    { label: "支付失败", value: formatMoney(failed) },
+  ];
+
+  const columns: DataTableColumn<(typeof invoices)[number]>[] = [
+    {
+      key: "number",
+      header: "账单号",
+      sortable: true,
+      sortValue: (i) => i.number,
+      cell: (i) => (
+        <code className="font-mono text-xs text-foreground">{i.number}</code>
+      ),
+    },
+    {
+      key: "issuing_date",
+      header: "开票日期",
+      sortable: true,
+      sortValue: (i) => i.issuing_date,
+      cell: (i) => (
+        <span className="text-xs text-muted-foreground">
+          {formatDate(i.issuing_date)}
+        </span>
+      ),
+    },
+    {
+      key: "payment_status",
+      header: "支付状态",
+      cell: (i) => (
+        <Badge variant={PAYMENT_STATUS[i.payment_status] ?? "neutral"}>
+          {i.payment_status}
+        </Badge>
+      ),
+    },
+    {
+      key: "amount",
+      header: "金额",
+      numeric: true,
+      sortable: true,
+      sortValue: (i) => i.total_amount_cents,
+      cell: (i) => (
+        <span className="font-semibold">
+          {formatMoney(i.total_amount_cents, i.currency)}
+        </span>
+      ),
+    },
+  ];
+
   return (
-    <EmptyState
-      icon={<CreditCardIcon size={20} aria-hidden="true" />}
-      title="支付方式暂未配置"
-      description="该 workspace 尚未接入支付渠道，配置后此处可管理支付方式与历史。"
-    />
+    <div className="space-y-4">
+      {invoices.length === 0 ? (
+        <EmptyState
+          icon={<CreditCardIcon size={20} aria-hidden="true" />}
+          title="暂无支付记录"
+          description="订阅结算生成后，支付状态会显示在这里。"
+        />
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {summary.map((s) => (
+              <Card key={s.label} className="p-4">
+                <p className="text-xs text-muted-foreground">{s.label}</p>
+                <p className="mt-2 font-mono text-xl font-semibold tabular-nums">
+                  {s.value}
+                </p>
+              </Card>
+            ))}
+          </div>
+          <DataTable
+            data={invoices}
+            columns={columns}
+            rowKey={(i) => i.id}
+            searchKeys={(i) => [i.number, i.payment_status]}
+            defaultSort={{ key: "issuing_date", dir: "desc" }}
+            emptyLabel="暂无支付记录"
+          />
+        </>
+      )}
+      <InfoNote>
+        该 workspace 尚未接入支付渠道；配置后此处可管理支付方式与历史。
+      </InfoNote>
+    </div>
   );
 }
