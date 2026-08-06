@@ -148,7 +148,10 @@ func TestRiskReviewAggregateLatestPerProvider(t *testing.T) {
 	byProvider := make(map[string]map[string]any, len(reviews))
 	for _, item := range reviews {
 		review := item.(map[string]any)
-		byProvider[review["provider_id"].(string)] = review
+		providerID := review["provider_id"].(string)
+		if providerID == ids[0] || providerID == ids[1] {
+			byProvider[providerID] = review
+		}
 	}
 	if len(byProvider) != 2 {
 		t.Fatalf("aggregate rows = %d, want 1 per provider (2); body %v", len(byProvider), body)

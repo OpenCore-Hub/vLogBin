@@ -392,30 +392,33 @@ func TestOutboxRelayDeliversUsage(t *testing.T) {
 
 	// Run relay with noop adapter (simulates successful delivery).
 	relay := newTestRelay(billing.NewNoop(nil))
-	if err := relay.DrainOnce(testCtx); err != nil {
-		t.Fatalf("drain: %v", err)
-	}
-
-	// The outbox event should now be published.
-	status, body := apiReq(t, "GET", "/v1/outbox-events", apiKey, nil)
-	if status != http.StatusOK {
-		t.Fatalf("list outbox: status %d", status)
-	}
-	events := body["outbox_events"].([]any)
-	var usageEvent map[string]any
-	for _, e := range events {
-		em := e.(map[string]any)
-		if em["event_type"] == "usage.accepted" {
-			usageEvent = em
-			break
+	// Earlier tests can leave pending events ahead of ours in the same batch,
+	// so drain until this test's transaction has been published.
+	for i := 0; i < 20; i++ {
+		if err := relay.DrainOnce(testCtx); err != nil {
+			t.Fatalf("drain #%d: %v", i+1, err)
+		}
+		status, body := apiReq(t, "GET", "/v1/outbox-events", apiKey, nil)
+		if status != http.StatusOK {
+			t.Fatalf("list outbox: status %d", status)
+		}
+		events := body["outbox_events"].([]any)
+		var usageEvent map[string]any
+		for _, e := range events {
+			em := e.(map[string]any)
+			if em["event_type"] == "usage.accepted" && em["transaction_id"] == txID {
+				usageEvent = em
+				break
+			}
+		}
+		if usageEvent == nil {
+			t.Fatal("usage.accepted outbox event not found")
+		}
+		if usageEvent["status"] == "published" {
+			return
 		}
 	}
-	if usageEvent == nil {
-		t.Fatal("usage.accepted outbox event not found")
-	}
-	if usageEvent["status"] != "published" {
-		t.Fatalf("outbox status = %v, want published", usageEvent["status"])
-	}
+	t.Fatal("usage.accepted outbox event did not publish after repeated drains")
 }
 
 func TestOutboxRelayOutagePreservesUsage(t *testing.T) {
