@@ -72,6 +72,7 @@ import type {
   WebhookDelivery,
   PlatformEvent,
   PlatformEventStream,
+  QueueOverview,
   NotificationConfig,
   HostedAuthConfig,
   HostedAuthCreateResult,
@@ -134,6 +135,7 @@ export type {
   WebhookDelivery,
   PlatformEvent,
   PlatformEventStream,
+  QueueOverview,
   NotificationConfig,
   HostedAuthConfig,
   HostedAuthCreateResult,
@@ -1836,6 +1838,25 @@ export async function streamEvents(
     events,
     next_cursor: typeof data.next_cursor === "string" ? data.next_cursor : null,
     has_more: data.has_more === true,
+  };
+}
+
+/** 队列容量 / 死信看板（operator 全局视图）。 */
+export async function getQueueOverview(): Promise<QueueOverview> {
+  const data = await request<{
+    outbox?: Record<string, number>;
+    webhook_deliveries?: Record<string, number>;
+    recent_outbox?: unknown;
+  }>("/v1/operator/queues/overview");
+  const recent = Array.isArray(data.recent_outbox)
+    ? data.recent_outbox
+        .map(asPlatformEvent)
+        .filter((e): e is PlatformEvent => e !== null)
+    : [];
+  return {
+    outbox: data.outbox ?? {},
+    webhook_deliveries: data.webhook_deliveries ?? {},
+    recent_outbox: recent,
   };
 }
 

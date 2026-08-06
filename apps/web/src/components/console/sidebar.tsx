@@ -36,6 +36,7 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       { href: "/console", label: "概览", icon: HomeIcon },
       { href: "/console/analytics", label: "Analytics", icon: ActivityIcon },
       { href: "/console/reconciliation", label: "对账", icon: ActivityIcon },
+      { href: "/console/queues", label: "队列", icon: ActivityIcon },
       { href: "/ops", label: "运营商台", icon: BoxIcon },
       { href: "/console/settings", label: "设置", icon: SettingsIcon },
       { href: "/console/audit", label: "审计日志", icon: ShieldIcon },

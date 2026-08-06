@@ -569,6 +569,13 @@ export interface PlatformEventStream {
   has_more: boolean;
 }
 
+/** 队列容量/死信看板（operator 全局视图）。 */
+export interface QueueOverview {
+  outbox: Record<string, number>;
+  webhook_deliveries: Record<string, number>;
+  recent_outbox: PlatformEvent[];
+}
+
 /** OIDC 应用（Console 控制面视图；client_secret 永不随列表返回）。 */
 export interface HostedAuthConfig {
   id: string;
