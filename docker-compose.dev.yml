@@ -83,7 +83,8 @@ services:
       # 本地开发/CI 放宽限流（生产默认值不变），避免 e2e 大列表场景下
       # 请求累积触发 429 导致 flaky。web 端 N+1 聚合已限并发（R29）。
       RL_ENDPOINT_LIMIT: "${RL_ENDPOINT_LIMIT:-600}"
-      RL_CREDENTIAL_LIMIT: "${RL_CREDENTIAL_LIMIT:-3000}"
+      RL_CREDENTIAL_LIMIT: "${RL_CREDENTIAL_LIMIT:-20000}"
+      RL_IP_LIMIT: "${RL_IP_LIMIT:-20000}"
     ports:
       - "${API_PORT:-8080}:8080"
     healthcheck:

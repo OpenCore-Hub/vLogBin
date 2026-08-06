@@ -1,5 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/rules-of-hooks */
-import { test as base, expect, type Page } from "@playwright/test";
+import {
+  test as base,
+  expect,
+  type Browser,
+  type BrowserContext,
+  type Page,
+} from "@playwright/test";
 
 /**
  * Test helpers for the Provider Console E2E suite.
@@ -117,10 +123,29 @@ export async function loginViaUI(page: Page): Promise<void> {
   await page.waitForURL(/\/ops|\/console/, { timeout: 15_000 });
 }
 
+type SessionState = Awaited<ReturnType<BrowserContext["storageState"]>>;
+
+/** Worker 级登录：57 条用例只调一次登录，避免 dev 限流桶被打满。 */
+let sessionStatePromise: Promise<SessionState> | null = null;
+
+async function getWorkerSession(browser: Browser): Promise<SessionState> {
+  if (!sessionStatePromise) {
+    sessionStatePromise = (async () => {
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await loginViaUI(page);
+      const state = await context.storageState();
+      await context.close();
+      return state;
+    })();
+  }
+  return sessionStatePromise;
+}
+
 /** Extended test fixture with a fresh provider created before the test. */
 type Fixtures = {
   freshProvider: { id: string; slug: string; apiKey: string };
-  /** 每个测试自动先通过 UI 登录（cookie 仅存在于当前 context）。 */
+  /** 每个测试复用 worker 级会话 cookie，独立 context。 */
   page: Page;
 };
 
@@ -130,7 +155,10 @@ export const test = base.extend<Fixtures>({
     const { id, apiKey } = await createProviderViaAPI(slug);
     await use({ id, slug, apiKey });
   },
-  page: async ({ page }, use) => {
+  page: async ({ browser }, use) => {
+    const sessionState = await getWorkerSession(browser);
+    const context = await browser.newContext({ storageState: sessionState });
+    const page = await context.newPage();
     // Workaround for Next.js 16.2 standalone + HTTP/1.1 streaming RSC bug:
     // the browser aborts directly-consumed streaming RSC responses — both
     // client-side navigation (GET ?_rsc=) and Server Actions (POST with the
@@ -159,8 +187,8 @@ export const test = base.extend<Fixtures>({
         await route.continue();
       }
     });
-    await loginViaUI(page);
     await use(page);
+    await context.close();
   },
 });
 
