@@ -69,6 +69,9 @@ func TestClientIngestUsage(t *testing.T) {
 		if r.URL.Path != "/usage/ingest" || r.Method != http.MethodPost {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
+		if r.Header.Get("Idempotency-Key") != "tx-1" {
+			t.Errorf("Idempotency-Key = %q, want tx-1", r.Header.Get("Idempotency-Key"))
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"accepted"}`))
 	}))
@@ -81,7 +84,7 @@ func TestClientIngestUsage(t *testing.T) {
 		MetricCode:         "api_calls",
 		Timestamp:          "2026-01-01T00:00:00Z",
 		Properties:         map[string]any{"count": 1},
-	})
+	}, RequestOptions{IdempotencyKey: "tx-1"})
 	if err != nil {
 		t.Fatalf("ingest: %v", err)
 	}

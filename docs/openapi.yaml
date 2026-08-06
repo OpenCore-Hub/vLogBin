@@ -141,6 +141,83 @@ components:
         type:
           type: string
           enum: [individual, business]
+
+    ProviderCustomer:
+      type: object
+      description: 客户（provider 域视图）
+      required: [id, external_id, account_type, display_name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        account_type:
+          type: string
+          enum: [individual, business]
+        display_name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ProviderCustomerCreateResponse:
+      type: object
+      description: POST /customers 创建响应
+      properties:
+        customer:
+          $ref: '#/components/schemas/ProviderCustomer'
+
+    ProviderSubscription:
+      type: object
+      description: 订阅（provider 域视图）
+      required: [id, external_id, customer_account_id, catalog_version_id, plan_id, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        customer_account_id:
+          type: string
+          format: uuid
+        catalog_version_id:
+          type: string
+          format: uuid
+        plan_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [active, terminated]
+        started_at:
+          type: string
+          format: date-time
+        terminated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ProviderSubscriptionCollection:
+      type: object
+      description: GET /subscriptions 列表响应
+      properties:
+        subscriptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderSubscription'
     
     Subscription:
       type: object
@@ -186,6 +263,61 @@ components:
           format: date-time
         properties:
           type: object
+
+    ProviderUsageEvent:
+      type: object
+      description: 用量事件（provider 域入库记录）
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
+        transaction_id:
+          type: string
+        kind:
+          type: string
+          enum: [ingestion, reversal]
+        metric_code:
+          type: string
+        customer_account_id:
+          type: string
+          format: uuid
+        subscription_id:
+          type: string
+          format: uuid
+        event_timestamp:
+          type: string
+          format: date-time
+        properties:
+          type: object
+        payload_hash:
+          type: string
+        reverses_id:
+          type: string
+          format: uuid
+          nullable: true
+        reason:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    UsageIngestResult:
+      type: object
+      description: POST /usage/ingest 响应
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [accepted, duplicate, reversed]
+        event:
+          $ref: '#/components/schemas/ProviderUsageEvent'
     
     QuotaReservation:
       type: object
@@ -2081,14 +2213,19 @@ paths:
     post:
       tags: [Customers]
       summary: Create a customer
+      x-idempotency-key: true
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CustomerAccount'
+              $ref: '#/components/schemas/CustomerCreateInput'
       responses:
         '201':
           description: Customer created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderCustomerCreateResponse'
 
   /subscriptions:
     get:
@@ -2097,6 +2234,10 @@ paths:
       responses:
         '200':
           description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderSubscriptionCollection'
     post:
       tags: [Subscriptions]
       summary: Create a subscription
@@ -2110,6 +2251,7 @@ paths:
     post:
       tags: [Usage]
       summary: Ingest a usage event
+      x-idempotency-key: true
       requestBody:
         content:
           application/json:
@@ -2118,6 +2260,16 @@ paths:
       responses:
         '201':
           description: Usage event ingested
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageIngestResult'
+        '200':
+          description: Duplicate usage event returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageIngestResult'
         '409':
           description: Cutover locked or cell draining
 
@@ -2168,6 +2320,10 @@ paths:
       responses:
         '200':
           description: Event stream page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformEventStream'
 
   /migrations:
     get:

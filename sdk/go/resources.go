@@ -22,11 +22,15 @@ type CreateCustomerInput struct {
 }
 
 // CreateCustomer creates a customer under the authenticated environment.
-func (c *Client) CreateCustomer(ctx context.Context, input CreateCustomerInput) (*Customer, error) {
+func (c *Client) CreateCustomer(ctx context.Context, input CreateCustomerInput, opts ...RequestOptions) (*Customer, error) {
 	var out struct {
 		Customer Customer `json:"customer"`
 	}
-	if err := c.Do(ctx, "POST", "/customers", RequestOptions{}, input, &out); err != nil {
+	options := RequestOptions{}
+	if len(opts) > 0 {
+		options = opts[0]
+	}
+	if err := c.Do(ctx, "POST", "/customers", options, input, &out); err != nil {
 		return nil, err
 	}
 	return &out.Customer, nil
@@ -68,9 +72,13 @@ type UsageResult struct {
 }
 
 // IngestUsage sends one usage event. Use the same transaction ID for retries.
-func (c *Client) IngestUsage(ctx context.Context, input IngestUsageInput) (*UsageResult, error) {
+func (c *Client) IngestUsage(ctx context.Context, input IngestUsageInput, opts ...RequestOptions) (*UsageResult, error) {
+	options := RequestOptions{}
+	if len(opts) > 0 {
+		options = opts[0]
+	}
 	var out UsageResult
-	if err := c.Do(ctx, "POST", "/usage/ingest", RequestOptions{}, input, &out); err != nil {
+	if err := c.Do(ctx, "POST", "/usage/ingest", options, input, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

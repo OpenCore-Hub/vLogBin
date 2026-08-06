@@ -6,6 +6,7 @@ export {
 export {
   createCustomer,
   ingestUsage,
+  listSubscriptions,
   streamEvents,
   type CreateCustomerInput,
   type Customer,
@@ -13,6 +14,7 @@ export {
   type IngestUsageInput,
   type StreamEventsInput,
   type StreamResult,
+  type Subscription,
 } from "./resources.js";
 export {
   verifyWebhookSignature,

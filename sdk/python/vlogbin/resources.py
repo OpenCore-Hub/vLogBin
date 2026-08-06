@@ -20,6 +20,10 @@ def create_customer(
     return out["customer"]
 
 
+def list_subscriptions(client: VLogBinClient) -> Any:
+    return client.request("GET", "/subscriptions")["subscriptions"]
+
+
 def ingest_usage(
     client: VLogBinClient,
     input_data: Dict[str, Any],
@@ -50,4 +54,3 @@ def stream_events(
     if aggregate_type:
         params["aggregate_type"] = aggregate_type
     return client.request("GET", "/events", params=params)
-

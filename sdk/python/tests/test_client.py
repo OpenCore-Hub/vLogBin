@@ -8,7 +8,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Dict, Iterator
 from urllib import parse
 
-from vlogbin import ApiError, VLogBinClient, create_customer, ingest_usage, stream_events
+from vlogbin import (
+    ApiError,
+    VLogBinClient,
+    create_customer,
+    ingest_usage,
+    list_subscriptions,
+    stream_events,
+)
 
 
 Handler = Callable[[BaseHTTPRequestHandler], None]
@@ -48,6 +55,33 @@ def write_json(handler: BaseHTTPRequestHandler, status: int, body: Dict[str, Any
 
 
 class ClientTest(unittest.TestCase):
+    def test_client_lists_subscriptions(self) -> None:
+        def handler(req: BaseHTTPRequestHandler) -> None:
+            write_json(
+                req,
+                200,
+                {
+                    "subscriptions": [
+                        {
+                            "id": "sub-1",
+                            "external_id": "sub-1",
+                            "customer_account_id": "cust-1",
+                            "catalog_version_id": "cv-1",
+                            "plan_id": "plan-1",
+                            "status": "active",
+                            "started_at": "2026-01-01T00:00:00Z",
+                            "terminated_at": None,
+                        }
+                    ]
+                },
+            )
+
+        with serving(handler) as base_url:
+            client = VLogBinClient(base_url, "key")
+            subscriptions = list_subscriptions(client)
+        self.assertEqual(len(subscriptions), 1)
+        self.assertEqual(subscriptions[0]["status"], "active")
+
     def test_client_sends_auth_and_idempotency_headers(self) -> None:
         seen: Dict[str, str] = {}
 
@@ -170,4 +204,3 @@ class ClientTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

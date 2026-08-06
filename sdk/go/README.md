@@ -25,7 +25,7 @@ result, err := client.IngestUsage(ctx, vlogbin.IngestUsageInput{
     MetricCode:         "api_calls",
     Timestamp:          time.Now().UTC().Format(time.RFC3339Nano),
     Properties:         map[string]any{"count": 1},
-})
+}, vlogbin.RequestOptions{IdempotencyKey: "tx-123"})
 
 page, err := client.StreamEvents(ctx, vlogbin.StreamEventsInput{Limit: 100})
 for page.HasMore {

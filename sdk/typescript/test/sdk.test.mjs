@@ -6,6 +6,7 @@ import {
   ApiError,
   VLogBinClient,
   ingestUsage,
+  listSubscriptions,
   verifyWebhookSignature,
 } from "../dist/index.js";
 
@@ -70,6 +71,44 @@ test("client decodes the error envelope", async () => {
         err.requestId === "req-1" &&
         err.retryAfter === "5",
     );
+  } finally {
+    server.closeAllConnections?.();
+    server.close();
+  }
+});
+
+test("client lists subscriptions", async () => {
+  const server = http.createServer((req, res) => {
+    assert.equal(req.url, "/subscriptions");
+    assert.equal(req.method, "GET");
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        subscriptions: [
+          {
+            id: "sub-1",
+            external_id: "sub-1",
+            customer_account_id: "cust-1",
+            catalog_version_id: "cv-1",
+            plan_id: "plan-1",
+            status: "active",
+            started_at: "2026-01-01T00:00:00Z",
+            terminated_at: null,
+          },
+        ],
+      }),
+    );
+  });
+  await new Promise((resolve) => server.listen(0, resolve));
+  try {
+    const address = server.address();
+    const client = new VLogBinClient(
+      `http://127.0.0.1:${address.port}`,
+      "key",
+    );
+    const subscriptions = await listSubscriptions(client);
+    assert.equal(subscriptions.length, 1);
+    assert.equal(subscriptions[0].status, "active");
   } finally {
     server.closeAllConnections?.();
     server.close();

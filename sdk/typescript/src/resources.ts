@@ -13,6 +13,17 @@ export interface Customer {
   display_name: string;
 }
 
+export interface Subscription {
+  id: string;
+  external_id: string;
+  customer_account_id: string;
+  catalog_version_id: string;
+  plan_id: string;
+  status: string;
+  started_at: string;
+  terminated_at: string | null;
+}
+
 export interface IngestUsageInput {
   transaction_id: string;
   customer_external_id: string;
@@ -54,6 +65,15 @@ export function createCustomer(
     idempotencyKey ? { idempotencyKey } : {},
     input,
   ).then((out) => out.customer);
+}
+
+export function listSubscriptions(
+  client: VLogBinClient,
+): Promise<Subscription[]> {
+  return client.request<{ subscriptions: Subscription[] }>(
+    "GET",
+    "/subscriptions",
+  ).then((out) => out.subscriptions);
 }
 
 export function ingestUsage(
