@@ -805,11 +805,12 @@
 - [x] soft quota overage 与 hard quota 语义分开文档化：`docs/CATALOG_QUOTA_CONTRACT.md`
 - [x] 验收：SPEC Testing #7-10、#19-21 全绿
 
-#### 候选 81：Provider 生命周期 / 准入 / Offboarding
-- [ ] Live 准入门禁：风险审核 + 能力授权 + PSP/Webhook 前置校验缺一不可
-- [ ] Suspension/Restricted 按能力阻断但不破坏既有财务数据
-- [ ] Offboarding：最终账单、全量导出（checksum 可验证）、凭证吊销、数据删除、保留策略、备份过期、删除证明
-- [ ] 验收：Offboarding 端到端集成测试通过；删除证明可验证；审计轨迹完整
+#### 候选 81：Provider 生命周期 / 准入 / Offboarding（✅ 已完成）
+- [x] Live 准入门禁：`TestRiskReviewGoLiveGate` + `TestLifecycleStateMachineMatrix`（approved review + capability grants + 生命周期矩阵）
+- [x] Suspension/Restricted 语义：`TestWebhookDeliveryLifecycleAware`（SUSPENDED 积压、RESTRICTED 继续投递、财务数据留存）
+- [x] Offboarding 端到端：`TestProviderOffboardingEndToEnd`（全量导出 data_hash → 删除证明 proof_signature → OFFBOARDING → 写阻断 / 读保留）
+- [x] 契约文档：`docs/PROVIDER_LIFECYCLE.md`（准入、暂停/受限、Offboarding、门禁）
+- [x] 验收：Offboarding 端到端集成测试通过；删除证明可验证；审计轨迹沿用 lifecycle 审计链
 
 #### 候选 82：JIT Support / 审计 / WORM 契约
 - [ ] JIT 会话 scope/duration/expiry、Provider 审批、紧急双人审批、吊销、审计事件全链路
