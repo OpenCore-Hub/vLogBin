@@ -184,11 +184,19 @@ export const test = base.extend<Fixtures>({
         const response = await route.fetch();
         await route.fulfill({ response });
       } catch {
-        await route.continue();
+        try {
+          await route.continue();
+        } catch {
+          // Route was already fulfilled/aborted; nothing to do.
+        }
       }
     });
     await use(page);
-    await context.close();
+    try {
+      await context.close();
+    } catch {
+      // Context may already be disposed when the test failed mid-navigation.
+    }
   },
 });
 

@@ -79,6 +79,11 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
         icon: PackageIcon,
       },
       {
+        href: "/console/billing/subscriptions",
+        label: "订阅",
+        icon: LayersIcon,
+      },
+      {
         href: "/console/billing/customers",
         label: "客户",
         icon: UsersIcon,
