@@ -68,6 +68,11 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
         icon: LayersIcon,
       },
       {
+        href: "/console/billing/usage",
+        label: "用量",
+        icon: ActivityIcon,
+      },
+      {
         href: "/console/billing/plans",
         label: "套餐",
         icon: PackageIcon,
