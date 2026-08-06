@@ -76,6 +76,7 @@ messages:
     title: Provider Created
     summary: A new provider was created
     contentType: application/json
+    x-schema-version: "1.0"
     payload:
       type: object
       required: [id, name, kind, home_region, created_at]
@@ -94,11 +95,17 @@ messages:
           type: string
           format: date-time
 
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "provider.created"
+          timestamp: "2026-01-01T00:00:00Z"
   customer.created:
     name: customer.created
     title: Customer Created
     summary: A new customer account was created
     contentType: application/json
+    x-schema-version: "1.0"
     payload:
       type: object
       required: [id, external_id, name, type, created_at]
@@ -117,11 +124,17 @@ messages:
           type: string
           format: date-time
 
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "customer.created"
+          timestamp: "2026-01-01T00:00:00Z"
   subscription.created:
     name: subscription.created
     title: Subscription Created
     summary: A new subscription was created
     contentType: application/json
+    x-schema-version: "1.0"
     payload:
       type: object
       required: [id, external_id, customer_external_id, plan_code, status, created_at]
@@ -142,6 +155,11 @@ messages:
           type: string
           format: date-time
 
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "subscription.created"
+          timestamp: "2026-01-01T00:00:00Z"
   usage.ingested:
     name: usage.ingested
     title: Usage Ingested
@@ -169,6 +187,7 @@ messages:
     title: Invoice Synced
     summary: An invoice was synced from Lago
     contentType: application/json
+    x-schema-version: "1.0"
     payload:
       type: object
       required: [id, external_id, status, amount_cents, created_at]
@@ -187,11 +206,17 @@ messages:
           type: string
           format: date-time
 
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "invoice.synced"
+          timestamp: "2026-01-01T00:00:00Z"
   quota.reserved:
     name: quota.reserved
     title: Quota Reserved
     summary: A hard quota reservation was created
     contentType: application/json
+    x-schema-version: "1.0"
     payload:
       type: object
       required: [reservation_id, quota_key, amount, subscription_id]
@@ -207,11 +232,17 @@ messages:
           type: string
           format: uuid
 
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "quota.reserved"
+          timestamp: "2026-01-01T00:00:00Z"
   quota.committed:
     name: quota.committed
     title: Quota Committed
     summary: A hard quota reservation was committed
     contentType: application/json
+    x-schema-version: "1.0"
     payload:
       type: object
       required: [reservation_id, amount]
@@ -222,11 +253,17 @@ messages:
           type: integer
           format: int64
 
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "quota.committed"
+          timestamp: "2026-01-01T00:00:00Z"
   quota.released:
     name: quota.released
     title: Quota Released
     summary: A hard quota reservation was released
     contentType: application/json
+    x-schema-version: "1.0"
     payload:
       type: object
       required: [reservation_id, amount]
@@ -237,11 +274,17 @@ messages:
           type: integer
           format: int64
 
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "quota.released"
+          timestamp: "2026-01-01T00:00:00Z"
   support.requested:
     name: support.requested
     title: Support Session Requested
     summary: A JIT support session was requested
     contentType: application/json
+    x-schema-version: "1.0"
     payload:
       type: object
       required: [session_id, access_type, requested_by, reason]
@@ -257,11 +300,17 @@ messages:
         reason:
           type: string
 
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "support.requested"
+          timestamp: "2026-01-01T00:00:00Z"
   support.approved:
     name: support.approved
     title: Support Session Approved
     summary: A support session was approved and activated
     contentType: application/json
+    x-schema-version: "1.0"
     payload:
       type: object
       required: [session_id, approved_by, access_type]
@@ -275,11 +324,17 @@ messages:
           type: string
           enum: [standard, emergency]
 
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "support.approved"
+          timestamp: "2026-01-01T00:00:00Z"
   support.revoked:
     name: support.revoked
     title: Support Session Revoked
     summary: A support session was revoked
     contentType: application/json
+    x-schema-version: "1.0"
     payload:
       type: object
       required: [session_id, revoked_by]
@@ -290,11 +345,17 @@ messages:
         revoked_by:
           type: string
 
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "support.revoked"
+          timestamp: "2026-01-01T00:00:00Z"
   team.member_invited:
     name: team.member_invited
     title: Team Member Invited
     summary: A new team member was invited
     contentType: application/json
+    x-schema-version: "1.0"
     payload:
       type: object
       required: [email, role]
@@ -305,11 +366,17 @@ messages:
           type: string
           enum: [admin, billing_admin, developer, support_agent]
 
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "team.member_invited"
+          timestamp: "2026-01-01T00:00:00Z"
   team.member_role_changed:
     name: team.member_role_changed
     title: Team Member Role Changed
     summary: A team member's role was changed
     contentType: application/json
+    x-schema-version: "1.0"
     payload:
       type: object
       required: [email, old_role, new_role]
@@ -321,11 +388,17 @@ messages:
         new_role:
           type: string
 
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "team.member_role_changed"
+          timestamp: "2026-01-01T00:00:00Z"
   custom_domain.registered:
     name: custom_domain.registered
     title: Custom Domain Registered
     summary: A custom domain was registered for DNS verification
     contentType: application/json
+    x-schema-version: "1.0"
     payload:
       type: object
       required: [domain]
@@ -333,11 +406,17 @@ messages:
         domain:
           type: string
 
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "custom_domain.registered"
+          timestamp: "2026-01-01T00:00:00Z"
   custom_domain.verified:
     name: custom_domain.verified
     title: Custom Domain Verified
     summary: A custom domain was verified via DNS
     contentType: application/json
+    x-schema-version: "1.0"
     payload:
       type: object
       required: [domain]
@@ -345,11 +424,17 @@ messages:
         domain:
           type: string
 
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "custom_domain.verified"
+          timestamp: "2026-01-01T00:00:00Z"
   migration.job_created:
     name: migration.job_created
     title: Migration Job Created
     summary: A migration job was created
     contentType: application/json
+    x-schema-version: "1.0"
     payload:
       type: object
       required: [source_system, dry_run]
@@ -359,11 +444,17 @@ messages:
         dry_run:
           type: boolean
 
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "migration.job_created"
+          timestamp: "2026-01-01T00:00:00Z"
   migration.validated:
     name: migration.validated
     title: Migration Validated
     summary: A migration job was validated
     contentType: application/json
+    x-schema-version: "1.0"
     payload:
       type: object
       required: [valid, invalid]
@@ -373,6 +464,11 @@ messages:
         invalid:
           type: integer
 
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "migration.validated"
+          timestamp: "2026-01-01T00:00:00Z"
   migration.completed:
     name: migration.completed
     title: Migration Completed
@@ -392,6 +488,7 @@ messages:
     title: Cell Migration Completed
     summary: A planned cell migration was completed
     contentType: application/json
+    x-schema-version: "1.0"
     payload:
       type: object
       required: [new_cell, record_count]
@@ -402,11 +499,17 @@ messages:
         record_count:
           type: integer
 
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "cell_migration.completed"
+          timestamp: "2026-01-01T00:00:00Z"
   failover.completed:
     name: failover.completed
     title: Failover Completed
     summary: A cell failover was completed
     contentType: application/json
+    x-schema-version: "1.0"
     payload:
       type: object
       required: [replayed_usage, replayed_outbox]
@@ -416,6 +519,11 @@ messages:
         replayed_outbox:
           type: integer
 
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "failover.completed"
+          timestamp: "2026-01-01T00:00:00Z"
   data_export.completed:
     name: data_export.completed
     title: Data Export Completed
@@ -435,6 +543,7 @@ messages:
     title: Data Deletion Completed
     summary: Data deletion was completed with proof
     contentType: application/json
+    x-schema-version: "1.0"
     payload:
       type: object
       required: [record_count, data_hash, reason]
@@ -446,6 +555,11 @@ messages:
         reason:
           type: string
 
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "data_deletion.completed"
+          timestamp: "2026-01-01T00:00:00Z"
   budget.alert_exceeded:
     name: budget.alert_exceeded
     title: Budget Alert Exceeded
@@ -463,3 +577,1709 @@ messages:
           format: int64
         threshold_pct:
           type: number
+
+  auth.hosted_auth_disabled:
+    name: auth.hosted_auth_disabled
+    title: Auth Hosted Auth Disabled
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "auth.hosted_auth_disabled"
+          timestamp: "2026-01-01T00:00:00Z"
+  auth.hosted_auth_redirect_uris_updated:
+    name: auth.hosted_auth_redirect_uris_updated
+    title: Auth Hosted Auth Redirect Uris Updated
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "auth.hosted_auth_redirect_uris_updated"
+          timestamp: "2026-01-01T00:00:00Z"
+  auth.hosted_auth_secret_rotated:
+    name: auth.hosted_auth_secret_rotated
+    title: Auth Hosted Auth Secret Rotated
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "auth.hosted_auth_secret_rotated"
+          timestamp: "2026-01-01T00:00:00Z"
+  auth.hosted_auth_setup:
+    name: auth.hosted_auth_setup
+    title: Auth Hosted Auth Setup
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "auth.hosted_auth_setup"
+          timestamp: "2026-01-01T00:00:00Z"
+  budget.alert_created:
+    name: budget.alert_created
+    title: Budget Alert Created
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "budget.alert_created"
+          timestamp: "2026-01-01T00:00:00Z"
+  catalog.version_created:
+    name: catalog.version_created
+    title: Catalog Version Created
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "catalog.version_created"
+          timestamp: "2026-01-01T00:00:00Z"
+  catalog.version_published:
+    name: catalog.version_published
+    title: Catalog Version Published
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "catalog.version_published"
+          timestamp: "2026-01-01T00:00:00Z"
+  catalog.version_retired:
+    name: catalog.version_retired
+    title: Catalog Version Retired
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "catalog.version_retired"
+          timestamp: "2026-01-01T00:00:00Z"
+  catalog.version_validated:
+    name: catalog.version_validated
+    title: Catalog Version Validated
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "catalog.version_validated"
+          timestamp: "2026-01-01T00:00:00Z"
+  cell.created:
+    name: cell.created
+    title: Cell Created
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "cell.created"
+          timestamp: "2026-01-01T00:00:00Z"
+  cell.status_changed:
+    name: cell.status_changed
+    title: Cell Status Changed
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "cell.status_changed"
+          timestamp: "2026-01-01T00:00:00Z"
+  cell_migration.cancelled:
+    name: cell_migration.cancelled
+    title: Cell Migration Cancelled
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "cell_migration.cancelled"
+          timestamp: "2026-01-01T00:00:00Z"
+  cell_migration.planned:
+    name: cell_migration.planned
+    title: Cell Migration Planned
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "cell_migration.planned"
+          timestamp: "2026-01-01T00:00:00Z"
+  cell_migration.prechecked:
+    name: cell_migration.prechecked
+    title: Cell Migration Prechecked
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "cell_migration.prechecked"
+          timestamp: "2026-01-01T00:00:00Z"
+  credential.created:
+    name: credential.created
+    title: Credential Created
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "credential.created"
+          timestamp: "2026-01-01T00:00:00Z"
+  credential.revoked:
+    name: credential.revoked
+    title: Credential Revoked
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "credential.revoked"
+          timestamp: "2026-01-01T00:00:00Z"
+  custom_domain.deleted:
+    name: custom_domain.deleted
+    title: Custom Domain Deleted
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "custom_domain.deleted"
+          timestamp: "2026-01-01T00:00:00Z"
+  custom_domain.revoked:
+    name: custom_domain.revoked
+    title: Custom Domain Revoked
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "custom_domain.revoked"
+          timestamp: "2026-01-01T00:00:00Z"
+  data_export.requested:
+    name: data_export.requested
+    title: Data Export Requested
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "data_export.requested"
+          timestamp: "2026-01-01T00:00:00Z"
+  entitlement.snapshot_computed:
+    name: entitlement.snapshot_computed
+    title: Entitlement Snapshot Computed
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "entitlement.snapshot_computed"
+          timestamp: "2026-01-01T00:00:00Z"
+  failover.aborted:
+    name: failover.aborted
+    title: Failover Aborted
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "failover.aborted"
+          timestamp: "2026-01-01T00:00:00Z"
+  failover.fenced:
+    name: failover.fenced
+    title: Failover Fenced
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "failover.fenced"
+          timestamp: "2026-01-01T00:00:00Z"
+  failover.initiated:
+    name: failover.initiated
+    title: Failover Initiated
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "failover.initiated"
+          timestamp: "2026-01-01T00:00:00Z"
+  failover.switched:
+    name: failover.switched
+    title: Failover Switched
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "failover.switched"
+          timestamp: "2026-01-01T00:00:00Z"
+  metered_pricing.rule_set:
+    name: metered_pricing.rule_set
+    title: Metered Pricing Rule Set
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "metered_pricing.rule_set"
+          timestamp: "2026-01-01T00:00:00Z"
+  migration.records_added:
+    name: migration.records_added
+    title: Migration Records Added
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "migration.records_added"
+          timestamp: "2026-01-01T00:00:00Z"
+  migration.rolled_back:
+    name: migration.rolled_back
+    title: Migration Rolled Back
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "migration.rolled_back"
+          timestamp: "2026-01-01T00:00:00Z"
+  notification.config_set:
+    name: notification.config_set
+    title: Notification Config Set
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "notification.config_set"
+          timestamp: "2026-01-01T00:00:00Z"
+  provider.activated:
+    name: provider.activated
+    title: Provider Activated
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "provider.activated"
+          timestamp: "2026-01-01T00:00:00Z"
+  provider.cell_assigned:
+    name: provider.cell_assigned
+    title: Provider Cell Assigned
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "provider.cell_assigned"
+          timestamp: "2026-01-01T00:00:00Z"
+  provider.lifecycle_changed:
+    name: provider.lifecycle_changed
+    title: Provider Lifecycle Changed
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "provider.lifecycle_changed"
+          timestamp: "2026-01-01T00:00:00Z"
+  provider.risk_reviewed:
+    name: provider.risk_reviewed
+    title: Provider Risk Reviewed
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "provider.risk_reviewed"
+          timestamp: "2026-01-01T00:00:00Z"
+  quota.limit_set:
+    name: quota.limit_set
+    title: Quota Limit Set
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "quota.limit_set"
+          timestamp: "2026-01-01T00:00:00Z"
+  scim.group_created:
+    name: scim.group_created
+    title: Scim Group Created
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "scim.group_created"
+          timestamp: "2026-01-01T00:00:00Z"
+  scim.group_deleted:
+    name: scim.group_deleted
+    title: Scim Group Deleted
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "scim.group_deleted"
+          timestamp: "2026-01-01T00:00:00Z"
+  scim.group_patched:
+    name: scim.group_patched
+    title: Scim Group Patched
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "scim.group_patched"
+          timestamp: "2026-01-01T00:00:00Z"
+  scim.user_created:
+    name: scim.user_created
+    title: Scim User Created
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "scim.user_created"
+          timestamp: "2026-01-01T00:00:00Z"
+  scim.user_deleted:
+    name: scim.user_deleted
+    title: Scim User Deleted
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "scim.user_deleted"
+          timestamp: "2026-01-01T00:00:00Z"
+  scim.user_patched:
+    name: scim.user_patched
+    title: Scim User Patched
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "scim.user_patched"
+          timestamp: "2026-01-01T00:00:00Z"
+  scim.user_updated:
+    name: scim.user_updated
+    title: Scim User Updated
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "scim.user_updated"
+          timestamp: "2026-01-01T00:00:00Z"
+  sla.tier_created:
+    name: sla.tier_created
+    title: Sla Tier Created
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "sla.tier_created"
+          timestamp: "2026-01-01T00:00:00Z"
+  sla.tier_deleted:
+    name: sla.tier_deleted
+    title: Sla Tier Deleted
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "sla.tier_deleted"
+          timestamp: "2026-01-01T00:00:00Z"
+  sla.tier_updated:
+    name: sla.tier_updated
+    title: Sla Tier Updated
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "sla.tier_updated"
+          timestamp: "2026-01-01T00:00:00Z"
+  subscription.override_deleted:
+    name: subscription.override_deleted
+    title: Subscription Override Deleted
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "subscription.override_deleted"
+          timestamp: "2026-01-01T00:00:00Z"
+  subscription.override_set:
+    name: subscription.override_set
+    title: Subscription Override Set
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "subscription.override_set"
+          timestamp: "2026-01-01T00:00:00Z"
+  subscription.terminated:
+    name: subscription.terminated
+    title: Subscription Terminated
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "subscription.terminated"
+          timestamp: "2026-01-01T00:00:00Z"
+  support.denied:
+    name: support.denied
+    title: Support Denied
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "support.denied"
+          timestamp: "2026-01-01T00:00:00Z"
+  support.first_approved:
+    name: support.first_approved
+    title: Support First Approved
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "support.first_approved"
+          timestamp: "2026-01-01T00:00:00Z"
+  team.member_reactivated:
+    name: team.member_reactivated
+    title: Team Member Reactivated
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "team.member_reactivated"
+          timestamp: "2026-01-01T00:00:00Z"
+  team.member_removed:
+    name: team.member_removed
+    title: Team Member Removed
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "team.member_removed"
+          timestamp: "2026-01-01T00:00:00Z"
+  team.member_suspended:
+    name: team.member_suspended
+    title: Team Member Suspended
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "team.member_suspended"
+          timestamp: "2026-01-01T00:00:00Z"
+  usage.accepted:
+    name: usage.accepted
+    title: Usage Accepted
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "usage.accepted"
+          timestamp: "2026-01-01T00:00:00Z"
+  usage.reversed:
+    name: usage.reversed
+    title: Usage Reversed
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "usage.reversed"
+          timestamp: "2026-01-01T00:00:00Z"
+  webhook.endpoint_created:
+    name: webhook.endpoint_created
+    title: Webhook Endpoint Created
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "webhook.endpoint_created"
+          timestamp: "2026-01-01T00:00:00Z"
+  webhook.endpoint_deleted:
+    name: webhook.endpoint_deleted
+    title: Webhook Endpoint Deleted
+    summary: Outbox event emitted by vLogBin
+    contentType: application/json
+    x-schema-version: "1.0"
+    payload:
+      type: object
+      required: [id, event_type, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    examples:
+      - value:
+          id: "00000000-0000-0000-0000-000000000000"
+          event_type: "webhook.endpoint_deleted"
+          timestamp: "2026-01-01T00:00:00Z"

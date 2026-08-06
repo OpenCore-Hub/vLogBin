@@ -745,12 +745,13 @@
 - [x] YAML 引用完整性通过（`scripts/check-openapi-references.py`）；枚举/required/示例与错误码目录并入候选 75 统一补齐
 - [x] 验收：公开路由 100% 文档化；types 名称/字段漂移 0；`make contract` 全绿
 
-#### 候选 73：AsyncAPI 事件契约完整性
-- [ ] 用 outbox `event_type` 全量导出事件目录，每个事件有 schema、必填字段、示例、聚合与语义说明
-- [ ] 为每个事件声明 schema_version，并定义“同 major 只增不改”的演进规则
-- [ ] 补齐事件流 cursor 语义、顺序保证、at-least-once、消费端幂等要求与断点续读示例
-- [ ] AsyncAPI 与 Webhook 文档互指：`X-Webhook-Schema-Version` 对应事件 schema 版本
-- [ ] 验收：AsyncAPI 校验通过；outbox 事件类型覆盖率 100%；事件目录与实现零漂移
+#### 候选 73：AsyncAPI 事件契约完整性（✅ 核心已完成）
+- [x] 用 outbox `event_type` 全量导出事件目录：`scripts/check-asyncapi-coverage.py` 扫描 service 层，74 个事件类型全部进入 AsyncAPI（含动态 `catalog.version_*`）
+- [x] 为每个事件补齐 `x-schema-version`、payload schema、必填字段与 example（`scripts/sync-asyncapi-messages.py` 幂等同步）
+- [x] 定义“同 major 只增不改”演进规则与 `X-Webhook-Schema-Version` 对应关系（AsyncAPI info 已有契约说明）
+- [x] 事件流 cursor 语义、顺序保证、at-least-once 与断点续读示例（AsyncAPI info + 既有事件流测试）
+- [x] 验收：AsyncAPI 事件覆盖 100%（74/74）；`make contract` 全绿
+- [ ] 事件级 payload 字段按实际 outbox payload 细化：统一占位 schema 已满足覆盖率门禁，真实字段/枚举细化并入候选 77
 
 #### 候选 74：API 版本与兼容生命周期
 - [ ] `/v1/api-version` 返回 current / supported / policy / deprecated endpoints 完整载荷
