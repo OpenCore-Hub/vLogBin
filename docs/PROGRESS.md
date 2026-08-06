@@ -703,6 +703,13 @@
   - 侧边栏新增「对账」
   - E2E：`31-reconciliation.spec.ts`
   - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **60/60 全绿** ✅
+- [x] JIT 支持会话审批控制面 + 审核队列 N+1 收敛 — 候选 68
+  - API：`GET /v1/operator/risk-reviews`（`DISTINCT ON provider_id` 返回各 Provider 最新审核）+ `GET /v1/operator/support-sessions?limit=`（跨 Provider JIT 队列）；保留原 per-provider 端点不变
+  - 服务层：`ListLatestRiskReviews` / `ListAllSupportSessions`（operator 上下文，单次查询替代 N+1）
+  - 前端：`/ops/reviews` 支持会话表新增「一审 / 二审 / 吊销」操作列；一审/二审走双人审批语义，吊销走 type-to-confirm；审核页改为两个聚合请求加载全部 Provider 的最新审核与支持会话
+  - 集成测试：`TestRiskReviewAggregateLatestPerProvider` / `TestSupportSessionOperatorAggregateList` ✅
+  - E2E：`17-ops.spec.ts` 新增支持会话用例（紧急会话按钮/弹窗 + 标准会话 UI 吊销）✅
+  - 验证：Go build / vet / 非集成全量单测 ✅；集成回归（聚合端点）✅；tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **61/61 全绿** ✅
 
 ### 技术债 / 结构偏差（M0 遗留，随里程碑消化）
 
