@@ -673,7 +673,7 @@ func TestWebhookDeliveryReplay(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, "boom", http.StatusInternalServerError)
 	}))
 	defer wc.Close()
 
@@ -716,6 +716,12 @@ func TestWebhookDeliveryReplay(t *testing.T) {
 	d := operatorLatestDelivery(t, providerID)
 	if d["status"] != "dead_letter" {
 		t.Fatalf("status = %v, want dead_letter", d["status"])
+	}
+	if d["response_status"] != float64(500) {
+		t.Fatalf("response_status = %v, want 500", d["response_status"])
+	}
+	if _, ok := d["response_body"].(string); !ok {
+		t.Fatalf("response_body must be retained for failure diagnosis, got %T", d["response_body"])
 	}
 	deliveryID := d["id"].(string)
 

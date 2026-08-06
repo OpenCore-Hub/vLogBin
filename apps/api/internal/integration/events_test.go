@@ -275,3 +275,61 @@ func TestEventStreamCursorResumption(t *testing.T) {
 		seen[id] = true
 	}
 }
+
+func TestEventStreamNoLossNoDuplication(t *testing.T) {
+	_, apiKey := createProviderAPI(t, "es-exact-"+uuid.NewString()[:8])
+	versionID := createPublishedCatalog(t, apiKey)
+	createCustomerAndSubscription(t, apiKey, versionID)
+
+	// Fetch the full stream as the ground truth.
+	status, body := apiReq(t, "GET", "/v1/events?limit=100", apiKey, nil)
+	if status != http.StatusOK {
+		t.Fatalf("full stream: status %d, body %v", status, body)
+	}
+	fullIDs := make(map[string]bool)
+	for _, item := range body["events"].([]any) {
+		fullIDs[item.(map[string]any)["id"].(string)] = true
+	}
+	if len(fullIDs) == 0 {
+		t.Fatal("expected events, got 0")
+	}
+
+	// Paginate through the same stream with a small limit.
+	var pageIDs []string
+	cursor := ""
+	for i := 0; i < 20; i++ {
+		url := "/v1/events?limit=3"
+		if cursor != "" {
+			url += "&cursor=" + cursor
+		}
+		status, body = apiReq(t, "GET", url, apiKey, nil)
+		if status != http.StatusOK {
+			t.Fatalf("page %d: status %d", i, status)
+		}
+		events := body["events"].([]any)
+		if len(events) == 0 {
+			break
+		}
+		for _, item := range events {
+			pageIDs = append(pageIDs, item.(map[string]any)["id"].(string))
+		}
+		if body["has_more"] != true {
+			break
+		}
+		cursor = body["next_cursor"].(string)
+	}
+
+	if len(pageIDs) != len(fullIDs) {
+		t.Fatalf("paged event count = %d, full stream = %d", len(pageIDs), len(fullIDs))
+	}
+	seen := make(map[string]bool)
+	for _, id := range pageIDs {
+		if seen[id] {
+			t.Fatalf("duplicate event ID across pages: %s", id)
+		}
+		seen[id] = true
+		if !fullIDs[id] {
+			t.Fatalf("paged stream contains unknown event: %s", id)
+		}
+	}
+}
