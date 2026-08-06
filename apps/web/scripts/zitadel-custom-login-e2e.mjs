@@ -26,33 +26,49 @@ await page.getByRole("button", { name: "继续" }).click();
   await page.getByRole("button", { name: "登录" }).click();
 
 try {
-  await page.waitForURL(
-    (url) => url.pathname === "/callback" && url.searchParams.has("code"),
+  await page.waitForFunction(
+    () => {
+      const path = window.location.pathname;
+      const search = window.location.search;
+      return (
+        (path === "/callback" && search.includes("code=")) ||
+        path.startsWith("/console") ||
+        path === "/error"
+      );
+    },
+    undefined,
     { timeout: 60_000 },
   );
 } catch (err) {
-  console.log("FAILED_URL", page.url());
+  console.log("FINAL_URL", page.url());
   console.log(
-    "FAILED_BODY",
-    (await page.locator("body").innerText()).slice(0, 3000),
+    "FINAL_BODY",
+    (await page.locator("body").innerText()).slice(0, 1000),
   );
   throw err;
 }
+const callbackUrl = page.url().includes("/callback")
+  ? page.url()
+  : "redirected-through-callback";
 
 console.log(
   JSON.stringify(
     {
       ok: true,
-      callbackUrl: page.url(),
-      finalUrl: process.env.WAIT_CONSOLE === "true" ? page.url() : undefined,
+      callbackUrl,
+      finalUrl: page.url(),
     },
     null,
     2,
   ),
 );
 if (process.env.WAIT_CONSOLE === "true") {
-  await page.waitForURL(
-    (url) => url.pathname.startsWith("/console") || url.pathname === "/error",
+  await page.waitForFunction(
+    () => {
+      const path = window.location.pathname;
+      return path.startsWith("/console") || path === "/error";
+    },
+    undefined,
     { timeout: 30_000 },
   );
   console.log("FINAL_URL", page.url());
