@@ -383,6 +383,7 @@
 | Identity Users 控制面 | `/console/identity/users`：workspace 成员列表 / 邀请 / 角色更新 / 移除（type-to-confirm）；复用既有 `/v1/me/workspaces/{id}/members` API；侧边栏新增 Users | ✅ 已完成（候选 58） |
 | 多 workspace 切换 | `WORKSPACE_COOKIE` + `lib/workspace.ts`（workspace_id==provider_id 解析）；Topbar WorkspaceSwitcher（多 workspace 下拉、单 workspace 只读标签）；13 个 Console 页面全部改为按当前 workspace 解析 provider；Settings / Users 同步按 cookie 选择 | ✅ 已完成（候选 59） |
 | 用量控制面 | `/console/billing/usage`：事件/客户/指标/撤销摘要卡 + DataTable（事务/客户/指标检索、环境与时间列）；复用既有 usage-events 端点；侧边栏新增用量 | ✅ 已完成（候选 60） |
+| 全局错误与加载边界 | 根级 `not-found.tsx`（品牌 404 + 返回控制台）与 `global-error.tsx`（digest + 重试）；Console / Ops / Portal 专属 loading 骨架；修复 Ops Cell 成功反馈竞态（改为成功面板停留 + 完成后再 refresh） | ✅ 已完成（候选 61） |
 
 ## 四、Web 前端重构任务追踪（设计基线 v1.4）
 
@@ -396,7 +397,7 @@
 | M1 控制面 API | `apps/api` 新增 Console 端点（最大前置依赖） | ✅ 已完成（候选 29-33） |
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
 | M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | ✅ 已完成（候选 43-58） |
-| M4 生产级 | 多 workspace 切换 / 用量控制面 / 后续生产硬化 | 🔄 进行中（候选 60） |
+| M4 生产级 | 多 workspace 切换 / 用量控制面 / 全局错误与加载边界 / 后续生产硬化 | 🔄 进行中（候选 61） |
 
 ### M0 — 基座（✅ 已完成，待提交）
 
@@ -651,6 +652,13 @@
   - 侧边栏 Billing 分组新增「用量」
   - E2E：`27-usage.spec.ts`（建目录 + 客户 + 订阅 → 上报用量 → 摘要与事件渲染）
   - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright 全量 55/56 + Ops Cell 单跑通过（唯一失败为全量串行偶发，非代码回归）
+- [x] 全局错误与加载边界 — 候选 61
+  - `app/not-found.tsx`：品牌化 404（LogoMark + 返回控制台）
+  - `app/global-error.tsx`：根级兜底（digest + 重试）
+  - Console / Ops / Portal `loading.tsx`：各自语义化骨架，替代根级通用 loading
+  - Ops Cell 创建：移除 Server Action 内 `revalidatePath` 竞态，改为成功面板停留 + 「完成」后再 `router.refresh()`
+  - E2E：`28-errors.spec.ts`（未知路由 → 品牌 404）；Ops E2E 断言收敛到对话框成功面板
+  - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；404 用例 ✅；Ops E2E 单跑 2/2 ✅（全量串行受登录 429 限流影响，非代码回归）
 
 ### 技术债 / 结构偏差（M0 遗留，随里程碑消化）
 
