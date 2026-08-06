@@ -136,11 +136,55 @@ export function AuditClient({
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">审计日志</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          检索 Provider 的不可变审计轨迹，并检查哈希链完整性。
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">审计日志</h1>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            检索 Provider 的不可变审计轨迹，并检查哈希链完整性。
+          </p>
+        </div>
+        {providerId && (
+          <div className="flex items-center gap-2">
+            <LinkButton
+              href={`/console/audit/export?${new URLSearchParams({
+                provider_id: providerId,
+                format: "csv",
+                from: filters.from,
+                to: filters.to,
+                ...(filters.action ? { action: filters.action } : {}),
+                ...(filters.actor_type
+                  ? { actor_type: filters.actor_type }
+                  : {}),
+                ...(filters.target_type
+                  ? { target_type: filters.target_type }
+                  : {}),
+              })}`}
+              variant="outline"
+              prefetch={false}
+            >
+              导出 CSV
+            </LinkButton>
+            <LinkButton
+              href={`/console/audit/export?${new URLSearchParams({
+                provider_id: providerId,
+                format: "json",
+                from: filters.from,
+                to: filters.to,
+                ...(filters.action ? { action: filters.action } : {}),
+                ...(filters.actor_type
+                  ? { actor_type: filters.actor_type }
+                  : {}),
+                ...(filters.target_type
+                  ? { target_type: filters.target_type }
+                  : {}),
+              })}`}
+              variant="outline"
+              prefetch={false}
+            >
+              导出 JSON
+            </LinkButton>
+          </div>
+        )}
       </header>
 
       {loadError ? (

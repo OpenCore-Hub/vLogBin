@@ -19,5 +19,10 @@ test.describe("Audit log", () => {
 
     await page.getByRole("button", { name: "验证完整性" }).click();
     await expect(page.getByText("链完整", { exact: true })).toBeVisible();
+
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("link", { name: "导出 CSV" }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toMatch(/\.csv$/);
   });
 });

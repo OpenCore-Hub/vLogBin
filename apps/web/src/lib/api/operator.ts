@@ -1183,6 +1183,62 @@ export async function verifyAuditChain(): Promise<AuditChainVerifyResult | null>
   };
 }
 
+/** 流式导出审计日志（CSV/JSON），返回原始 Response 供 route handler 下载。 */
+export async function exportAuditEvents(
+  providerId: string,
+  params: {
+    action?: string;
+    actor_type?: string;
+    target_type?: string;
+    from: string;
+    to: string;
+    format: "csv" | "json";
+  },
+): Promise<Response> {
+  const token = await resolveApiToken();
+  if (!token) {
+    throw new ApiError(
+      "unauthenticated",
+      "未登录或会话缺少访问凭据，请重新登录。",
+      401,
+    );
+  }
+  const qs = new URLSearchParams({
+    from: params.from,
+    to: params.to,
+    format: params.format,
+  });
+  if (params.action) qs.set("action", params.action);
+  if (params.actor_type) qs.set("actor_type", params.actor_type);
+  if (params.target_type) qs.set("target_type", params.target_type);
+  const res = await fetch(
+    `${baseUrl()}/v1/operator/providers/${encodeURIComponent(providerId)}/audit/export?${qs.toString()}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    },
+  );
+  if (!res.ok) {
+    let code = "api_error";
+    let message = `Request failed with status ${res.status}`;
+    try {
+      const body: unknown = await res.json();
+      if (body && typeof body === "object" && "error" in body) {
+        const errObj = (body as { error?: { code?: unknown; message?: unknown } })
+          .error;
+        if (typeof errObj?.code === "string") code = errObj.code;
+        if (typeof errObj?.message === "string") message = errObj.message;
+      }
+    } catch {
+      // Non-JSON error body — keep defaults.
+    }
+    throw new ApiError(code, message, res.status);
+  }
+  return res;
+}
+
 /**
  * 列出 Provider 在所有环境（test/live）下签发的 API 密钥（operator 视图）。
  * key_hash 永远不会下发给客户端，仅通过 key_prefix 标识密钥。
