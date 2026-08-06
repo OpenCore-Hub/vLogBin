@@ -237,6 +237,8 @@ func (s *Server) Router() chi.Router {
 			r.Get("/providers/{id}/catalog/plans/{code}/entitlements", s.operatorListPlanEntitlements)
 			r.Put("/providers/{id}/catalog/plans/{code}/entitlements/{key}", s.operatorSetPlanEntitlement)
 			r.Delete("/providers/{id}/catalog/plans/{code}/entitlements/{key}", s.operatorDeletePlanEntitlement)
+			// Console Analytics control plane (M4).
+			r.Get("/providers/{id}/analytics/dashboard", s.operatorAnalyticsDashboard)
 			r.Get("/providers/{id}/subscriptions", s.operatorListSubscriptions)
 			r.Get("/providers/{id}/customers", s.operatorListCustomers)
 			// Console Customers control plane (§8 M2), environment-scoped via ?env=.

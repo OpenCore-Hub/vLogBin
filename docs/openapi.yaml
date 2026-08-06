@@ -753,6 +753,65 @@ components:
         value:
           description: 按 value_type 的 JSON 值
 
+    ProviderAnalyticsDashboard:
+      type: object
+      description: Console Analytics（M4）一次请求全量载荷
+      properties:
+        revenue:
+          type: array
+          items:
+            type: object
+            properties:
+              provider_id: { type: string }
+              month: { type: string }
+              invoice_count: { type: integer }
+              subscription_count: { type: integer }
+              total_revenue_cents: { type: integer }
+              avg_invoice_line_cents: { type: number }
+        mau:
+          type: array
+          items:
+            type: object
+            properties:
+              provider_id: { type: string }
+              month: { type: string }
+              active_customers: { type: integer }
+              unique_metrics: { type: integer }
+              total_usage_events: { type: integer }
+        conversion:
+          type: array
+          items:
+            type: object
+            properties:
+              provider_id: { type: string }
+              signup_month: { type: string }
+              new_customers: { type: integer }
+              customers_with_subscription: { type: integer }
+              active_subscriptions: { type: integer }
+        churn:
+          type: array
+          items:
+            type: object
+            properties:
+              provider_id: { type: string }
+              churn_month: { type: string }
+              churned_subscriptions: { type: integer }
+              retained_subscriptions: { type: integer }
+        anomalies:
+          type: array
+          items:
+            type: object
+            properties:
+              provider_id: { type: string }
+              metric_code: { type: string }
+              day: { type: string }
+              event_count: { type: integer }
+              avg_7d: { type: number }
+              is_anomaly: { type: boolean }
+        generated_at:
+          type: string
+          format: date-time
+
     PlanInput:
       type: object
       description: 套餐创建/更新入参（plan code 不可变；更新时 body code 必须与路径一致）
@@ -3146,6 +3205,23 @@ paths:
           description: Grant deleted
         '404':
           description: Unknown provider, environment, plan, or grant
+
+  /operator/providers/{provider_id}/analytics/dashboard:
+    get:
+      tags: [Operator]
+      summary: Console Analytics dashboard (revenue / MAU / conversion / churn / anomalies)
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/Env'
+      responses:
+        '200':
+          description: Combined analytics dashboard
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderAnalyticsDashboard'
+        '404':
+          description: Unknown provider or environment
 
   # ---- 工作区（operator 会话域，RLS 仅 operator 事务可见）----
   /me/workspaces:
