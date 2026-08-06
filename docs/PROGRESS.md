@@ -380,6 +380,7 @@
 | Payments 控制面 | `/console/billing/payments`：支付成功/待支付/支付失败金额卡 + 发票数；DataTable 支付状态筛选；说明本地不存支付凭据、支付状态由 Lago 同步；侧边栏新增支付 | ✅ 已完成（候选 55） |
 | Catalog 控制面 | `/console/catalog`：目录版本选择（URL `?version=` 可分享/回退）+ 版本元数据 / 指标 / 套餐 / 价格 / 权益五段视图；当前 draft 摘要；侧边栏新增目录 | ✅ 已完成（候选 56） |
 | Developers SDK / 事件规范 | `/console/developers/sdk`（cURL / Node / Python 用量上报示例 + CodeBlock 复制）与 `/console/developers/events-spec`（事件目录 + payload 规范）；侧边栏补齐 SDK / 事件规范 | ✅ 已完成（候选 57） |
+| Identity Users 控制面 | `/console/identity/users`：workspace 成员列表 / 邀请 / 角色更新 / 移除（type-to-confirm）；复用既有 `/v1/me/workspaces/{id}/members` API；侧边栏新增 Users | ✅ 已完成（候选 58） |
 
 ## 四、Web 前端重构任务追踪（设计基线 v1.4）
 
@@ -392,7 +393,7 @@
 | M0 基座 | 目录 / tokens / 认证 / 官网 / Console 布局 / Ops 迁移 / 引导 | ✅ 已完成（静态验收，待提交） |
 | M1 控制面 API | `apps/api` 新增 Console 端点（最大前置依赖） | ✅ 已完成（候选 29-33） |
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
-| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 57） |
+| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 58） |
 
 ### M0 — 基座（✅ 已完成，待提交）
 
@@ -622,6 +623,13 @@
   - 侧边栏 Developers 分组补齐「SDK」「事件规范」
   - E2E：`24-developer-guides.spec.ts`
   - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright 全量 52/53 + Portal 单跑通过（唯一失败为登录 429 限流偶发，非代码回归）
+- [x] Identity Users 控制面 — 候选 58
+  - `/console/identity/users`：成员列表（user_sub / 角色 / 状态 / 加入时间）+ 邀请 / 角色更新 / 移除
+  - 复用既有 workspace members API，前端补齐 operator client（list / invite / patch role / delete）
+  - 移除成员走 type-to-confirm；邀请与角色更新使用 zod 校验 + 统一 ActionFeedback
+  - 侧边栏 Identity 分组新增「Users」
+  - E2E：`25-users.spec.ts`（邀请 → 改角色 → 移除）
+  - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright 全量 53/54 + Ops Cell 单跑通过（唯一失败为全量串行偶发，非代码回归）
 
 ### 技术债 / 结构偏差（M0 遗留，随里程碑消化）
 
