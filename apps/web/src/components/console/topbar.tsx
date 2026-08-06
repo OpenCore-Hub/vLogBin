@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback } from "react";
+import { useRouter } from "next/navigation";
+import type { Workspace } from "@/lib/api/operator";
 import type { Env } from "@/lib/env-shared";
 import { EnvSwitcher } from "./env-switcher";
+import { WorkspaceSwitcher } from "./workspace-switcher";
 import { useEnv } from "./env-provider";
 import { ThemeToggle } from "./theme-toggle";
 import { DropdownMenu } from "@/components/ui/overlay";
@@ -22,8 +25,19 @@ const ENV_META: Record<Env, { label: string; dot: string }> = {
 };
 
 /** 顶栏：环境切换器 + 主题 + 用户菜单（零摩擦，无打断）。 */
-export function Topbar({ user }: { user: TopbarUser }) {
+export function Topbar({
+  user,
+  workspaces,
+  activeWorkspaceId,
+  onWorkspaceChange,
+}: {
+  user: TopbarUser;
+  workspaces: Workspace[];
+  activeWorkspaceId: string | null;
+  onWorkspaceChange: (workspaceId: string) => Promise<void>;
+}) {
   const { env, switchTo } = useEnv();
+  const router = useRouter();
   const initial = user.name.trim().charAt(0).toUpperCase() || "U";
   // R21：窄屏（<sm）时环境切换器收进用户菜单，不溢出顶栏。
   const compact = useMediaQuery("(max-width: 639px)");
@@ -96,6 +110,13 @@ export function Topbar({ user }: { user: TopbarUser }) {
         )}
       </div>
       <div className="flex items-center gap-1.5">
+        <WorkspaceSwitcher
+          workspaces={workspaces}
+          activeWorkspaceId={activeWorkspaceId}
+          onSwitch={(workspaceId) => {
+            void onWorkspaceChange(workspaceId).then(() => router.refresh());
+          }}
+        />
         {/* 桌面（≥sm）直接展示环境切换器；窄屏收进用户菜单 */}
         <div className={cn(compact && "hidden")}>
           <EnvSwitcher />

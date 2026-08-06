@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { requireAuth } from "@/lib/auth/rbac";
 import { resolveEnv } from "@/lib/env";
 import { ONBOARDING_DISMISS_COOKIE } from "@/lib/env-shared";
+import { resolveWorkspaceId } from "@/lib/workspace";
 import {
   getOverviewStats,
   listCatalogPlans,
@@ -74,7 +75,9 @@ export default async function ConsolePage() {
   const onboardingDismissed =
     jar.get(ONBOARDING_DISMISS_COOKIE)?.value === "1";
   const providers = await safeList(() => listProviders());
-  const provider = providers[0] ?? null;
+  const workspaceId = await resolveWorkspaceId();
+  const provider =
+    providers.find((p) => p.id === workspaceId) ?? providers[0] ?? null;
 
   let activeSubscriptions = 0;
   let customers = 0;

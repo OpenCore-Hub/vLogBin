@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { Workspace } from "@/lib/api/operator";
 import type { Env } from "@/lib/env-shared";
 import { EnvProvider } from "./env-provider";
 import { Sidebar } from "./sidebar";
@@ -12,11 +13,17 @@ export function AppShell({
   user,
   env,
   onEnvChange,
+  workspaces,
+  activeWorkspaceId,
+  onWorkspaceChange,
   children,
 }: {
   user: TopbarUser;
   env: Env;
   onEnvChange: (env: Env) => Promise<void>;
+  workspaces: Workspace[];
+  activeWorkspaceId: string | null;
+  onWorkspaceChange: (workspaceId: string) => Promise<void>;
   children: ReactNode;
 }) {
   return (
@@ -24,7 +31,12 @@ export function AppShell({
       <Sidebar />
       <div className="flex min-h-dvh flex-col lg:pl-60">
         <EnvProvider initialEnv={env} onChange={onEnvChange}>
-          <Topbar user={user} />
+          <Topbar
+            user={user}
+            workspaces={workspaces}
+            activeWorkspaceId={activeWorkspaceId}
+            onWorkspaceChange={onWorkspaceChange}
+          />
           <main className="mx-auto w-full max-w-7xl flex-1 px-5 py-9 sm:px-8">
             {children}
           </main>

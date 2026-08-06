@@ -6,11 +6,11 @@ import {
   listCatalogPlans,
   listCustomers,
   listInvoices,
-  listProviders,
   type Invoice,
   type OverviewStats,
   type PlanCollection,
 } from "@/lib/api/operator";
+import { resolveWorkspaceProvider } from "@/lib/workspace";
 import { formatDate, formatMoney } from "@/lib/format";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -55,8 +55,7 @@ export default async function BillingDashboardPage() {
   const session = await requireAuth();
   const env = await resolveEnv(session);
 
-  const providers = await listProviders().catch(() => []);
-  const provider = providers[0] ?? null;
+  const provider = await resolveWorkspaceProvider();
 
   let overview = EMPTY_STATS;
   let invoices: Invoice[] = [];

@@ -8,6 +8,9 @@ export const SESSION_COOKIE = "vlb_session";
 /** First-Run 引导跳过标记（R18：跳过后可随时恢复）。 */
 export const ONBOARDING_DISMISS_COOKIE = "vlb_onboarding_dismissed";
 
+/** 当前选中的 workspace（M4 多工作区切换；workspace_id == provider_id）。 */
+export const WORKSPACE_COOKIE = "vlb_workspace";
+
 /** 客户门户独立会话 cookie（与平台用户会话隔离）。 */
 export const PORTAL_COOKIE = "vlb_portal_session";
 

@@ -2,12 +2,12 @@ import { requireAuth } from "@/lib/auth/rbac";
 import {
   getAuditChain,
   getAuditStats,
-  listProviders,
   queryAuditEvents,
   type AuditChainState,
   type AuditEvent,
   type AuditStats,
 } from "@/lib/api/operator";
+import { resolveWorkspaceProvider } from "@/lib/workspace";
 import { AuditClient } from "./audit-client";
 
 export const dynamic = "force-dynamic";
@@ -18,8 +18,7 @@ function isoDaysAgo(days: number): string {
 
 export default async function AuditPage() {
   await requireAuth();
-  const providers = await listProviders().catch(() => []);
-  const provider = providers[0] ?? null;
+  const provider = await resolveWorkspaceProvider();
 
   let events: AuditEvent[] = [];
   let nextCursor: number | null = null;

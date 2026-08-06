@@ -3,10 +3,10 @@ import { resolveEnv } from "@/lib/env";
 import {
   listCatalogPlans,
   listPlanEntitlements,
-  listProviders,
   type EntitlementGrant,
   type PlanDetail,
 } from "@/lib/api/operator";
+import { resolveWorkspaceProvider } from "@/lib/workspace";
 import { PoliciesClient } from "./policies-client";
 
 export const dynamic = "force-dynamic";
@@ -15,8 +15,7 @@ export default async function PoliciesPage() {
   const session = await requireAuth();
   const env = await resolveEnv(session);
 
-  const providers = await listProviders().catch(() => []);
-  const provider = providers[0] ?? null;
+  const provider = await resolveWorkspaceProvider();
 
   let plans: PlanDetail[] = [];
   let initialGrants: EntitlementGrant[] = [];

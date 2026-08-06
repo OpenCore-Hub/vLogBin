@@ -6,6 +6,7 @@ import { requireAuth } from "@/lib/auth/rbac";
 import { rememberEnv } from "@/lib/env";
 import {
   ONBOARDING_DISMISS_COOKIE,
+  WORKSPACE_COOKIE,
   type Env,
 } from "@/lib/env-shared";
 
@@ -38,4 +39,22 @@ export async function restoreOnboarding(): Promise<void> {
   const jar = await cookies();
   jar.delete(ONBOARDING_DISMISS_COOKIE);
   revalidatePath("/console");
+}
+
+/** 切换当前 workspace（workspace_id == provider_id，M4）。 */
+export async function switchWorkspace(workspaceId: string): Promise<void> {
+  await requireAuth();
+  const id = workspaceId.trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+    throw new Error("invalid workspace id");
+  }
+  const jar = await cookies();
+  jar.set(WORKSPACE_COOKIE, id, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365,
+  });
+  revalidatePath("/console", "layout");
 }

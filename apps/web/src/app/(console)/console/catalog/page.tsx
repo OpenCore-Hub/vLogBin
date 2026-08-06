@@ -4,11 +4,11 @@ import {
   getCatalogVersionDetail,
   listCatalogPlans,
   listCatalogVersions,
-  listProviders,
   type CatalogVersion,
   type CatalogVersionDetail,
   type PlanCollection,
 } from "@/lib/api/operator";
+import { resolveWorkspaceProvider } from "@/lib/workspace";
 import { CatalogClient } from "./catalog-client";
 
 export const dynamic = "force-dynamic";
@@ -24,8 +24,7 @@ export default async function CatalogPage({
   const env = await resolveEnv(session);
   const params = await searchParams;
 
-  const providers = await listProviders().catch(() => []);
-  const provider = providers[0] ?? null;
+  const provider = await resolveWorkspaceProvider();
 
   let versions: CatalogVersion[] = [];
   let detail: CatalogVersionDetail | null = null;

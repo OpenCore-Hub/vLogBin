@@ -10,6 +10,7 @@ import {
   type NotificationConfig,
   type Workspace,
 } from "@/lib/api/operator";
+import { resolveWorkspaceId } from "@/lib/workspace";
 import { SettingsClient } from "./settings-client";
 
 export const dynamic = "force-dynamic";
@@ -22,8 +23,11 @@ export default async function SettingsPage() {
     listProviders().catch(() => []),
     listMyWorkspaces().catch(() => []),
   ]);
-  const workspace = workspaces[0] ?? null;
-  const provider = providers[0] ?? null;
+  const workspaceId = await resolveWorkspaceId();
+  const workspace =
+    workspaces.find((w) => w.id === workspaceId) ?? workspaces[0] ?? null;
+  const provider =
+    providers.find((p) => p.id === workspaceId) ?? providers[0] ?? null;
   const providerId = workspace?.id ?? provider?.id ?? null;
 
   let resolvedWorkspace: Workspace | null = workspace;

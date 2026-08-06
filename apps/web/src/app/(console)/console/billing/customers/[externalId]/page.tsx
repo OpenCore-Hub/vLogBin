@@ -2,9 +2,9 @@ import { requireAuth } from "@/lib/auth/rbac";
 import { resolveEnv } from "@/lib/env";
 import {
   getCustomerDetail,
-  listProviders,
   type CustomerDetail,
 } from "@/lib/api/operator";
+import { resolveWorkspaceProvider } from "@/lib/workspace";
 import { CustomerDetailClient } from "./customer-detail-client";
 
 export const dynamic = "force-dynamic";
@@ -18,8 +18,7 @@ export default async function CustomerDetailPage({
   const env = await resolveEnv(session);
   const { externalId } = await params;
 
-  const providers = await listProviders().catch(() => []);
-  const provider = providers[0] ?? null;
+  const provider = await resolveWorkspaceProvider();
 
   let detail: CustomerDetail | null = null;
   let loadError: string | null = null;
