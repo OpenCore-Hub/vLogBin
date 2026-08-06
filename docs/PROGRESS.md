@@ -812,11 +812,12 @@
 - [x] 契约文档：`docs/PROVIDER_LIFECYCLE.md`（准入、暂停/受限、Offboarding、门禁）
 - [x] 验收：Offboarding 端到端集成测试通过；删除证明可验证；审计轨迹沿用 lifecycle 审计链
 
-#### 候选 82：JIT Support / 审计 / WORM 契约
-- [ ] JIT 会话 scope/duration/expiry、Provider 审批、紧急双人审批、吊销、审计事件全链路
-- [ ] 审计哈希链 + 保留策略 + WORM 归档对外契约文档化；篡改检测可演示
-- [ ] request_id / trace_id 在审计、日志、错误响应中一致关联
-- [ ] 验收：支持会话与审计链集成测试全绿；WORM 归档幂等测试全绿
+#### 候选 82：JIT Support / 审计 / WORM 契约（✅ 已完成）
+- [x] JIT 会话 scope/duration/expiry、Provider 审批、紧急双人审批、吊销：既有 Support Session 测试全绿
+- [x] 审计哈希链 + 保留策略 + WORM 归档：`TestAuditChain*` / `TestAuditAnchorArchive*` 全绿，篡改检测可演示
+- [x] request_id / trace_id 一致关联：新增共享 `internal/reqid`，`insertAuditTx` 写入 request_id；`TestSupportSessionAuditCorrelation` 断言 support.request/approve 审计均带 request_id
+- [x] 契约文档：`docs/SUPPORT_AUDIT_WORM.md`
+- [x] 验收：支持会话与审计链集成测试全绿；WORM 归档幂等测试全绿
 
 #### 候选 83：迁移与故障恢复功能契约
 - [ ] Migration dry-run / validate / start / complete / rollback 与 cutover lock 行为按 SPEC 文档化并测试
