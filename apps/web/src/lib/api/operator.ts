@@ -66,6 +66,8 @@ import type {
   ReconciliationResult,
   Capability,
   CustomDomain,
+  QuotaLimitUsage,
+  QuotaReservation,
   WebhookEndpoint,
   WebhookDelivery,
   PlatformEvent,
@@ -126,6 +128,8 @@ export type {
   ReconciliationResult,
   Capability,
   CustomDomain,
+  QuotaLimitUsage,
+  QuotaReservation,
   WebhookEndpoint,
   WebhookDelivery,
   PlatformEvent,
@@ -1092,6 +1096,96 @@ export async function listSubscriptions(
   return data.subscriptions
     .map(asSubscription)
     .filter((s): s is Subscription => s !== null);
+}
+
+function asQuotaLimitUsage(value: unknown): QuotaLimitUsage | null {
+  const rec = asRecord(value);
+  if (!rec) return null;
+  return {
+    id: typeof rec.id === "string" ? rec.id : "",
+    subscription_id: typeof rec.subscription_id === "string" ? rec.subscription_id : "",
+    quota_key: typeof rec.quota_key === "string" ? rec.quota_key : "",
+    limit_value: Number(rec.limit_value ?? 0),
+    period_type: typeof rec.period_type === "string" ? rec.period_type : "",
+    committed: Number(rec.committed ?? 0),
+    reserved: Number(rec.reserved ?? 0),
+    created_at: asTextValue(rec.created_at),
+    updated_at: asTextValue(rec.updated_at),
+  };
+}
+
+function asQuotaReservation(value: unknown): QuotaReservation | null {
+  const rec = asRecord(value);
+  if (!rec) return null;
+  return {
+    id: typeof rec.id === "string" ? rec.id : "",
+    subscription_id: typeof rec.subscription_id === "string" ? rec.subscription_id : "",
+    quota_key: typeof rec.quota_key === "string" ? rec.quota_key : "",
+    amount: Number(rec.amount ?? 0),
+    status: typeof rec.status === "string" ? rec.status : "",
+    reservation_id: typeof rec.reservation_id === "string" ? rec.reservation_id : "",
+    expires_at: asTextValue(rec.expires_at),
+    created_at: asTextValue(rec.created_at),
+    committed_at: asTextValue(rec.committed_at),
+    released_at: asTextValue(rec.released_at),
+  };
+}
+
+/** Operator 额度控制面：指定订阅的额度上限 + 实时用量。 */
+export async function listQuotaLimits(
+  providerId: string,
+  subscriptionId: string,
+  env: "test" | "live",
+): Promise<QuotaLimitUsage[]> {
+  const data = await request<{ quota_limits?: unknown }>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/subscriptions/${encodeURIComponent(subscriptionId)}/quota?env=${env}`,
+  );
+  if (!Array.isArray(data.quota_limits)) return [];
+  return data.quota_limits
+    .map(asQuotaLimitUsage)
+    .filter((q): q is QuotaLimitUsage => q !== null);
+}
+
+/** Operator 额度控制面：预占账本。 */
+export async function listQuotaReservations(
+  providerId: string,
+  subscriptionId: string,
+  env: "test" | "live",
+): Promise<QuotaReservation[]> {
+  const data = await request<{ quota_reservations?: unknown }>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/subscriptions/${encodeURIComponent(subscriptionId)}/quota/reservations?env=${env}`,
+  );
+  if (!Array.isArray(data.quota_reservations)) return [];
+  return data.quota_reservations
+    .map(asQuotaReservation)
+    .filter((q): q is QuotaReservation => q !== null);
+}
+
+/** Operator 额度控制面：创建或更新硬额度上限。 */
+export async function setQuotaLimit(
+  providerId: string,
+  subscriptionId: string,
+  env: "test" | "live",
+  key: string,
+  input: { limit_value: number; period_type: string },
+): Promise<void> {
+  await request<unknown>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/subscriptions/${encodeURIComponent(subscriptionId)}/quota-limits/${encodeURIComponent(key)}?env=${env}`,
+    { method: "PUT", body: JSON.stringify(input) },
+  );
+}
+
+/** Operator 额度控制面：删除硬额度上限。 */
+export async function deleteQuotaLimit(
+  providerId: string,
+  subscriptionId: string,
+  env: "test" | "live",
+  key: string,
+): Promise<void> {
+  await request<unknown>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/subscriptions/${encodeURIComponent(subscriptionId)}/quota-limits/${encodeURIComponent(key)}?env=${env}`,
+    { method: "DELETE" },
+  );
 }
 
 export async function getCatalogVersionDetail(

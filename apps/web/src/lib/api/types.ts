@@ -160,6 +160,33 @@ export interface Subscription {
   terminated_at?: string;
 }
 
+/** 额度上限（operator 视图，附带实时 committed/reserved 用量）。 */
+export interface QuotaLimitUsage {
+  id: string;
+  subscription_id: string;
+  quota_key: string;
+  limit_value: number;
+  period_type: string; // "daily" | "monthly" | "total"
+  committed: number;
+  reserved: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** 额度预占账本记录（operator 视图）。 */
+export interface QuotaReservation {
+  id: string;
+  subscription_id: string;
+  quota_key: string;
+  amount: number;
+  status: string; // "reserved" | "committed" | "released" | "expired"
+  reservation_id: string;
+  expires_at?: string;
+  created_at?: string;
+  committed_at?: string;
+  released_at?: string;
+}
+
 /** 客户（operator 视图）。 */
 export interface Customer {
   id: string;

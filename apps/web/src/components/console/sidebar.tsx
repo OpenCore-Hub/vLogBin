@@ -85,6 +85,11 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
         icon: LayersIcon,
       },
       {
+        href: "/console/billing/quota",
+        label: "额度",
+        icon: ActivityIcon,
+      },
+      {
         href: "/console/billing/customers",
         label: "客户",
         icon: UsersIcon,
