@@ -6,23 +6,28 @@ cd "$ROOT"
 
 export GOCACHE="${GOCACHE:-/tmp/vlb-go-cache}"
 
-echo "==> [1/6] API build + vet"
+echo "==> [1/7] API build + vet"
 (cd apps/api && go build ./... && go vet ./...)
 
-echo "==> [2/6] API unit tests"
+echo "==> [2/7] API unit tests"
 (cd apps/api && sh -c 'go test $(go list ./... | grep -v "/internal/integration") -count=1')
 
-echo "==> [3/6] API integration tests"
+echo "==> [3/7] API integration tests"
 (cd apps/api && go test ./internal/integration -count=1)
 
-echo "==> [4/6] Contract checks"
+echo "==> [4/7] Contract checks"
 make contract
 
-echo "==> [5/6] Official SDK tests"
+echo "==> [5/7] Official SDK tests (Go / TypeScript / Python)"
 (cd sdk/go && go test ./...)
+(cd apps/web && npx tsc --project ../../sdk/typescript/tsconfig.json)
+(cd sdk/typescript && node --test test/*.test.mjs)
+(cd sdk/python && python3 -m unittest discover -s tests -v)
 
-echo "==> [6/6] Web static checks + full E2E"
+echo "==> [6/7] Web static checks"
 (cd apps/web && npx tsc --noEmit && npx eslint .)
+
+echo "==> [7/7] Full E2E"
 (cd apps/web && WEB_URL="${WEB_URL:-http://localhost:3002}" API_URL="${API_URL:-http://localhost:8084}" npx playwright test)
 
 echo "Release gate PASSED"

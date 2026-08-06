@@ -21,6 +21,9 @@ contract:
 
 sdk:
 	cd sdk/go && go test ./...
+	cd apps/web && npx tsc --project ../../sdk/typescript/tsconfig.json
+	cd sdk/typescript && node --test test/*.test.mjs
+	cd sdk/python && python3 -m unittest discover -s tests -v
 
 release-gate:
 	./scripts/release-gate.sh
