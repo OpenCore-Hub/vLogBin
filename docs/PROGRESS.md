@@ -819,11 +819,12 @@
 - [x] 契约文档：`docs/SUPPORT_AUDIT_WORM.md`
 - [x] 验收：支持会话与审计链集成测试全绿；WORM 归档幂等测试全绿
 
-#### 候选 83：迁移与故障恢复功能契约
-- [ ] Migration dry-run / validate / start / complete / rollback 与 cutover lock 行为按 SPEC 文档化并测试
-- [ ] 中断迁移 resume 不产生重复 identity/subscription；回滚不会出现双活跃计费源
-- [ ] Failover：fence 后再 switch；未确认 Usage/Outbox 在 complete 时重放
-- [ ] 验收：迁移与 failover 集成测试全绿；SPEC Testing #28-30、#36-37 有映射
+#### 候选 83：迁移与故障恢复功能契约（✅ 已完成）
+- [x] Migration dry-run / validate / start / complete / rollback 与 cutover lock：`TestMigration*` 全绿
+- [x] 中断 resume 不产生重复 identity/subscription：`TestMigrationDuplicateRecordsSkipped`；回滚无双活跃：`TestMigrationRollback` + `TestMigrationCutoverLock`
+- [x] Failover：fence 后再 switch、complete 重放 Usage/Outbox：`TestFailoverFullLifecycle` + `TestFailoverAbort` / `TestFailoverDuplicateActive` / `TestFailoverCrossRegionRejected`
+- [x] 契约文档：`docs/MIGRATION_RECOVERY_CONTRACT.md`（SPEC #28-30、#36-37 映射）
+- [x] 验收：迁移与 failover 集成测试全绿
 
 #### 候选 84：发布门禁与上线验收
 - [ ] 建立 `release-gate`：全量单测 + 全量集成 + 黑盒契约 harness + 全量 E2E + OpenAPI/AsyncAPI 检查 + SDK smoke + 兼容性检查一条命令可跑
