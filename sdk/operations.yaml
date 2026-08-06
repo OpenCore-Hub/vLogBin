@@ -1,0 +1,40 @@
+version: 1
+operations:
+  create_customer:
+    method: POST
+    path: /customers
+    request_schema: CustomerCreateInput
+    response_schema: ProviderCustomerCreateResponse
+    idempotency: true
+    languages:
+      go: CreateCustomer
+      typescript: createCustomer
+      python: create_customer
+  list_subscriptions:
+    method: GET
+    path: /subscriptions
+    response_schema: ProviderSubscriptionCollection
+    languages:
+      go: ListSubscriptions
+      typescript: listSubscriptions
+      python: list_subscriptions
+  ingest_usage:
+    method: POST
+    path: /usage/ingest
+    request_schema: UsageEvent
+    response_schema: UsageIngestResult
+    idempotency: true
+    languages:
+      go: IngestUsage
+      typescript: ingestUsage
+      python: ingest_usage
+  stream_events:
+    method: GET
+    path: /events
+    response_schema: PlatformEventStream
+    query_parameters: [cursor, limit, type, aggregate_type]
+    languages:
+      go: StreamEvents
+      typescript: streamEvents
+      python: stream_events
+

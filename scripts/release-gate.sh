@@ -19,10 +19,7 @@ echo "==> [4/7] Contract checks"
 make contract
 
 echo "==> [5/7] Official SDK tests (Go / TypeScript / Python)"
-(cd sdk/go && go test ./...)
-(cd apps/web && npx tsc --project ../../sdk/typescript/tsconfig.json)
-(cd sdk/typescript && node --test test/*.test.mjs)
-(cd sdk/python && python3 -m unittest discover -s tests -v)
+make sdk
 
 echo "==> [6/7] Web static checks"
 (cd apps/web && npx tsc --noEmit && npx eslint .)

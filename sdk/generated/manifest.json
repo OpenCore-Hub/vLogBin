@@ -1,0 +1,67 @@
+{
+  "openapi_path": "docs/openapi.yaml",
+  "operations": [
+    {
+      "id": "create_customer",
+      "idempotency": true,
+      "languages": {
+        "go": "CreateCustomer",
+        "python": "create_customer",
+        "typescript": "createCustomer"
+      },
+      "method": "POST",
+      "path": "/customers",
+      "query_parameters": [],
+      "request_schema": "CustomerCreateInput",
+      "response_schema": "ProviderCustomerCreateResponse"
+    },
+    {
+      "id": "ingest_usage",
+      "idempotency": true,
+      "languages": {
+        "go": "IngestUsage",
+        "python": "ingest_usage",
+        "typescript": "ingestUsage"
+      },
+      "method": "POST",
+      "path": "/usage/ingest",
+      "query_parameters": [],
+      "request_schema": "UsageEvent",
+      "response_schema": "UsageIngestResult"
+    },
+    {
+      "id": "list_subscriptions",
+      "idempotency": false,
+      "languages": {
+        "go": "ListSubscriptions",
+        "python": "list_subscriptions",
+        "typescript": "listSubscriptions"
+      },
+      "method": "GET",
+      "path": "/subscriptions",
+      "query_parameters": [],
+      "request_schema": null,
+      "response_schema": "ProviderSubscriptionCollection"
+    },
+    {
+      "id": "stream_events",
+      "idempotency": false,
+      "languages": {
+        "go": "StreamEvents",
+        "python": "stream_events",
+        "typescript": "streamEvents"
+      },
+      "method": "GET",
+      "path": "/events",
+      "query_parameters": [
+        "cursor",
+        "limit",
+        "type",
+        "aggregate_type"
+      ],
+      "request_schema": null,
+      "response_schema": "PlatformEventStream"
+    }
+  ],
+  "version": 1
+}

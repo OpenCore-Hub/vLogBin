@@ -1,0 +1,44 @@
+name: sdk-release
+
+on:
+  push:
+    paths:
+      - "docs/openapi.yaml"
+      - "sdk/**"
+      - "scripts/check-sdk-contract.py"
+      - "scripts/check-sdk-artifacts.py"
+      - "scripts/sync-sdk-operations.py"
+      - "scripts/publish-sdks.sh"
+  workflow_dispatch:
+
+jobs:
+  sdk-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install web toolchain
+        working-directory: apps/web
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+
+      - name: SDK gate
+        run: make sdk
+
+      - name: Contract gate
+        run: make contract

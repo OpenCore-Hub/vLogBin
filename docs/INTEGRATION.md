@@ -433,20 +433,29 @@ POST /v1/budget-alerts
 }
 ```
 
-## 8. SDK 生成
+## 8. SDK 契约与发布
 
-OpenAPI 规范可用于自动生成 SDK：
+官方 SDK 采用契约驱动维护：`docs/openapi.yaml` 是公开 API 契约源，
+`sdk/operations.yaml` 声明官方支持的操作，`scripts/sync-sdk-operations.py`
+生成 `sdk/generated/manifest.json`，再由 `scripts/check-sdk-contract.py`
+校验 Go / TypeScript / Python 三语言实现对齐。
 
 ```bash
-# 生成 Go SDK
-openapi-generator-cli generate -i docs/openapi.yaml -g go -o sdk/go
+# 生成并更新 SDK 操作清单
+python3 scripts/sync-sdk-operations.py
 
-# 生成 Python SDK
-openapi-generator-cli generate -i docs/openapi.yaml -g python -o sdk/python
+# 校验清单与三语言实现
+make contract
 
-# 生成 TypeScript SDK
-openapi-generator-cli generate -i docs/openapi.yaml -g typescript-fetch -o sdk/ts
+# 构建并校验三语言 SDK 与包产物指纹
+make sdk
+
+# 发布 dry-run / 正式发布（正式发布需 NPM_TOKEN / PYPI_TOKEN）
+scripts/publish-sdks.sh dry-run
+scripts/publish-sdks.sh publish
 ```
+
+包发布流程与版本兼容政策详见 `docs/SDK_RELEASE.md` 和 `docs/API_COMPATIBILITY.md`。
 
 ## 9. 测试环境
 

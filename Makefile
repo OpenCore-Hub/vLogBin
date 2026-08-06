@@ -18,12 +18,17 @@ lint:
 contract:
 	./scripts/check-openapi-contracts.sh
 	./scripts/check-asyncapi-contracts.sh
+	python3 scripts/sync-sdk-operations.py --check
+	python3 scripts/check-sdk-contract.py
 
 sdk:
 	cd sdk/go && go test ./...
 	cd apps/web && npx tsc --project ../../sdk/typescript/tsconfig.json
 	cd sdk/typescript && node --test test/*.test.mjs
 	cd sdk/python && python3 -m unittest discover -s tests -v
+	python3 scripts/sync-sdk-operations.py --check
+	python3 scripts/check-sdk-contract.py
+	python3 scripts/check-sdk-artifacts.py
 
 release-gate:
 	./scripts/release-gate.sh

@@ -1,0 +1,99 @@
+{
+  "python": [
+    {
+      "path": "sdk/python/README.md",
+      "sha256": "5b2df5417c8469968ee7cdee6a2ba6632d282ee6dcd06cb4a9bd33ea09bc102f"
+    },
+    {
+      "path": "sdk/python/pyproject.toml",
+      "sha256": "d7a837538f105404242ebd524d2b03e89e9fce5c4ab010d14260ceb2e876d4ae"
+    },
+    {
+      "path": "sdk/python/vlogbin/__init__.py",
+      "sha256": "c2c92e046343a9baae2b74717c587e27c5a4f418f85785cf1b5ed59bc7ad41e5"
+    },
+    {
+      "path": "sdk/python/vlogbin/client.py",
+      "sha256": "d43ed7b2391faedf7c9d3c46186f24343ad983ee3e1da7512db181209fc088d8"
+    },
+    {
+      "path": "sdk/python/vlogbin/py.typed",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "path": "sdk/python/vlogbin/resources.py",
+      "sha256": "9d2be9ff5a3ff5a096f422aa11c1292a6bd5bf85635ea33116096a069860c596"
+    },
+    {
+      "path": "sdk/python/vlogbin/webhook.py",
+      "sha256": "c66ee051e8a0f4fd9217630042c1dc472a4e23c6a3b875fe88a0188383e2002a"
+    }
+  ],
+  "typescript": [
+    {
+      "path": "sdk/typescript/README.md",
+      "sha256": "cdcddeb9903261228252c46ffb47c62bd81282d4475b9b980c8f93a9e1e766e7"
+    },
+    {
+      "path": "sdk/typescript/dist/client.d.ts",
+      "sha256": "5beab7ead1f31aca6581652f46c552d23c45653365c8506e9db0956ce0be5963"
+    },
+    {
+      "path": "sdk/typescript/dist/client.js",
+      "sha256": "4159d4e8f1f0d8e6a5bcca031cc70495449aa0bb934b4f577abe66fa4b160f9d"
+    },
+    {
+      "path": "sdk/typescript/dist/index.d.ts",
+      "sha256": "a0399749e588d5159985b0058a5494a08bbc4f73bc906cc98ce0fbbb41503948"
+    },
+    {
+      "path": "sdk/typescript/dist/index.js",
+      "sha256": "ba696b0af38f3b01e7412940ef8206bdb5b80fb13b528b9e71c5983ef12a1853"
+    },
+    {
+      "path": "sdk/typescript/dist/resources.d.ts",
+      "sha256": "bb795d274f863ebd876fa64c16b06b0b8466a8d9a1707ffb70f5905a97f2e084"
+    },
+    {
+      "path": "sdk/typescript/dist/resources.js",
+      "sha256": "bf97bf65a5c8d682c05ec666403670ab9ad6ca02fabb917ada50fa42de63aaf6"
+    },
+    {
+      "path": "sdk/typescript/dist/webhook.d.ts",
+      "sha256": "7c8275e82666c9f036d5bbb06d97f1ead38c67be019f3d4782f608b9b66de3ac"
+    },
+    {
+      "path": "sdk/typescript/dist/webhook.js",
+      "sha256": "c94fc97864e88d66ee78758e4287e135fc9e77392d709dab966323598b84b3bc"
+    },
+    {
+      "path": "sdk/typescript/package.json",
+      "sha256": "a8d2a6ca7e352b4d59703c10a95901506d93caaac4806dcba87c7e1c4227d8ed"
+    },
+    {
+      "path": "sdk/typescript/src/client.ts",
+      "sha256": "bcda9c47614e4d8fafcb813333b7994d4da153c7b0fe8f2bbfdf089a48054425"
+    },
+    {
+      "path": "sdk/typescript/src/index.ts",
+      "sha256": "f971883436352ba2aa8b527053e733ddeaee70d718bcd97cb7690c37ec50db47"
+    },
+    {
+      "path": "sdk/typescript/src/resources.ts",
+      "sha256": "e09eb44b53d8ed52a79d3d1497b08685032dc05ca565a3acf96697c210a1d2d1"
+    },
+    {
+      "path": "sdk/typescript/src/webhook.ts",
+      "sha256": "5ace3a3221ed7fbfb531c1920e77828b7d4a1e25eb263adcbe8360f150de43e2"
+    },
+    {
+      "path": "sdk/typescript/test/sdk.test.mjs",
+      "sha256": "b26f483c45200c66a19b719f20e021cdcec874d56453a8b92245bce419cfd708"
+    },
+    {
+      "path": "sdk/typescript/tsconfig.json",
+      "sha256": "3c2a32ee5f2ee011af3f54599f461252124e39736e9bef175a97bddb890ca7f9"
+    }
+  ],
+  "version": 1
+}
