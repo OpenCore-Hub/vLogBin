@@ -798,12 +798,12 @@
 - [x] 契约文档：`docs/COMMERCE_FINANCE.md` 记录双账务域、财务不变量、对账与门禁
 - [x] 验收：财务集成测试与 reconciliation 对账 check 全绿
 
-#### 候选 80：Catalog / Subscription / Entitlement / Quota 契约
-- [ ] 补目录不可变与订阅 pinning 黑盒测试；发布新版本不影响既有订阅
-- [ ] 权益 snapshot 单一真相源：从 pinned catalog version + 订阅状态计算，不直接依赖 Lago 权益判定
-- [ ] 硬额度 reserve/commit/release/expiry 并发契约；无额度或额度不足按文档返回
-- [ ] soft quota overage 与 hard quota 语义分开文档化
-- [ ] 验收：SPEC Testing #7-10、#19-21 全绿
+#### 候选 80：Catalog / Subscription / Entitlement / Quota 契约（✅ 已完成）
+- [x] 目录不可变与订阅 pinning：`TestBillingCatalogImmutableAfterPublish` / `TestBillingSubscriptionPinning`
+- [x] 权益 snapshot 单一真相源：`TestEntitlementSnapshotSingleSourceOfTruth`（发布新版本不影响既有订阅快照）
+- [x] 硬额度 reserve/commit/release/expiry 并发契约：既有 `TestQuota*` 全绿（并发、幂等、过期、越界、隔离）
+- [x] soft quota overage 与 hard quota 语义分开文档化：`docs/CATALOG_QUOTA_CONTRACT.md`
+- [x] 验收：SPEC Testing #7-10、#19-21 全绿
 
 #### 候选 81：Provider 生命周期 / 准入 / Offboarding
 - [ ] Live 准入门禁：风险审核 + 能力授权 + PSP/Webhook 前置校验缺一不可
