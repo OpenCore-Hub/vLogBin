@@ -81,6 +81,11 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
         label: "支付",
         icon: CreditCardIcon,
       },
+      {
+        href: "/console/catalog",
+        label: "目录",
+        icon: LayersIcon,
+      },
     ],
   },
   {

@@ -7,7 +7,6 @@ import { test, expect } from "./helpers";
 test.describe("Payments control plane", () => {
   test("renders payment summary and empty invoice state", async ({
     page,
-    freshProvider,
   }) => {
     await page.goto("/console/billing/payments?env=test");
 
