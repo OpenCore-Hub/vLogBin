@@ -15,6 +15,7 @@ export const signupFlowSchema = z.object({
   email: z.string().email().max(200),
   givenName: z.string().min(1).max(200),
   familyName: z.string().min(1).max(200),
+  passkeyId: z.string().min(1).max(200).optional(),
 });
 
 export type SignupFlowData = z.infer<typeof signupFlowSchema>;

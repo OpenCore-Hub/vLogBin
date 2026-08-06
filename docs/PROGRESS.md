@@ -338,10 +338,10 @@
 - [x] P0：`zitadel-session.ts`（基于 `@zitadel/client` 1.3.1）+ zod + `isSessionValid` MFA 模块 + ZITADEL 契约探针 + `AUTH_MODE=oidc-custom-login` 开关 + OIDC 代理骨架
 - [ ] P1：登录名/邮箱/手机号搜索 + 密码页替换 + `login_flow` 加密 cookie 落地 + 代理路径打通（主体已实现；自动回退与真实 ZITADEL E2E 验收待收口）
 - [x] P2：MFA 全类型（TOTP / OTP email/SMS / Passkey / U2F）与账号选择器（记住会话 cookie + 继续会话 + 失效清理）
-- [ ] P3：注册 / 邮箱验证已实现；Passkey 初始化、MFA 初始化跳过与未覆盖 IDP/SAML 显式回退待续，复用 `provisionWorkspace` 事务
+- [x] P3：注册 / 邮箱验证 / Passkey 初始化 / MFA 初始化跳过 / 未覆盖 IDP/SAML 显式回退托管登录页，复用 `provisionWorkspace` 事务
 - [ ] P4：按 env/user/org 全量灰度，观察成功登录率、MFA 完成率与 fallback 率后删除旧跳转路径，Playwright E2E + 回归基线锁定
 - [x] 实现验证：`tsc` / ESLint / `vitest`（8 条 MFA 门槛用例）/ Next.js 生产构建全绿
-- **状态：🔄 进行中（P0/P2 完成，P1 主体落地，P3 注册+邮箱验证落地；P4 与真实 ZITADEL 联调待续）**
+- **状态：🔄 进行中（P0/P2/P3 完成，P1 主体落地待自动回退收口；P4 真实 ZITADEL 联调与灰度待续）**
 
 ### 测试体系扩充
 - [x] metrics_middleware / security / timeout / health / workspace / web_simulation 等新测试

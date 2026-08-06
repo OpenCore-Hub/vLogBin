@@ -28,6 +28,7 @@ export interface LoginSettingsSnapshot {
   defaultRedirectUri: string;
   disableLoginWithEmail: boolean;
   disableLoginWithPhone: boolean;
+  mfaInitSkipLifetimeSeconds?: number;
   secondFactors: string[];
   multiFactors: string[];
 }

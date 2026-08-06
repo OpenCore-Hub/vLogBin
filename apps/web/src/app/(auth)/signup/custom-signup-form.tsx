@@ -1,13 +1,20 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import {
   CustomSignupActionState,
   resendSignupEmailCode,
+  skipSignupPasskey,
+  startSignupPasskey,
   submitCustomSignup,
   submitSignupEmailCode,
+  verifySignupPasskey,
 } from "./custom-signup-actions";
 import { LoginSettingsSnapshot } from "@/lib/auth/zitadel-session";
+import {
+  attestationToJson,
+  coerceWebAuthnCreationOptions,
+} from "@/lib/auth/webauthn-client";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { Alert } from "@/components/ui/feedback";
@@ -17,6 +24,10 @@ const formInitial: CustomSignupActionState = { ok: false, step: "form" };
 const verifyInitial: CustomSignupActionState = {
   ok: false,
   step: "verify-email",
+};
+const passkeyInitial: CustomSignupActionState = {
+  ok: false,
+  step: "passkey",
 };
 
 export function CustomSignupForm({
@@ -40,12 +51,84 @@ export function CustomSignupForm({
     resendSignupEmailCode,
     verifyInitial,
   );
+  const [passkeyState, passkeyAction, passkeyPending] = useActionState(
+    startSignupPasskey,
+    passkeyInitial,
+  );
+  const [, skipPasskeyAction, skipPasskeyPending] = useActionState(
+    skipSignupPasskey,
+    passkeyInitial,
+  );
+  const [, startPasskeyVerify] = useTransition();
+  const [passkeyError, setPasskeyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const options = passkeyState.passkeyOptions as
+      | CredentialCreationOptions
+      | undefined;
+    if (!options) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const credential = await navigator.credentials.create(
+          coerceWebAuthnCreationOptions(options),
+        );
+        if (cancelled || !credential) return;
+        const payload = attestationToJson(credential as PublicKeyCredential);
+        startPasskeyVerify(() => {
+          void verifySignupPasskey(payload).catch((err) => {
+            setPasskeyError(
+              err instanceof Error ? err.message : "Passkey 注册失败，请重试。",
+            );
+          });
+        });
+      } catch (err) {
+        if (!cancelled) {
+          setPasskeyError(
+            err instanceof Error ? err.message : "Passkey 注册失败，请重试。",
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [passkeyState.passkeyOptions, startPasskeyVerify]);
 
   if (!loginSettings.allowRegister || !loginSettings.allowUsernamePassword) {
     return (
       <Alert variant="warning" title="暂不支持自助注册">
         当前组织未开放自助注册，请联系管理员。
       </Alert>
+    );
+  }
+
+  if (formState.step === "passkey" || verifyState.step === "passkey") {
+    return (
+      <div className="space-y-4">
+        <form action={passkeyAction}>
+          <Button
+            type="submit"
+            size="lg"
+            loading={passkeyPending}
+            className="w-full"
+          >
+            设置 Passkey
+          </Button>
+        </form>
+        <form action={skipPasskeyAction}>
+          <Button
+            type="submit"
+            size="lg"
+            variant="secondary"
+            loading={skipPasskeyPending}
+            className="w-full"
+          >
+            跳过，直接进入控制台
+          </Button>
+        </form>
+        {passkeyError && <Alert variant="danger">{passkeyError}</Alert>}
+      </div>
     );
   }
 

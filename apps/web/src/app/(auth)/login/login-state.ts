@@ -18,6 +18,7 @@ export interface CustomLoginActionState extends LoginActionState {
   userId?: string;
   sessionId?: string;
   mfaMethods?: string[];
+  mfaSetupRequired?: boolean;
   otpRequested?: boolean;
   webAuthnOptions?: unknown;
   failedAttempts?: number;

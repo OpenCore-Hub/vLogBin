@@ -8,10 +8,13 @@ import {
   getLoginSettings,
   getSession,
   resendEmailCode,
+  startPasskeyRegistration,
   validateSession,
   verifyEmail,
+  verifyPasskeyRegistration,
   ZitadelApiError,
 } from "@/lib/auth/zitadel-session";
+import { authConfig } from "@/lib/auth/config";
 import {
   getLoginFlow,
   setLoginFlow,
@@ -25,9 +28,10 @@ import {
 export interface CustomSignupActionState {
   ok: boolean;
   error?: string;
-  step: "form" | "verify-email";
+  step: "form" | "verify-email" | "passkey";
   email?: string;
   next?: string;
+  passkeyOptions?: unknown;
 }
 
 const initialState: CustomSignupActionState = { ok: false, step: "form" };
@@ -152,8 +156,12 @@ export async function submitSignupEmailCode(
             : "注册尚未完成，请重新开始。",
       };
     }
-    await clearSignupFlow();
-    return await completeLoginFlow(loginFlow);
+    return {
+      ok: false,
+      step: "passkey",
+      email: signupFlow.email,
+      next: signupFlow.next,
+    };
   } catch (err) {
     return errorState(prev, err, "邮箱验证失败，请重试。");
   }
@@ -174,4 +182,69 @@ export async function resendSignupEmailCode(
   } catch (err) {
     return errorState(prev, err, "验证码发送失败，请重试。");
   }
+}
+
+export async function startSignupPasskey(
+  prev: CustomSignupActionState,
+  formData: FormData,
+): Promise<CustomSignupActionState> {
+  void formData;
+  const signupFlow = await getSignupFlow();
+  if (!signupFlow) {
+    return { ...initialState, error: "注册状态已过期，请重新开始。" };
+  }
+  try {
+    const domain = new URL(authConfig.baseUrl).hostname;
+    const started = await startPasskeyRegistration({
+      userId: signupFlow.userId,
+      domain,
+    });
+    await setSignupFlow({ ...signupFlow, passkeyId: started.passkeyId });
+    return {
+      ...prev,
+      ok: false,
+      step: "passkey",
+      email: signupFlow.email,
+      passkeyOptions: started.options,
+    };
+  } catch (err) {
+    return errorState(prev, err, "Passkey 注册启动失败，请重试。");
+  }
+}
+
+export async function verifySignupPasskey(
+  publicKeyCredential: unknown,
+): Promise<void> {
+  const signupFlow = await getSignupFlow();
+  const loginFlow = await getLoginFlow();
+  if (!signupFlow || !loginFlow) {
+    throw new ZitadelApiError("注册状态已过期，请重新开始。", "session-invalid");
+  }
+  if (!signupFlow.passkeyId) {
+    throw new ZitadelApiError(
+      "Passkey 注册状态缺失，请重新开始。",
+      "session-invalid",
+    );
+  }
+  await verifyPasskeyRegistration({
+    userId: signupFlow.userId,
+    passkeyId: signupFlow.passkeyId,
+    passkeyName: "vLogBin",
+    publicKeyCredential,
+  });
+  await clearSignupFlow();
+  await completeLoginFlow(loginFlow);
+}
+
+export async function skipSignupPasskey(
+  _prev: CustomSignupActionState,
+  formData: FormData,
+): Promise<CustomSignupActionState> {
+  void formData;
+  const loginFlow = await getLoginFlow();
+  if (!loginFlow) {
+    return { ...initialState, error: "注册状态已过期，请重新开始。" };
+  }
+  await clearSignupFlow();
+  return await completeLoginFlow(loginFlow);
 }

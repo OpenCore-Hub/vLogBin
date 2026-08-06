@@ -19,6 +19,7 @@ import {
   createSession,
   getLoginSettings,
   getSession,
+  humanMFAInitSkipped,
   listAuthenticationMethodTypes,
   requestOtpChallenge,
   requestWebAuthnChallenge,
@@ -237,13 +238,20 @@ export async function submitCustomLoginPassword(
       return await completeLoginFlow(nextFlow);
     }
     if (validation.reason === "mfa-required" && session.user) {
+      const settings = await getLoginSettings(
+        session.user.organizationId || undefined,
+      );
+      const methods = await mfaMethodsFor(session.user.id);
       return {
         ok: false,
         step: "mfa",
         loginName: session.user.loginName,
         userId: session.user.id,
         sessionId: session.id,
-        mfaMethods: await mfaMethodsFor(session.user.id),
+        mfaMethods: methods,
+        mfaSetupRequired:
+          methods.length === 0 &&
+          Boolean(settings.mfaInitSkipLifetimeSeconds),
       };
     }
     return {
@@ -472,5 +480,22 @@ export async function continueWithSavedSession(
     return await completeLoginFlow(flow);
   } catch (err) {
     return errorState(initialState, err, "继续会话失败，请重新登录。");
+  }
+}
+
+export async function skipMfaSetup(
+  _prev: CustomLoginActionState,
+  formData: FormData,
+): Promise<CustomLoginActionState> {
+  void formData;
+  const flow = await getLoginFlow();
+  if (!flow || !flow.userId) {
+    return { ...initialState, error: "登录状态已过期，请重新开始。" };
+  }
+  try {
+    await humanMFAInitSkipped(flow.userId);
+    return await completeLoginFlow(flow);
+  } catch (err) {
+    return errorState(initialState, err, "跳过 MFA 设置失败，请重试。");
   }
 }

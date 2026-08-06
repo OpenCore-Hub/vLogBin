@@ -55,11 +55,15 @@ import {
   AuthenticationMethodType,
   CreateUserRequestSchema,
   GetUserByIDRequestSchema,
+  HumanMFAInitSkippedRequestSchema,
   ListAuthenticationMethodTypesRequestSchema,
   ListUsersRequestSchema,
+  RegisterPasskeyRequestSchema,
   ResendEmailCodeRequestSchema,
+  VerifyPasskeyRegistrationRequestSchema,
   VerifyEmailRequestSchema,
 } from "@zitadel/proto/zitadel/user/v2/user_service_pb";
+import { PasskeyAuthenticator } from "@zitadel/proto/zitadel/user/v2/auth_pb";
 import {
   authConfig,
   isCustomLoginConfigured,
@@ -257,6 +261,7 @@ function toLoginSettingsSnapshot(settings: {
   defaultRedirectUri: string;
   disableLoginWithEmail: boolean;
   disableLoginWithPhone: boolean;
+  mfaInitSkipLifetime?: { seconds: bigint | number; nanos?: number };
   secondFactors: unknown[];
   multiFactors: unknown[];
 }): LoginSettingsSnapshot {
@@ -271,6 +276,9 @@ function toLoginSettingsSnapshot(settings: {
     defaultRedirectUri: settings.defaultRedirectUri,
     disableLoginWithEmail: settings.disableLoginWithEmail,
     disableLoginWithPhone: settings.disableLoginWithPhone,
+    mfaInitSkipLifetimeSeconds: settings.mfaInitSkipLifetime
+      ? Number(settings.mfaInitSkipLifetime.seconds)
+      : undefined,
     secondFactors: settings.secondFactors.map(String),
     multiFactors: settings.multiFactors.map(String),
   };
@@ -909,6 +917,74 @@ export async function resendEmailCode(userId: string): Promise<void> {
           case: "sendCode",
           value: create(SendEmailVerificationCodeSchema, {}),
         },
+      }),
+    );
+  } catch (err) {
+    throw toApiError(err);
+  }
+}
+
+export async function humanMFAInitSkipped(userId: string): Promise<void> {
+  isCustomLoginActive();
+  try {
+    const clients = await getZitadelClients();
+    await clients.user.humanMFAInitSkipped(
+      create(HumanMFAInitSkippedRequestSchema, { userId }),
+    );
+  } catch (err) {
+    throw toApiError(err);
+  }
+}
+
+export async function startPasskeyRegistration(input: {
+  userId: string;
+  domain: string;
+  authenticator?: PasskeyAuthenticator;
+}): Promise<{ passkeyId: string; options: unknown }> {
+  isCustomLoginActive();
+  try {
+    const clients = await getZitadelClients();
+    const response = await clients.user.registerPasskey(
+      create(RegisterPasskeyRequestSchema, {
+        userId: input.userId,
+        domain: input.domain,
+        authenticator:
+          input.authenticator ?? PasskeyAuthenticator.CROSS_PLATFORM,
+      }),
+    );
+    if (
+      !response.passkeyId ||
+      !response.publicKeyCredentialCreationOptions
+    ) {
+      throw new ZitadelApiError(
+        "ZITADEL 未返回 Passkey 注册选项。",
+        "invalid-response",
+      );
+    }
+    return {
+      passkeyId: response.passkeyId,
+      options: response.publicKeyCredentialCreationOptions,
+    };
+  } catch (err) {
+    throw toApiError(err);
+  }
+}
+
+export async function verifyPasskeyRegistration(input: {
+  userId: string;
+  passkeyId: string;
+  passkeyName: string;
+  publicKeyCredential: unknown;
+}): Promise<void> {
+  isCustomLoginActive();
+  try {
+    const clients = await getZitadelClients();
+    await clients.user.verifyPasskeyRegistration(
+      create(VerifyPasskeyRegistrationRequestSchema, {
+        userId: input.userId,
+        passkeyId: input.passkeyId,
+        passkeyName: input.passkeyName,
+        publicKeyCredential: input.publicKeyCredential as never,
       }),
     );
   } catch (err) {

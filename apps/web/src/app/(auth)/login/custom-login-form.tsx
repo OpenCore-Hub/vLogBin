@@ -5,6 +5,7 @@ import {
   continueWithSavedSession,
   requestCustomLoginWebAuthn,
   requestCustomLoginOtp,
+  skipMfaSetup,
   submitCustomLoginIdentifier,
   submitCustomLoginMfa,
   submitCustomLoginPassword,
@@ -12,6 +13,11 @@ import {
 } from "./custom-login-actions";
 import { CustomLoginActionState } from "./login-state";
 import { LoginSettingsSnapshot } from "@/lib/auth/zitadel-session";
+import { startOidcLogin } from "./login-actions";
+import {
+  assertionToJson,
+  coerceWebAuthnRequestOptions,
+} from "@/lib/auth/webauthn-client";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { Alert } from "@/components/ui/feedback";
@@ -28,15 +34,7 @@ const passwordInitial: CustomLoginActionState = {
 const otpInitial: CustomLoginActionState = { ok: false, step: "mfa" };
 const mfaInitial: CustomLoginActionState = { ok: false, step: "mfa" };
 const webAuthnInitial: CustomLoginActionState = { ok: false, step: "mfa" };
-
-function bufferToBase64Url(value: ArrayBuffer): string {
-  const bytes = new Uint8Array(value);
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
+const skipMfaInitial: CustomLoginActionState = { ok: false, step: "mfa" };
 
 export function CustomLoginForm({
   authRequestId,
@@ -77,6 +75,10 @@ export function CustomLoginForm({
     requestCustomLoginWebAuthn,
     webAuthnInitial,
   );
+  const [skipMfaState, skipMfaAction, skipMfaPending] = useActionState(
+    skipMfaSetup,
+    skipMfaInitial,
+  );
   const [, startWebAuthnSubmit] = useTransition();
   const [webAuthnError, setWebAuthnError] = useState<string | null>(null);
 
@@ -88,23 +90,12 @@ export function CustomLoginForm({
     let cancelled = false;
     void (async () => {
       try {
-        const assertion = await navigator.credentials.get({ publicKey: options });
+        const assertion = await navigator.credentials.get({
+          publicKey: coerceWebAuthnRequestOptions(options),
+        });
         if (cancelled || !assertion) return;
         const credential = assertion as PublicKeyCredential;
-        const response = credential.response as AuthenticatorAssertionResponse;
-        const payload = {
-          id: credential.id,
-          rawId: bufferToBase64Url(credential.rawId),
-          type: credential.type,
-          response: {
-            authenticatorData: bufferToBase64Url(response.authenticatorData),
-            clientDataJSON: bufferToBase64Url(response.clientDataJSON),
-            signature: bufferToBase64Url(response.signature),
-            userHandle: response.userHandle
-              ? bufferToBase64Url(response.userHandle)
-              : null,
-          },
-        };
+        const payload = assertionToJson(credential);
         startWebAuthnSubmit(() => {
           void submitCustomLoginWebAuthn(payload).catch((err) => {
             setWebAuthnError(
@@ -209,6 +200,19 @@ export function CustomLoginForm({
             继续
           </Button>
         </form>
+        {loginSettings.allowExternalIdp && (
+          <form action={startOidcLogin}>
+            <input type="hidden" name="next" value={next} />
+            <Button
+              type="submit"
+              size="lg"
+              variant="secondary"
+              className="w-full"
+            >
+              使用企业身份登录
+            </Button>
+          </form>
+        )}
       </div>
     );
   }
@@ -360,6 +364,22 @@ export function CustomLoginForm({
               使用安全密钥
             </Button>
           </form>
+        )}
+        {methods.length === 0 && passwordState.mfaSetupRequired && (
+          <form action={skipMfaAction}>
+            <Button
+              type="submit"
+              size="lg"
+              variant="secondary"
+              loading={skipMfaPending}
+              className="w-full"
+            >
+              暂不设置，直接进入控制台
+            </Button>
+          </form>
+        )}
+        {skipMfaState.error && (
+          <Alert variant="danger">{skipMfaState.error}</Alert>
         )}
         {webAuthnError && <Alert variant="danger">{webAuthnError}</Alert>}
       </div>
