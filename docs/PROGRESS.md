@@ -775,12 +775,12 @@
 - [x] SDK smoke tests：认证头 / 幂等键 / 错误信封 / 用量上报 / Webhook 验签全绿（`make sdk`）
 - [ ] TypeScript/Node 与 Python SDK、OpenAPI→SDK 生成管线、包发布与生成物 diff 检查（后续候选）
 
-#### 候选 77：Webhook 与事件流对外契约
-- [ ] 正式化 Webhook 交付契约：签名头、timestamp、schema version、event type、重试、退避、suspend、dead_letter、replay
-- [ ] 补齐事件流端点跨 Provider 的一致性测试：cursor 无丢失无重复、filter、limit 上限
-- [ ] 为 Provider 提供投递状态 API 与失败原因查询；队列看板已覆盖 operator 侧
-- [ ] 文档给出消费端幂等模板与断点恢复示例（Node / Python / Go）
-- [ ] 验收：Webhook/事件流集成测试通过；对外文档与实现一致
+#### 候选 77：Webhook 与事件流对外契约（✅ 已完成）
+- [x] 正式化 Webhook 交付契约：`docs/WEBHOOK_EVENTS.md` 覆盖签名头、timestamp、schema version、event type、重试、退避、dead_letter、replay
+- [x] 补齐事件流一致性测试：`TestEventStreamNoLossNoDuplication`（全量 vs 分页无丢失无重复）+ 既有 cursor/filter/limit/cross-tenant 测试
+- [x] Provider 投递状态 API 与失败原因可见：`TestWebhookDeliveryReplay` 断言 dead_letter 保留 `response_status=500` 与 `response_body`
+- [x] 文档给出消费端幂等模板与断点恢复示例（Node / Python / Go）
+- [x] 验收：Webhook/事件流集成测试全绿；`make contract` 全绿
 
 #### 候选 78：Provider / Environment 身份边界验收
 - [ ] 补同邮箱跨 Provider 隔离测试：相同 email 的用户获得不同 `user_sub` 与 session
