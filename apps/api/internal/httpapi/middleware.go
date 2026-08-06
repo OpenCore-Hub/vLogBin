@@ -121,7 +121,8 @@ func (s *Server) rateLimitMiddleware(next http.Handler) http.Handler {
 			w.Header().Set("Retry-After", strconv.FormatInt(secs, 10))
 			writeError(w, http.StatusTooManyRequests, "rate_limited",
 				"rate limit exceeded; retry after the window resets",
-				reqIDFromRequest(r))
+				reqIDFromRequest(r),
+				map[string]any{"retry_after": strconv.FormatInt(secs, 10)})
 			s.log.Warn("rate limit exceeded",
 				"key", lm.key,
 				"level", lm.level,
@@ -180,7 +181,8 @@ func (s *Server) ipRateLimitMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Retry-After", strconv.FormatInt(secs, 10))
 		writeError(w, http.StatusTooManyRequests, "rate_limited",
 			"rate limit exceeded; retry after the window resets",
-			reqIDFromRequest(r))
+			reqIDFromRequest(r),
+			map[string]any{"retry_after": strconv.FormatInt(secs, 10)})
 		s.log.Warn("per-ip rate limit exceeded",
 			"ip", ip,
 			"limit", rl.IP,

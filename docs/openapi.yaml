@@ -84,6 +84,13 @@ components:
               type: string
               format: uuid
               description: Request correlation ID
+            retry_after:
+              type: string
+              description: Seconds to wait before retrying (429 only)
+            details:
+              type: object
+              additionalProperties: true
+              description: Structured error details
     
     Provider:
       type: object

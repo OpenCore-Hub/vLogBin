@@ -33,6 +33,9 @@ func TestRateLimiting(t *testing.T) {
 				if errObj["request_id"] == nil || errObj["request_id"] == "" {
 					t.Fatal("rate_limited error should include request_id")
 				}
+				if errObj["retry_after"] == nil || errObj["retry_after"] == "" {
+					t.Fatal("rate_limited error should include retry_after")
+				}
 			}
 		}
 	}

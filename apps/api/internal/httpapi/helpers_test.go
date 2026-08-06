@@ -83,6 +83,25 @@ func TestWriteErrorEmptyRequestID(t *testing.T) {
 	}
 }
 
+func TestWriteErrorWithRetryAfter(t *testing.T) {
+	w := httptest.NewRecorder()
+	writeError(
+		w,
+		http.StatusTooManyRequests,
+		"rate_limited",
+		"slow down",
+		"req-123",
+		map[string]any{"retry_after": "42"},
+	)
+
+	var body map[string]any
+	json.Unmarshal(w.Body.Bytes(), &body)
+	errObj := body["error"].(map[string]any)
+	if errObj["retry_after"] != "42" {
+		t.Fatalf("retry_after = %v, want 42", errObj["retry_after"])
+	}
+}
+
 func TestReqIDFromRequest(t *testing.T) {
 	r := httptest.NewRequest("GET", "/", nil)
 	r = r.WithContext(context.WithValue(r.Context(), requestIDKey{}, "test-id-456"))

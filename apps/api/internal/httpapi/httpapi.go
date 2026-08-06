@@ -524,10 +524,20 @@ func writeAuditQueryError(w http.ResponseWriter, r *http.Request, err error) {
 	writeError(w, http.StatusInternalServerError, "internal", "internal error", reqIDFromRequest(r))
 }
 
-func writeError(w http.ResponseWriter, status int, code, message, requestID string) {
+func writeError(
+	w http.ResponseWriter,
+	status int,
+	code, message, requestID string,
+	extra ...map[string]any,
+) {
 	body := map[string]any{"code": code, "message": message}
 	if requestID != "" {
 		body["request_id"] = requestID
+	}
+	for _, fields := range extra {
+		for k, v := range fields {
+			body[k] = v
+		}
 	}
 	writeJSON(w, status, map[string]any{"error": body})
 }
