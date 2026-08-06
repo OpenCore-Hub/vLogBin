@@ -1,5 +1,8 @@
+"use client";
+
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { CopyButton } from "./code-block";
 import { AlertIcon, CheckCircleIcon, InfoIcon, SpinnerIcon } from "./icons";
 
 /* ---------------- Spinner ---------------- */
@@ -111,11 +114,13 @@ export function EmptyState({
 export function ErrorState({
   title = "加载失败",
   description,
+  requestId,
   action,
   className,
 }: {
   title?: string;
   description?: string;
+  requestId?: string;
   action?: ReactNode;
   className?: string;
 }) {
@@ -123,6 +128,14 @@ export function ErrorState({
     <Alert variant="danger" title={title} className={className}>
       <div className="space-y-3">
         {description && <p>{description}</p>}
+        {requestId && (
+          <div className="flex items-center gap-2">
+            <code className="font-mono text-xs text-muted-foreground">
+              {requestId}
+            </code>
+            <CopyButton text={requestId} label="复制 request_id" />
+          </div>
+        )}
         {action}
       </div>
     </Alert>

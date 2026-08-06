@@ -146,13 +146,56 @@ export type {
 export class ApiError extends Error {
   readonly code: string;
   readonly status: number;
+  readonly requestId?: string;
+  readonly retryAfter?: string;
+  readonly details?: unknown;
 
-  constructor(code: string, message: string, status: number) {
+  constructor(
+    code: string,
+    message: string,
+    status: number,
+    requestId?: string,
+    retryAfter?: string,
+    details?: unknown,
+  ) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
+    this.requestId = requestId;
+    this.retryAfter = retryAfter;
+    this.details = details;
   }
+}
+
+async function apiErrorFromResponse(res: Response): Promise<ApiError> {
+  let code = "api_error";
+  let message = `Request failed with status ${res.status}`;
+  let requestId: string | undefined;
+  let retryAfter: string | undefined;
+  let details: unknown;
+  try {
+    const body: unknown = await res.json();
+    if (body && typeof body === "object" && "error" in body) {
+      const errObj = (body as {
+        error?: {
+          code?: unknown;
+          message?: unknown;
+          request_id?: unknown;
+          retry_after?: unknown;
+          details?: unknown;
+        };
+      }).error;
+      if (typeof errObj?.code === "string") code = errObj.code;
+      if (typeof errObj?.message === "string") message = errObj.message;
+      if (typeof errObj?.request_id === "string") requestId = errObj.request_id;
+      if (typeof errObj?.retry_after === "string") retryAfter = errObj.retry_after;
+      details = errObj?.details;
+    }
+  } catch {
+    // Non-JSON error body — keep the status-based defaults.
+  }
+  return new ApiError(code, message, res.status, requestId, retryAfter, details);
 }
 
 function baseUrl(): string {
@@ -216,20 +259,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!res.ok) {
-    let code = "api_error";
-    let message = `Request failed with status ${res.status}`;
-    try {
-      const body: unknown = await res.json();
-      if (body && typeof body === "object" && "error" in body) {
-        const errObj = (body as { error?: { code?: unknown; message?: unknown } })
-          .error;
-        if (typeof errObj?.code === "string") code = errObj.code;
-        if (typeof errObj?.message === "string") message = errObj.message;
-      }
-    } catch {
-      // Non-JSON error body — keep the status-based defaults.
-    }
-    throw new ApiError(code, message, res.status);
+    throw await apiErrorFromResponse(res);
   }
 
   // 204 No Content（DELETE）没有 body；统一走 text + 非空解析，避免
@@ -301,20 +331,7 @@ export async function provisionWorkspace(
   }
 
   if (!res.ok) {
-    let code = "api_error";
-    let message = `Request failed with status ${res.status}`;
-    try {
-      const body: unknown = await res.json();
-      if (body && typeof body === "object" && "error" in body) {
-        const errObj = (body as { error?: { code?: unknown; message?: unknown } })
-          .error;
-        if (typeof errObj?.code === "string") code = errObj.code;
-        if (typeof errObj?.message === "string") message = errObj.message;
-      }
-    } catch {
-      // Non-JSON error body — keep the status-based defaults.
-    }
-    throw new ApiError(code, message, res.status);
+    throw await apiErrorFromResponse(res);
   }
 
   const data = (await res.json()) as Record<string, unknown>;
@@ -1407,20 +1424,7 @@ export async function exportAuditEvents(
     },
   );
   if (!res.ok) {
-    let code = "api_error";
-    let message = `Request failed with status ${res.status}`;
-    try {
-      const body: unknown = await res.json();
-      if (body && typeof body === "object" && "error" in body) {
-        const errObj = (body as { error?: { code?: unknown; message?: unknown } })
-          .error;
-        if (typeof errObj?.code === "string") code = errObj.code;
-        if (typeof errObj?.message === "string") message = errObj.message;
-      }
-    } catch {
-      // Non-JSON error body — keep defaults.
-    }
-    throw new ApiError(code, message, res.status);
+    throw await apiErrorFromResponse(res);
   }
   return res;
 }
