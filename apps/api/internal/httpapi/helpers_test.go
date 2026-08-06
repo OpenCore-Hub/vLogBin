@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/domain"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/reqid"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/tenant"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -104,7 +105,7 @@ func TestWriteErrorWithRetryAfter(t *testing.T) {
 
 func TestReqIDFromRequest(t *testing.T) {
 	r := httptest.NewRequest("GET", "/", nil)
-	r = r.WithContext(context.WithValue(r.Context(), requestIDKey{}, "test-id-456"))
+	r = r.WithContext(reqid.WithValue(r.Context(), "test-id-456"))
 
 	if id := reqIDFromRequest(r); id != "test-id-456" {
 		t.Fatalf("reqID = %q, want test-id-456", id)
@@ -136,7 +137,7 @@ func TestDecodeJSONValid(t *testing.T) {
 
 func TestDecodeJSONInvalid(t *testing.T) {
 	r := httptest.NewRequest("POST", "/", strings.NewReader(`{invalid json`))
-	r = r.WithContext(context.WithValue(r.Context(), requestIDKey{}, "req-id"))
+	r = r.WithContext(reqid.WithValue(r.Context(), "req-id"))
 	w := httptest.NewRecorder()
 
 	var v map[string]any

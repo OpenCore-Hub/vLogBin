@@ -18,6 +18,7 @@ import (
 
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/domain"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/keys"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/reqid"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store/storegen"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/tenant"
@@ -26,8 +27,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
-
-type requestIDKey struct{}
 
 // maxBodySize limits request bodies to 1 MB to prevent DoS via large
 // payloads. Billing API requests are small JSON objects; 1 MB is generous.
@@ -65,7 +64,7 @@ func (s *Server) recoverMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
-				reqID, _ := r.Context().Value(requestIDKey{}).(string)
+				reqID := reqid.FromContext(r.Context())
 				s.log.Error("panic recovered",
 					"error", rec,
 					"method", r.Method,
@@ -242,7 +241,7 @@ func requestIDMiddleware(next http.Handler) http.Handler {
 			id = uuid.NewString()
 		}
 		w.Header().Set("X-Request-ID", id)
-		ctx := context.WithValue(r.Context(), requestIDKey{}, id)
+		ctx := reqid.WithValue(r.Context(), id)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -324,7 +323,7 @@ func (s *Server) requestLogMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(sr, r)
 
-		reqID, _ := r.Context().Value(requestIDKey{}).(string)
+		reqID := reqid.FromContext(r.Context())
 		duration := time.Since(start)
 
 		attrs := []any{

@@ -17,6 +17,7 @@ import (
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/metrics"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/portal"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/ratelimit"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/reqid"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/service"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/zitadel"
@@ -544,14 +545,13 @@ func writeError(
 
 // reqIDFromRequest extracts the request ID from the request context.
 func reqIDFromRequest(r *http.Request) string {
-	id, _ := r.Context().Value(requestIDKey{}).(string)
-	return id
+	return reqid.FromContext(r.Context())
 }
 
 // serviceError maps service-layer errors onto the HTTP error shape.
 // The request is used to extract the request_id for client-side correlation.
 func (s *Server) serviceError(w http.ResponseWriter, r *http.Request, err error) {
-	reqID, _ := r.Context().Value(requestIDKey{}).(string)
+	reqID := reqid.FromContext(r.Context())
 	switch {
 	case errors.Is(err, service.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not_found", err.Error(), reqID)

@@ -19,6 +19,7 @@ import (
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/domain"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/keys"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/metrics"
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/reqid"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store/storegen"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/tenant"
@@ -1371,6 +1372,7 @@ func insertAuditTx(ctx context.Context, q *store.Queries, providerID, envID uuid
 		Action:        action,
 		TargetType:    pgtype.Text{String: targetType, Valid: targetType != ""},
 		TargetID:      pgtype.Text{String: targetID, Valid: targetID != ""},
+		RequestID:     pgtype.Text{String: reqid.FromContext(ctx), Valid: reqid.FromContext(ctx) != ""},
 		Metadata:      raw,
 	})
 	return err
