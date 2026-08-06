@@ -14,8 +14,9 @@ make release-gate
 2. API 非集成全量单测
 3. API 全量集成测试
 4. `make contract`（OpenAPI 234 / AsyncAPI 74 / 错误码 59 / 类型同步）
-5. 官方 Go SDK 测试
-6. Web tsc + eslint + 全量 Playwright E2E
+5. 官方 SDK 测试（Go / TypeScript / Python）
+6. Web tsc + eslint
+7. 全量 Playwright E2E
 
 ## P0 代码侧验收
 

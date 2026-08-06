@@ -404,7 +404,7 @@
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
 | M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | ✅ 已完成（候选 43-58） |
 | M4 生产级 | 多 workspace 切换 / 用量控制面 / 全局错误与加载边界 / 审计导出 / E2E 稳定性 / Analytics / 订阅控制面 / Portal 支付历史 / 对账中心 / 支持会话 / 硬额度 / 队列看板 / 后续生产硬化 | 🔄 进行中（候选 70） |
-| M5 正式商用（功能与契约层） | 验收基线 / OpenAPI / AsyncAPI / 版本兼容 / 错误契约 / SDK / Webhook 事件流 / 身份边界 / 双账务域 / 目录权益额度 / 生命周期与 Offboarding / 支持审计 WORM / 迁移故障恢复 / 发布门禁 | ⬜ 待办（候选 71-84 已规划） |
+| M5 正式商用（功能与契约层） | 验收基线 / OpenAPI / AsyncAPI / 版本兼容 / 错误契约 / SDK / Webhook 事件流 / 身份边界 / 双账务域 / 目录权益额度 / 生命周期与 Offboarding / 支持审计 WORM / 迁移故障恢复 / 发布门禁 | ✅ 已完成（候选 71-84） |
 
 ### M0 — 基座（✅ 已完成，待提交）
 
@@ -767,13 +767,16 @@
 - [x] 集成测试断言错误信封与错误码目录一致（`scripts/check-error-codes.py` 覆盖 100%）
 - [x] 验收：`make contract` 全绿；全量集成全绿；错误码目录 59/59
 
-#### 候选 76：SDK 生成与官方客户端（🔄 Go SDK 已完成，TS/Python 待补）
+#### 候选 76：SDK 生成与官方客户端（✅ 已完成）
 - [x] 建立 `sdk/go` 官方 Go SDK：API Key 认证、请求封装、分页/游标、Idempotency-Key
+- [x] 建立 `sdk/typescript` 官方 TypeScript/Node SDK：API Key 认证、统一错误信封、Idempotency-Key、事件流 cursor/过滤、Webhook HMAC 验签 + replay window
+- [x] 建立 `sdk/python` 官方 Python SDK（零第三方依赖）：API Key 认证、统一 `ApiError`、Idempotency-Key、事件流 cursor/过滤、Webhook HMAC 验签 + replay window
 - [x] 统一错误信封解析：`*APIError` 含 Code / Message / RequestID / RetryAfter / Details
 - [x] Webhook 验签 helper：`VerifyWebhookSignature` / `VerifyWebhookSignatureWithin`（timestamp + HMAC + replay window）
 - [x] 事件流 client：`StreamEvents` cursor 分页 + `has_more` 续读
 - [x] SDK smoke tests：认证头 / 幂等键 / 错误信封 / 用量上报 / Webhook 验签全绿（`make sdk`）
-- [ ] TypeScript/Node 与 Python SDK、OpenAPI→SDK 生成管线、包发布与生成物 diff 检查（后续候选）
+- [x] `make release-gate` 覆盖 Go / TypeScript / Python 三语言 SDK 测试
+- [ ] OpenAPI→SDK 生成管线、包发布与生成物 diff 检查（后续候选）
 
 #### 候选 77：Webhook 与事件流对外契约（✅ 已完成）
 - [x] 正式化 Webhook 交付契约：`docs/WEBHOOK_EVENTS.md` 覆盖签名头、timestamp、schema version、event type、重试、退避、dead_letter、replay
@@ -828,6 +831,7 @@
 
 #### 候选 84：发布门禁与上线验收（✅ 代码侧已完成）
 - [x] 建立 `make release-gate`：API build/vet、非集成单测、全量集成、契约检查、SDK、Web tsc/eslint、全量 E2E 一条命令可跑
+- [x] `make sdk` 扩展为 Go / TypeScript / Python 三语言测试；release-gate 第 5 步覆盖三语言
 - [x] 产出《正式商用上线验收清单》：`docs/RELEASE_ACCEPTANCE.md`（P0 代码项逐条勾选，P1/P2 外部证据单列出）
 - [x] 修复全部 CI 偶发：集成套件隔离缺陷、已知 outbox flaky、限流余量均已收敛
 - [x] 验收：`make release-gate` 全绿（含 63/63 E2E）；P0/P1 Runbook 演练记录由运营侧补充后签署
