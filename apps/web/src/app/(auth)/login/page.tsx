@@ -2,14 +2,20 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { startOidcLogin } from "./login-actions";
 import { OperatorTokenForm } from "./token-form";
+import { CustomLoginForm } from "./custom-login-form";
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/feedback";
 import {
   isOidcConfigured,
+  isCustomLoginConfigured,
   isSessionSecretConfigured,
   authConfig,
 } from "@/lib/auth/config";
+import {
+  getAuthRequest,
+  getLoginSettings,
+} from "@/lib/auth/zitadel-session";
 import { LockIcon, TerminalIcon } from "@/components/ui/icons";
 
 export const metadata: Metadata = {
@@ -19,15 +25,33 @@ export const metadata: Metadata = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; authRequest?: string }>;
 }) {
-  const { next } = await searchParams;
+  const { next, authRequest: authRequestParam } = await searchParams;
   const safeNext =
     next && next.startsWith("/") && !next.startsWith("//")
       ? next
       : "/console";
   const oidcReady = isOidcConfigured();
   const sessionReady = isSessionSecretConfigured();
+  const customLoginReady = isCustomLoginConfigured();
+  let authRequest: Awaited<ReturnType<typeof getAuthRequest>> | null = null;
+  let loginSettings: Awaited<ReturnType<typeof getLoginSettings>> | null = null;
+  let customLoginError: string | null = null;
+  if (
+    authConfig.mode === "oidc-custom-login" &&
+    authRequestParam &&
+    customLoginReady
+  ) {
+    try {
+      [authRequest, loginSettings] = await Promise.all([
+        getAuthRequest(authRequestParam),
+        getLoginSettings(),
+      ]);
+    } catch {
+      customLoginError = "登录请求已失效，请重新开始。";
+    }
+  }
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -66,13 +90,30 @@ export default async function LoginPage({
             </Alert>
           )}
 
-          {authConfig.mode === "oidc" ? (
+          {authConfig.mode === "oidc-custom-login" &&
+          authRequestParam &&
+          customLoginReady ? (
+            authRequest && loginSettings ? (
+              <CustomLoginForm
+                authRequestId={authRequest.id}
+                next={safeNext}
+                loginSettings={loginSettings}
+              />
+            ) : (
+              <Alert variant="danger" title="登录不可用">
+                {customLoginError || "自建登录配置不完整。"}
+              </Alert>
+            )
+          ) : authConfig.mode === "oidc" ||
+            authConfig.mode === "oidc-custom-login" ? (
             oidcReady ? (
               <form action={startOidcLogin}>
                 <input type="hidden" name="next" value={safeNext} />
                 <Button type="submit" size="lg" className="w-full">
                   <TerminalIcon size={15} />
-                  使用 ZITADEL 登录
+                  {authConfig.mode === "oidc-custom-login"
+                    ? "开始登录"
+                    : "使用 ZITADEL 登录"}
                 </Button>
               </form>
             ) : (

@@ -1,11 +1,38 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, SESSION_MAX_AGE_SECONDS } from "./lib/env-shared";
+import { authConfig } from "./lib/auth/config";
 
 /** 受保护路由前缀（粗粒度；细粒度 RBAC 由服务端校验）。 */
 const PROTECTED_PREFIXES = ["/console", "/ops"];
+const ZITADEL_PROXY_PREFIXES = [
+  "/.well-known/",
+  "/oauth/",
+  "/oidc/",
+  "/idps/callback/",
+  "/saml/",
+  "/assets/",
+];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const res = NextResponse.next();
+
+  // 自建登录模式：把 OIDC/协议路径代理到 ZITADEL，保证登录 UI 与身份引擎解耦。
+  if (authConfig.mode === "oidc-custom-login") {
+    const shouldProxy = ZITADEL_PROXY_PREFIXES.some((prefix) =>
+      pathname.startsWith(prefix),
+    );
+    if (shouldProxy && authConfig.zitadel.apiUrl) {
+      const target = new URL(
+        pathname + req.nextUrl.search,
+        authConfig.zitadel.apiUrl,
+      );
+      return NextResponse.rewrite(target, {
+        request: { headers: req.headers },
+      });
+    }
+  }
+
   const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
   const sessionCookie = req.cookies.get(SESSION_COOKIE)?.value;
 
@@ -20,8 +47,6 @@ export function middleware(req: NextRequest) {
   if ((pathname === "/login" || pathname === "/signup") && sessionCookie) {
     return NextResponse.redirect(new URL("/console", req.url));
   }
-
-  const res = NextResponse.next();
 
   // 滑动会话续期：活跃用户每次请求刷新 cookie 有效期（值不变，仅续期）
   if (sessionCookie) {

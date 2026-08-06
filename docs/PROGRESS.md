@@ -335,12 +335,13 @@
 - [x] 输出《自建登录页 + ZITADEL Session API 技术方案》：`docs/SPEC-Custom-Login-Session-API.md`（含架构、登录/注册流程、契约层、错误映射、安全设计、测试矩阵、P0-P4 交付拆分）
 - [x] 完成架构/产品评审修订：核心目标锁定为“安全合规前提下实现品牌一致性与登录体验控制”；裁决为有条件通过，P0 决策已固化进 SPEC §0/§2.1
 - [x] 评审决策落稿：主链路使用 `@zitadel/client` 生成客户端；生产凭据优先 Login Client Key/系统用户 JWT；`isSessionValid` 作为 CreateCallback 前强制 MFA 门槛；新增 OIDC 代理 middleware；版本锁 v4.16.x（≥4.6.0）且禁用 `EnableRelationalTables`
-- [ ] P0：`zitadel-session.ts`（基于 `@zitadel/client`）+ zod + `isSessionValid` MFA 模块 + ZITADEL 契约/版本探针 + `AUTH_MODE=oidc-custom-login` 开关 + OIDC 代理骨架（不改现有页面，失败自动回退原 OIDC 跳转）
-- [ ] P1：登录名/邮箱/手机号搜索 + 密码页替换 + `login_flow` 加密 cookie 落地 + 代理路径打通
-- [ ] P2：MFA（TOTP / OTP email/SMS / Passkey / U2F）与账号选择器
+- [x] P0：`zitadel-session.ts`（基于 `@zitadel/client` 1.3.1）+ zod + `isSessionValid` MFA 模块 + ZITADEL 契约探针 + `AUTH_MODE=oidc-custom-login` 开关 + OIDC 代理骨架
+- [ ] P1：登录名/邮箱/手机号搜索 + 密码页替换 + `login_flow` 加密 cookie 落地 + 代理路径打通（主体已实现；自动回退与真实 ZITADEL E2E 验收待收口）
+- [ ] P2：MFA（TOTP / OTP email/SMS 已实现；Passkey/U2F 与账号选择器待实现）
 - [ ] P3：注册 / 邮箱验证 / Passkey 初始化 / MFA 初始化跳过，未覆盖 IDP/SAML 显式回退托管登录页，复用 `provisionWorkspace` 事务
 - [ ] P4：按 env/user/org 全量灰度，观察成功登录率、MFA 完成率与 fallback 率后删除旧跳转路径，Playwright E2E + 回归基线锁定
-- **状态：🔄 进行中（评审修订完成，P0 待开工）**
+- [x] 实现验证：`tsc` / ESLint / `vitest`（8 条 MFA 门槛用例）/ Next.js 生产构建全绿
+- **状态：🔄 进行中（P0 完成，P1/P2 主体已落地，真实 ZITADEL 联调与 P3/P4 待续）**
 
 ### 测试体系扩充
 - [x] metrics_middleware / security / timeout / health / workspace / web_simulation 等新测试

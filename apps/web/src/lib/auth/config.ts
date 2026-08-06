@@ -1,6 +1,6 @@
 import "server-only";
 
-export type AuthMode = "oidc" | "operator-token";
+export type AuthMode = "oidc" | "oidc-custom-login" | "operator-token";
 
 function str(v: string | undefined, fallback = ""): string {
   return v && v.trim().length > 0 ? v.trim() : fallback;
@@ -13,13 +13,16 @@ function num(v: string | undefined, fallback: number): number {
 
 /**
  * 认证配置（服务端专用）。
- * - oidc：ZITADEL 授权码 + PKCE（生产模式，多租户）
+ * - oidc：ZITADEL 授权码 + PKCE（生产模式，托管登录页）
+ * - oidc-custom-login：ZITADEL Session API 自建登录页（品牌一致性）
  * - operator-token：对接 API 的 OPERATOR_TOKEN 认证（本地/单租户开发模式）
  */
 export const authConfig = {
   mode: (str(process.env.AUTH_MODE, "oidc") === "operator-token"
     ? "operator-token"
-    : "oidc") as AuthMode,
+    : str(process.env.AUTH_MODE, "oidc") === "oidc-custom-login"
+      ? "oidc-custom-login"
+      : "oidc") as AuthMode,
   baseUrl: str(process.env.APP_BASE_URL, "http://localhost:3000").replace(
     /\/+$/,
     "",
@@ -33,6 +36,10 @@ export const authConfig = {
   operatorToken: str(process.env.OPERATOR_TOKEN),
   zitadel: {
     issuer: str(process.env.ZITADEL_URL).replace(/\/+$/, ""),
+    apiUrl: str(
+      process.env.ZITADEL_API_URL,
+      str(process.env.ZITADEL_URL),
+    ).replace(/\/+$/, ""),
     clientId: str(process.env.ZITADEL_CLIENT_ID),
     clientSecret: str(process.env.ZITADEL_CLIENT_SECRET),
     redirectUri: str(
@@ -44,6 +51,17 @@ export const authConfig = {
       `${str(process.env.APP_BASE_URL, "http://localhost:3000").replace(/\/+$/, "")}/login`,
     ),
     scopes: str(process.env.ZITADEL_SCOPES, "openid profile email offline_access"),
+    audience: str(
+      process.env.AUDIENCE,
+      str(process.env.ZITADEL_API_URL, str(process.env.ZITADEL_URL)),
+    ).replace(/\/+$/, ""),
+    loginClientKeyFile: str(process.env.ZITADEL_LOGINCLIENT_KEYFILE),
+    systemUserId: str(process.env.SYSTEM_USER_ID),
+    systemUserPrivateKey: str(process.env.SYSTEM_USER_PRIVATE_KEY),
+    systemUserPrivateKeyFile: str(process.env.SYSTEM_USER_PRIVATE_KEY_FILE),
+    serviceUserToken: str(process.env.ZITADEL_SERVICE_USER_TOKEN),
+    loginClientPat: str(process.env.ZITADEL_LOGIN_CLIENT_PAT),
+    trustedDomains: str(process.env.ZITADEL_TRUSTED_DOMAIN, "").split(",").map((v) => v.trim()).filter(Boolean),
   },
   apiBaseUrl: str(
     process.env.PLATFORM_API_URL,
@@ -55,6 +73,22 @@ export const authConfig = {
 export function isOidcConfigured(): boolean {
   return (
     authConfig.zitadel.issuer.length > 0 && authConfig.zitadel.clientId.length > 0
+  );
+}
+
+/** 自建登录模式所需的 ZITADEL 服务凭据是否完整。 */
+export function isCustomLoginConfigured(): boolean {
+  if (authConfig.mode !== "oidc-custom-login") {
+    return false;
+  }
+  return Boolean(
+    authConfig.zitadel.apiUrl &&
+      (authConfig.zitadel.loginClientKeyFile ||
+        (authConfig.zitadel.systemUserId &&
+          (authConfig.zitadel.systemUserPrivateKey ||
+            authConfig.zitadel.systemUserPrivateKeyFile)) ||
+        authConfig.zitadel.serviceUserToken ||
+        authConfig.zitadel.loginClientPat),
   );
 }
 

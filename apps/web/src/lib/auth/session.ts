@@ -2,13 +2,8 @@ import "server-only";
 
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  randomBytes,
-} from "node:crypto";
 import { authConfig, isSessionSecretConfigured } from "./config";
+import { sealSecret, unsealSecret } from "./crypto";
 import { OidcError, refreshTokens, verifyIdToken } from "./oidc";
 import { SESSION_COOKIE } from "../env-shared";
 
@@ -52,39 +47,6 @@ export class SessionError extends Error {
 }
 
 /* ---------------- Token 加解密（AES-256-GCM，密钥由 SESSION_SECRET 派生） ---------------- */
-
-function deriveKey(): Buffer {
-  return createHash("sha256").update(authConfig.sessionSecret).digest();
-}
-
-function seal(plain: string): string {
-  const key = deriveKey();
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  const data = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return [iv, tag, data].map((b) => b.toString("base64url")).join(".");
-}
-
-function unseal(payload: string): string {
-  const parts = payload.split(".");
-  if (parts.length !== 3) throw new SessionError("会话令牌损坏");
-  const [ivS, tagS, dataS] = parts;
-  try {
-    const decipher = createDecipheriv(
-      "aes-256-gcm",
-      deriveKey(),
-      Buffer.from(ivS, "base64url"),
-    );
-    decipher.setAuthTag(Buffer.from(tagS, "base64url"));
-    return Buffer.concat([
-      decipher.update(Buffer.from(dataS, "base64url")),
-      decipher.final(),
-    ]).toString("utf8");
-  } catch {
-    throw new SessionError("会话令牌解密失败");
-  }
-}
 
 /* ---------------- 会话 JWT ---------------- */
 
@@ -139,8 +101,8 @@ export function sessionToClaims(s: Omit<Session, "expiresAt">): SessionClaims {
     roles: s.roles,
     workspaceId: s.workspaceId,
     env: s.env,
-    at: s.accessToken ? seal(s.accessToken) : undefined,
-    rt: s.refreshToken ? seal(s.refreshToken) : undefined,
+    at: s.accessToken ? sealSecret(s.accessToken) : undefined,
+    rt: s.refreshToken ? sealSecret(s.refreshToken) : undefined,
     exp_: s.tokenExp ?? 0,
   };
 }
@@ -153,8 +115,8 @@ export function claimsToSession(c: SessionClaims): Session {
     roles: c.roles,
     workspaceId: c.workspaceId,
     env: c.env,
-    accessToken: c.at ? unseal(c.at) : undefined,
-    refreshToken: c.rt ? unseal(c.rt) : undefined,
+    accessToken: c.at ? unsealSecret(c.at) : undefined,
+    refreshToken: c.rt ? unsealSecret(c.rt) : undefined,
     tokenExp: c.exp_ || undefined,
     expiresAt: 0, // 由调用方补充
   };

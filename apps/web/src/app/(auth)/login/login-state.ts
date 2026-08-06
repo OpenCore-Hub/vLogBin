@@ -9,3 +9,15 @@ export interface LoginActionState {
   error?: string;
   next?: string;
 }
+
+export type CustomLoginStep = "identifier" | "password" | "mfa" | "done";
+
+export interface CustomLoginActionState extends LoginActionState {
+  step: CustomLoginStep;
+  loginName?: string;
+  userId?: string;
+  sessionId?: string;
+  mfaMethods?: string[];
+  otpRequested?: boolean;
+  failedAttempts?: number;
+}
