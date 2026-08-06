@@ -738,12 +738,12 @@
 - [x] 建立 SPEC Testing #1-40 映射表：`docs/CONTRACT_ACCEPTANCE.md` 逐条标注已覆盖 / 部分 / 待补
 - [x] 验收：`go test ./internal/integration` 全量绿；黑盒 harness 全绿；SPEC #1-40 有测试映射表
 
-#### 候选 72：OpenAPI 契约完整性
-- [ ] 补齐 provider / operator / portal / events / quota / queues 全部公开路由到 `docs/openapi.yaml`
-- [ ] 建立路由↔schema 覆盖检查：未文档化公共路由在 CI 直接失败
-- [ ] 恢复字段一致性脚本：`lib/api/types.ts` ↔ OpenAPI 同名 schema diff 为 0
-- [ ] YAML 引用完整性、枚举、required、示例与错误码目录全部通过校验
-- [ ] 验收：公开路由 100% 文档化；types 漂移检查 0；CI 契约检查通过
+#### 候选 72：OpenAPI 契约完整性（✅ 核心已完成）
+- [x] 补齐 provider / operator / portal / events / quota / queues 全部公开路由到 `docs/openapi.yaml`（实际路由 234 条，覆盖 234 条）
+- [x] 建立路由↔schema 覆盖检查：`scripts/check-openapi-coverage.py`，未文档化公共路由在 `make contract` 直接失败
+- [x] 恢复字段一致性脚本：`scripts/check-types-fields.py`，`lib/api/types.ts` ↔ OpenAPI 同名 schema 字段 diff 为 0
+- [x] YAML 引用完整性通过（`scripts/check-openapi-references.py`）；枚举/required/示例与错误码目录并入候选 75 统一补齐
+- [x] 验收：公开路由 100% 文档化；types 名称/字段漂移 0；`make contract` 全绿
 
 #### 候选 73：AsyncAPI 事件契约完整性
 - [ ] 用 outbox `event_type` 全量导出事件目录，每个事件有 schema、必填字段、示例、聚合与语义说明

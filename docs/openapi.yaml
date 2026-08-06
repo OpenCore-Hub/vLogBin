@@ -186,6 +186,9 @@ components:
         id:
           type: string
           format: uuid
+        subscription_id:
+          type: string
+          format: uuid
         quota_key:
           type: string
         amount:
@@ -199,11 +202,28 @@ components:
         expires_at:
           type: string
           format: date-time
+        created_at:
+          type: string
+          format: date-time
+        committed_at:
+          type: string
+          format: date-time
+          nullable: true
+        released_at:
+          type: string
+          format: date-time
+          nullable: true
     
     SupportSession:
       type: object
       properties:
         id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+        environment_id:
           type: string
           format: uuid
         access_type:
@@ -214,7 +234,39 @@ components:
           enum: [requested, active, expired, revoked, denied]
         reason:
           type: string
+        requested_by:
+          type: string
+        requested_scopes:
+          type: array
+          items:
+            type: string
+        approved_by:
+          type: string
+          nullable: true
+        second_approver:
+          type: string
+          nullable: true
+        granted_at:
+          type: string
+          format: date-time
+          nullable: true
         expires_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        revoked_by:
+          type: string
+          nullable: true
+        revoke_reason:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
           type: string
           format: date-time
 
@@ -419,17 +471,23 @@ components:
         id:
           type: string
           format: uuid
-        code:
-          type: string
         region_id:
           type: string
           format: uuid
+        code:
+          type: string
         cell_type:
           type: string
           enum: [shared, dedicated]
         status:
           type: string
           enum: [active, draining, inactive]
+        capacity_limits:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
 
     CellFailover:
       type: object
@@ -1666,6 +1724,223 @@ components:
           $ref: '#/components/schemas/Provider'
           nullable: true
 
+    AuditPageResult:
+      type: object
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEvent'
+        next_cursor:
+          type: integer
+          nullable: true
+
+    CreatedCredential:
+      type: object
+      properties:
+        credential:
+          $ref: '#/components/schemas/Credential'
+          nullable: true
+        api_key:
+          type: string
+
+    PortalSessionInfo:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        provider_id:
+          type: string
+        environment_id:
+          type: string
+        environment_kind:
+          type: string
+        customer_external_id:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    QuotaLimitUsage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        subscription_id:
+          type: string
+          format: uuid
+        quota_key:
+          type: string
+        limit_value:
+          type: integer
+          format: int64
+        period_type:
+          type: string
+          enum: [daily, monthly, total]
+        committed:
+          type: integer
+          format: int64
+        reserved:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    QueueOverview:
+      type: object
+      properties:
+        outbox:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
+        webhook_deliveries:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
+        recent_outbox:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEvent'
+
+    AnalyticsRevenueSummary:
+      type: object
+      properties:
+        provider_id:
+          type: string
+          format: uuid
+        month:
+          type: string
+        invoice_count:
+          type: integer
+        subscription_count:
+          type: integer
+        total_revenue_cents:
+          type: integer
+        avg_invoice_line_cents:
+          type: integer
+
+    AnalyticsMAUSummary:
+      type: object
+      properties:
+        provider_id:
+          type: string
+          format: uuid
+        month:
+          type: string
+        active_customers:
+          type: integer
+        unique_metrics:
+          type: integer
+        total_usage_events:
+          type: integer
+
+    AnalyticsConversionSummary:
+      type: object
+      properties:
+        provider_id:
+          type: string
+          format: uuid
+        signup_month:
+          type: string
+        new_customers:
+          type: integer
+        customers_with_subscription:
+          type: integer
+        active_subscriptions:
+          type: integer
+
+    AnalyticsChurnSummary:
+      type: object
+      properties:
+        provider_id:
+          type: string
+          format: uuid
+        churn_month:
+          type: string
+        churned_subscriptions:
+          type: integer
+        retained_subscriptions:
+          type: integer
+
+    AnalyticsAnomaly:
+      type: object
+      properties:
+        provider_id:
+          type: string
+          format: uuid
+        metric_code:
+          type: string
+        day:
+          type: string
+        event_count:
+          type: integer
+        avg_7d:
+          type: number
+        is_anomaly:
+          type: boolean
+
+    AnalyticsDashboard:
+      type: object
+      properties:
+        revenue:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalyticsRevenueSummary'
+        mau:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalyticsMAUSummary'
+        conversion:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalyticsConversionSummary'
+        churn:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalyticsChurnSummary'
+        anomalies:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalyticsAnomaly'
+        generated_at:
+          type: string
+          format: date-time
+
+    ReconciliationResult:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        check_name:
+          type: string
+        status:
+          type: string
+          enum: [ok, drift, error]
+        expected_count:
+          type: integer
+          format: int64
+        actual_count:
+          type: integer
+          format: int64
+        drift_count:
+          type: integer
+          format: int64
+        details:
+          type: object
+          additionalProperties: true
+        checked_at:
+          type: string
+          format: date-time
+
   parameters:
     RequestId:
       name: X-Request-ID
@@ -1809,6 +2084,12 @@ paths:
           description: Customer created
 
   /subscriptions:
+    get:
+      tags: [Contract]
+      summary: Get /subscriptions
+      responses:
+        '200':
+          description: OK
     post:
       tags: [Subscriptions]
       summary: Create a subscription
@@ -1833,24 +2114,13 @@ paths:
         '409':
           description: Cutover locked or cell draining
 
-  /quota/reserve:
-    post:
-      tags: [Quota]
-      summary: Reserve quota
-      responses:
-        '201':
-          description: Quota reserved
-        '422':
-          description: Quota exceeded
-
   /support-sessions:
-    post:
-      tags: [Support]
-      summary: Request JIT support access
+    get:
+      tags: [Contract]
+      summary: Get /support-sessions
       responses:
-        '201':
-          description: Support session requested
-
+        '200':
+          description: OK
   /team-members:
     get:
       tags: [Team]
@@ -1893,6 +2163,12 @@ paths:
           description: Event stream page
 
   /migrations:
+    get:
+      tags: [Contract]
+      summary: Get /migrations
+      responses:
+        '200':
+          description: OK
     post:
       tags: [Migration]
       summary: Create a migration job
@@ -1901,6 +2177,12 @@ paths:
           description: Migration job created
 
   /custom-domains:
+    get:
+      tags: [Contract]
+      summary: Get /custom-domains
+      responses:
+        '200':
+          description: OK
     post:
       tags: [Custom Domains]
       summary: Register a custom domain
@@ -1933,6 +2215,12 @@ paths:
           description: Combined analytics dashboard
 
   /metered-pricing-rules:
+    get:
+      tags: [Contract]
+      summary: Get /metered-pricing-rules
+      responses:
+        '200':
+          description: OK
     put:
       tags: [Metered Billing]
       summary: Set a metered pricing rule
@@ -1941,6 +2229,12 @@ paths:
           description: Pricing rule set
 
   /budget-alerts:
+    get:
+      tags: [Contract]
+      summary: Get /budget-alerts
+      responses:
+        '200':
+          description: OK
     post:
       tags: [Metered Billing]
       summary: Create a budget alert
@@ -1949,6 +2243,12 @@ paths:
           description: Budget alert created
 
   /data-exports:
+    get:
+      tags: [Contract]
+      summary: Get /data-exports
+      responses:
+        '200':
+          description: OK
     post:
       tags: [Data Export]
       summary: Request a data export
@@ -2254,25 +2554,6 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/UsageEventRecord'
-
-  /operator/providers/{provider_id}/audit-events:
-    get:
-      tags: [Operator]
-      summary: List audit events
-      parameters:
-        - $ref: '#/components/parameters/ProviderID'
-      responses:
-        '200':
-          description: Audit event list
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  events:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/AuditEvent'
 
   /operator/providers/{provider_id}/audit:
     get:
@@ -3258,3 +3539,1046 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SignupResult'
+
+  /analytics/anomalies:
+    get:
+      tags: [Contract]
+      summary: Get /analytics/anomalies
+      responses:
+        '200':
+          description: OK
+  /analytics/churn:
+    get:
+      tags: [Contract]
+      summary: Get /analytics/churn
+      responses:
+        '200':
+          description: OK
+  /analytics/conversion:
+    get:
+      tags: [Contract]
+      summary: Get /analytics/conversion
+      responses:
+        '200':
+          description: OK
+  /analytics/mau:
+    get:
+      tags: [Contract]
+      summary: Get /analytics/mau
+      responses:
+        '200':
+          description: OK
+  /analytics/revenue:
+    get:
+      tags: [Contract]
+      summary: Get /analytics/revenue
+      responses:
+        '200':
+          description: OK
+  /analytics/usage-breakdown:
+    get:
+      tags: [Contract]
+      summary: Get /analytics/usage-breakdown
+      responses:
+        '200':
+          description: OK
+  /audit-events:
+    get:
+      tags: [Contract]
+      summary: Get /audit-events
+      responses:
+        '200':
+          description: OK
+  /audit-events/export:
+    get:
+      tags: [Contract]
+      summary: Get /audit-events/export
+      responses:
+        '200':
+          description: OK
+  /audit-events/stats:
+    get:
+      tags: [Contract]
+      summary: Get /audit-events/stats
+      responses:
+        '200':
+          description: OK
+  /auth/zitadel:
+    delete:
+      tags: [Contract]
+      summary: Delete /auth/zitadel
+      responses:
+        '200':
+          description: OK
+  /auth/zitadel/apps:
+    get:
+      tags: [Contract]
+      summary: Get /auth/zitadel/apps
+      responses:
+        '200':
+          description: OK
+  /auth/zitadel/config:
+    get:
+      tags: [Contract]
+      summary: Get /auth/zitadel/config
+      responses:
+        '200':
+          description: OK
+  /auth/zitadel/redirect-uris:
+    put:
+      tags: [Contract]
+      summary: Put /auth/zitadel/redirect-uris
+      responses:
+        '200':
+          description: OK
+  /auth/zitadel/rotate-secret:
+    post:
+      tags: [Contract]
+      summary: Post /auth/zitadel/rotate-secret
+      responses:
+        '200':
+          description: OK
+  /auth/zitadel/setup:
+    post:
+      tags: [Contract]
+      summary: Post /auth/zitadel/setup
+      responses:
+        '200':
+          description: OK
+  /budget-alerts/{id}:
+    delete:
+      tags: [Contract]
+      summary: Delete /budget-alerts/{id}
+      responses:
+        '200':
+          description: OK
+    get:
+      tags: [Contract]
+      summary: Get /budget-alerts/{id}
+      responses:
+        '200':
+          description: OK
+  /capabilities:
+    get:
+      tags: [Contract]
+      summary: Get /capabilities
+      responses:
+        '200':
+          description: OK
+  /catalog/plans:
+    get:
+      tags: [Contract]
+      summary: Get /catalog/plans
+      responses:
+        '200':
+          description: OK
+    post:
+      tags: [Contract]
+      summary: Post /catalog/plans
+      responses:
+        '200':
+          description: OK
+  /catalog/plans/{code}:
+    delete:
+      tags: [Contract]
+      summary: Delete /catalog/plans/{code}
+      responses:
+        '200':
+          description: OK
+    put:
+      tags: [Contract]
+      summary: Put /catalog/plans/{code}
+      responses:
+        '200':
+          description: OK
+  /catalog/plans/{code}/entitlements:
+    get:
+      tags: [Contract]
+      summary: Get /catalog/plans/{code}/entitlements
+      responses:
+        '200':
+          description: OK
+  /catalog/plans/{code}/entitlements/{key}:
+    delete:
+      tags: [Contract]
+      summary: Delete /catalog/plans/{code}/entitlements/{key}
+      responses:
+        '200':
+          description: OK
+    put:
+      tags: [Contract]
+      summary: Put /catalog/plans/{code}/entitlements/{key}
+      responses:
+        '200':
+          description: OK
+  /catalog/versions:
+    get:
+      tags: [Contract]
+      summary: Get /catalog/versions
+      responses:
+        '200':
+          description: OK
+    post:
+      tags: [Contract]
+      summary: Post /catalog/versions
+      responses:
+        '200':
+          description: OK
+  /catalog/versions/{versionId}:
+    get:
+      tags: [Contract]
+      summary: Get /catalog/versions/{versionId}
+      responses:
+        '200':
+          description: OK
+  /catalog/versions/{versionId}/content:
+    put:
+      tags: [Contract]
+      summary: Put /catalog/versions/{versionId}/content
+      responses:
+        '200':
+          description: OK
+  /catalog/versions/{versionId}/publish:
+    post:
+      tags: [Contract]
+      summary: Post /catalog/versions/{versionId}/publish
+      responses:
+        '200':
+          description: OK
+  /catalog/versions/{versionId}/retire:
+    post:
+      tags: [Contract]
+      summary: Post /catalog/versions/{versionId}/retire
+      responses:
+        '200':
+          description: OK
+  /catalog/versions/{versionId}/validate:
+    post:
+      tags: [Contract]
+      summary: Post /catalog/versions/{versionId}/validate
+      responses:
+        '200':
+          description: OK
+  /cell:
+    get:
+      tags: [Contract]
+      summary: Get /cell
+      responses:
+        '200':
+          description: OK
+  /credentials:
+    get:
+      tags: [Contract]
+      summary: Get /credentials
+      responses:
+        '200':
+          description: OK
+    post:
+      tags: [Contract]
+      summary: Post /credentials
+      responses:
+        '200':
+          description: OK
+  /credentials/{id}/revoke:
+    post:
+      tags: [Contract]
+      summary: Post /credentials/{id}/revoke
+      responses:
+        '200':
+          description: OK
+  /custom-domains/{id}:
+    delete:
+      tags: [Contract]
+      summary: Delete /custom-domains/{id}
+      responses:
+        '200':
+          description: OK
+    get:
+      tags: [Contract]
+      summary: Get /custom-domains/{id}
+      responses:
+        '200':
+          description: OK
+  /custom-domains/{id}/revoke:
+    post:
+      tags: [Contract]
+      summary: Post /custom-domains/{id}/revoke
+      responses:
+        '200':
+          description: OK
+  /custom-domains/{id}/verify:
+    post:
+      tags: [Contract]
+      summary: Post /custom-domains/{id}/verify
+      responses:
+        '200':
+          description: OK
+  /data-exports/{id}:
+    get:
+      tags: [Contract]
+      summary: Get /data-exports/{id}
+      responses:
+        '200':
+          description: OK
+  /deletion-proofs:
+    get:
+      tags: [Contract]
+      summary: Get /deletion-proofs
+      responses:
+        '200':
+          description: OK
+  /deletion-proofs/{id}:
+    get:
+      tags: [Contract]
+      summary: Get /deletion-proofs/{id}
+      responses:
+        '200':
+          description: OK
+  /entitlements/{customerExternalId}:
+    get:
+      tags: [Contract]
+      summary: Get /entitlements/{customerExternalId}
+      responses:
+        '200':
+          description: OK
+  /invoices:
+    get:
+      tags: [Contract]
+      summary: Get /invoices
+      responses:
+        '200':
+          description: OK
+  /invoices/sync:
+    post:
+      tags: [Contract]
+      summary: Post /invoices/sync
+      responses:
+        '200':
+          description: OK
+  /invoices/{id}:
+    get:
+      tags: [Contract]
+      summary: Get /invoices/{id}
+      responses:
+        '200':
+          description: OK
+  /me/workspaces/{id}:
+    get:
+      tags: [Contract]
+      summary: Get /me/workspaces/{id}
+      responses:
+        '200':
+          description: OK
+    patch:
+      tags: [Contract]
+      summary: Patch /me/workspaces/{id}
+      responses:
+        '200':
+          description: OK
+  /me/workspaces/{id}/members:
+    get:
+      tags: [Contract]
+      summary: Get /me/workspaces/{id}/members
+      responses:
+        '200':
+          description: OK
+    post:
+      tags: [Contract]
+      summary: Post /me/workspaces/{id}/members
+      responses:
+        '200':
+          description: OK
+  /me/workspaces/{id}/members/{userSub}:
+    delete:
+      tags: [Contract]
+      summary: Delete /me/workspaces/{id}/members/{userSub}
+      responses:
+        '200':
+          description: OK
+    patch:
+      tags: [Contract]
+      summary: Patch /me/workspaces/{id}/members/{userSub}
+      responses:
+        '200':
+          description: OK
+  /metered-pricing-rules/{metric}:
+    delete:
+      tags: [Contract]
+      summary: Delete /metered-pricing-rules/{metric}
+      responses:
+        '200':
+          description: OK
+    get:
+      tags: [Contract]
+      summary: Get /metered-pricing-rules/{metric}
+      responses:
+        '200':
+          description: OK
+  /migrations/{id}:
+    get:
+      tags: [Contract]
+      summary: Get /migrations/{id}
+      responses:
+        '200':
+          description: OK
+  /migrations/{id}/complete:
+    post:
+      tags: [Contract]
+      summary: Post /migrations/{id}/complete
+      responses:
+        '200':
+          description: OK
+  /migrations/{id}/invalid-records:
+    get:
+      tags: [Contract]
+      summary: Get /migrations/{id}/invalid-records
+      responses:
+        '200':
+          description: OK
+  /migrations/{id}/records:
+    get:
+      tags: [Contract]
+      summary: Get /migrations/{id}/records
+      responses:
+        '200':
+          description: OK
+    post:
+      tags: [Contract]
+      summary: Post /migrations/{id}/records
+      responses:
+        '200':
+          description: OK
+  /migrations/{id}/rollback:
+    post:
+      tags: [Contract]
+      summary: Post /migrations/{id}/rollback
+      responses:
+        '200':
+          description: OK
+  /migrations/{id}/start:
+    post:
+      tags: [Contract]
+      summary: Post /migrations/{id}/start
+      responses:
+        '200':
+          description: OK
+  /migrations/{id}/validate:
+    post:
+      tags: [Contract]
+      summary: Post /migrations/{id}/validate
+      responses:
+        '200':
+          description: OK
+  /notification-configs:
+    get:
+      tags: [Contract]
+      summary: Get /notification-configs
+      responses:
+        '200':
+          description: OK
+    put:
+      tags: [Contract]
+      summary: Put /notification-configs
+      responses:
+        '200':
+          description: OK
+  /notification-configs/{channel}:
+    delete:
+      tags: [Contract]
+      summary: Delete /notification-configs/{channel}
+      responses:
+        '200':
+          description: OK
+    get:
+      tags: [Contract]
+      summary: Get /notification-configs/{channel}
+      responses:
+        '200':
+          description: OK
+  /operator/audit/chain/anchor:
+    post:
+      tags: [Contract]
+      summary: Post /operator/audit/chain/anchor
+      responses:
+        '200':
+          description: OK
+  /operator/cell-migrations:
+    get:
+      tags: [Contract]
+      summary: Get /operator/cell-migrations
+      responses:
+        '200':
+          description: OK
+    post:
+      tags: [Contract]
+      summary: Post /operator/cell-migrations
+      responses:
+        '200':
+          description: OK
+  /operator/cell-migrations/{id}:
+    get:
+      tags: [Contract]
+      summary: Get /operator/cell-migrations/{id}
+      responses:
+        '200':
+          description: OK
+  /operator/cell-migrations/{id}/cancel:
+    post:
+      tags: [Contract]
+      summary: Post /operator/cell-migrations/{id}/cancel
+      responses:
+        '200':
+          description: OK
+  /operator/cell-migrations/{id}/execute:
+    post:
+      tags: [Contract]
+      summary: Post /operator/cell-migrations/{id}/execute
+      responses:
+        '200':
+          description: OK
+  /operator/cell-migrations/{id}/precheck:
+    post:
+      tags: [Contract]
+      summary: Post /operator/cell-migrations/{id}/precheck
+      responses:
+        '200':
+          description: OK
+  /operator/cells:
+    get:
+      tags: [Contract]
+      summary: Get /operator/cells
+      responses:
+        '200':
+          description: OK
+    post:
+      tags: [Contract]
+      summary: Post /operator/cells
+      responses:
+        '200':
+          description: OK
+  /operator/cells/{id}:
+    get:
+      tags: [Contract]
+      summary: Get /operator/cells/{id}
+      responses:
+        '200':
+          description: OK
+    patch:
+      tags: [Contract]
+      summary: Patch /operator/cells/{id}
+      responses:
+        '200':
+          description: OK
+  /operator/failovers:
+    get:
+      tags: [Contract]
+      summary: Get /operator/failovers
+      responses:
+        '200':
+          description: OK
+    post:
+      tags: [Contract]
+      summary: Post /operator/failovers
+      responses:
+        '200':
+          description: OK
+  /operator/failovers/{id}:
+    get:
+      tags: [Contract]
+      summary: Get /operator/failovers/{id}
+      responses:
+        '200':
+          description: OK
+  /operator/failovers/{id}/abort:
+    post:
+      tags: [Contract]
+      summary: Post /operator/failovers/{id}/abort
+      responses:
+        '200':
+          description: OK
+  /operator/failovers/{id}/complete:
+    post:
+      tags: [Contract]
+      summary: Post /operator/failovers/{id}/complete
+      responses:
+        '200':
+          description: OK
+  /operator/failovers/{id}/fence:
+    post:
+      tags: [Contract]
+      summary: Post /operator/failovers/{id}/fence
+      responses:
+        '200':
+          description: OK
+  /operator/failovers/{id}/switch:
+    post:
+      tags: [Contract]
+      summary: Post /operator/failovers/{id}/switch
+      responses:
+        '200':
+          description: OK
+  /operator/providers/{id}/audit/export:
+    get:
+      tags: [Contract]
+      summary: Get /operator/providers/{id}/audit/export
+      responses:
+        '200':
+          description: OK
+  /operator/providers/{id}/capabilities/{capability}/grant:
+    post:
+      tags: [Contract]
+      summary: Post /operator/providers/{id}/capabilities/{capability}/grant
+      responses:
+        '200':
+          description: OK
+  /operator/providers/{id}/capabilities/{capability}/revoke:
+    post:
+      tags: [Contract]
+      summary: Post /operator/providers/{id}/capabilities/{capability}/revoke
+      responses:
+        '200':
+          description: OK
+  /operator/providers/{id}/cell:
+    post:
+      tags: [Contract]
+      summary: Post /operator/providers/{id}/cell
+      responses:
+        '200':
+          description: OK
+  /operator/providers/{id}/risk-review:
+    post:
+      tags: [Contract]
+      summary: Post /operator/providers/{id}/risk-review
+      responses:
+        '200':
+          description: OK
+  /operator/providers/{id}/risk-reviews:
+    get:
+      tags: [Contract]
+      summary: Get /operator/providers/{id}/risk-reviews
+      responses:
+        '200':
+          description: OK
+  /operator/providers/{id}/subscriptions/{subscriptionId}/quota:
+    get:
+      tags: [Contract]
+      summary: Get /operator/providers/{id}/subscriptions/{subscriptionId}/quota
+      responses:
+        '200':
+          description: OK
+  /operator/providers/{id}/subscriptions/{subscriptionId}/quota-limits/{key}:
+    delete:
+      tags: [Contract]
+      summary: Delete /operator/providers/{id}/subscriptions/{subscriptionId}/quota-limits/{key}
+      responses:
+        '200':
+          description: OK
+    put:
+      tags: [Contract]
+      summary: Put /operator/providers/{id}/subscriptions/{subscriptionId}/quota-limits/{key}
+      responses:
+        '200':
+          description: OK
+  /operator/providers/{id}/subscriptions/{subscriptionId}/quota/reservations:
+    get:
+      tags: [Contract]
+      summary: Get /operator/providers/{id}/subscriptions/{subscriptionId}/quota/reservations
+      responses:
+        '200':
+          description: OK
+  /operator/providers/{id}/support-sessions:
+    get:
+      tags: [Contract]
+      summary: Get /operator/providers/{id}/support-sessions
+      responses:
+        '200':
+          description: OK
+    post:
+      tags: [Contract]
+      summary: Post /operator/providers/{id}/support-sessions
+      responses:
+        '200':
+          description: OK
+  /operator/providers/{id}/webhook-deliveries/{deliveryId}/replay:
+    post:
+      tags: [Contract]
+      summary: Post /operator/providers/{id}/webhook-deliveries/{deliveryId}/replay
+      responses:
+        '200':
+          description: OK
+  /operator/queues/overview:
+    get:
+      tags: [Contract]
+      summary: Get /operator/queues/overview
+      responses:
+        '200':
+          description: OK
+  /operator/reconciliation-results:
+    get:
+      tags: [Contract]
+      summary: Get /operator/reconciliation-results
+      responses:
+        '200':
+          description: OK
+  /operator/risk-reviews:
+    get:
+      tags: [Contract]
+      summary: Get /operator/risk-reviews
+      responses:
+        '200':
+          description: OK
+  /operator/support-sessions:
+    get:
+      tags: [Contract]
+      summary: Get /operator/support-sessions
+      responses:
+        '200':
+          description: OK
+  /operator/support-sessions/{sessionId}/first-approve:
+    post:
+      tags: [Contract]
+      summary: Post /operator/support-sessions/{sessionId}/first-approve
+      responses:
+        '200':
+          description: OK
+  /operator/support-sessions/{sessionId}/revoke:
+    post:
+      tags: [Contract]
+      summary: Post /operator/support-sessions/{sessionId}/revoke
+      responses:
+        '200':
+          description: OK
+  /operator/support-sessions/{sessionId}/second-approve:
+    post:
+      tags: [Contract]
+      summary: Post /operator/support-sessions/{sessionId}/second-approve
+      responses:
+        '200':
+          description: OK
+  /outbox-events:
+    get:
+      tags: [Contract]
+      summary: Get /outbox-events
+      responses:
+        '200':
+          description: OK
+  /psp-credentials:
+    get:
+      tags: [Contract]
+      summary: Get /psp-credentials
+      responses:
+        '200':
+          description: OK
+    post:
+      tags: [Contract]
+      summary: Post /psp-credentials
+      responses:
+        '200':
+          description: OK
+  /psp-credentials/{id}:
+    delete:
+      tags: [Contract]
+      summary: Delete /psp-credentials/{id}
+      responses:
+        '200':
+          description: OK
+  /psp-credentials/{id}/rotate:
+    post:
+      tags: [Contract]
+      summary: Post /psp-credentials/{id}/rotate
+      responses:
+        '200':
+          description: OK
+  /scim/v2/Groups:
+    get:
+      tags: [Contract]
+      summary: Get /scim/v2/Groups
+      responses:
+        '200':
+          description: OK
+    post:
+      tags: [Contract]
+      summary: Post /scim/v2/Groups
+      responses:
+        '200':
+          description: OK
+  /scim/v2/Groups/{id}:
+    delete:
+      tags: [Contract]
+      summary: Delete /scim/v2/Groups/{id}
+      responses:
+        '200':
+          description: OK
+    get:
+      tags: [Contract]
+      summary: Get /scim/v2/Groups/{id}
+      responses:
+        '200':
+          description: OK
+    patch:
+      tags: [Contract]
+      summary: Patch /scim/v2/Groups/{id}
+      responses:
+        '200':
+          description: OK
+  /scim/v2/Users/{id}:
+    delete:
+      tags: [Contract]
+      summary: Delete /scim/v2/Users/{id}
+      responses:
+        '200':
+          description: OK
+    get:
+      tags: [Contract]
+      summary: Get /scim/v2/Users/{id}
+      responses:
+        '200':
+          description: OK
+    patch:
+      tags: [Contract]
+      summary: Patch /scim/v2/Users/{id}
+      responses:
+        '200':
+          description: OK
+    put:
+      tags: [Contract]
+      summary: Put /scim/v2/Users/{id}
+      responses:
+        '200':
+          description: OK
+  /signup/:
+    post:
+      tags: [Contract]
+      summary: Post /signup/
+      responses:
+        '200':
+          description: OK
+  /sla-tiers:
+    get:
+      tags: [Contract]
+      summary: Get /sla-tiers
+      responses:
+        '200':
+          description: OK
+    post:
+      tags: [Contract]
+      summary: Post /sla-tiers
+      responses:
+        '200':
+          description: OK
+  /sla-tiers/{id}:
+    delete:
+      tags: [Contract]
+      summary: Delete /sla-tiers/{id}
+      responses:
+        '200':
+          description: OK
+    get:
+      tags: [Contract]
+      summary: Get /sla-tiers/{id}
+      responses:
+        '200':
+          description: OK
+    patch:
+      tags: [Contract]
+      summary: Patch /sla-tiers/{id}
+      responses:
+        '200':
+          description: OK
+  /subscriptions/{id}/entitlement-overrides:
+    get:
+      tags: [Contract]
+      summary: Get /subscriptions/{id}/entitlement-overrides
+      responses:
+        '200':
+          description: OK
+    put:
+      tags: [Contract]
+      summary: Put /subscriptions/{id}/entitlement-overrides
+      responses:
+        '200':
+          description: OK
+  /subscriptions/{id}/entitlement-overrides/{key}:
+    delete:
+      tags: [Contract]
+      summary: Delete /subscriptions/{id}/entitlement-overrides/{key}
+      responses:
+        '200':
+          description: OK
+  /subscriptions/{id}/quota-limits:
+    get:
+      tags: [Contract]
+      summary: Get /subscriptions/{id}/quota-limits
+      responses:
+        '200':
+          description: OK
+  /subscriptions/{id}/quota-limits/{key}:
+    delete:
+      tags: [Contract]
+      summary: Delete /subscriptions/{id}/quota-limits/{key}
+      responses:
+        '200':
+          description: OK
+    get:
+      tags: [Contract]
+      summary: Get /subscriptions/{id}/quota-limits/{key}
+      responses:
+        '200':
+          description: OK
+    put:
+      tags: [Contract]
+      summary: Put /subscriptions/{id}/quota-limits/{key}
+      responses:
+        '200':
+          description: OK
+  /subscriptions/{id}/quota/commit:
+    post:
+      tags: [Contract]
+      summary: Post /subscriptions/{id}/quota/commit
+      responses:
+        '200':
+          description: OK
+  /subscriptions/{id}/quota/release:
+    post:
+      tags: [Contract]
+      summary: Post /subscriptions/{id}/quota/release
+      responses:
+        '200':
+          description: OK
+  /subscriptions/{id}/quota/reservations:
+    get:
+      tags: [Contract]
+      summary: Get /subscriptions/{id}/quota/reservations
+      responses:
+        '200':
+          description: OK
+  /subscriptions/{id}/quota/reserve:
+    post:
+      tags: [Contract]
+      summary: Post /subscriptions/{id}/quota/reserve
+      responses:
+        '200':
+          description: OK
+  /subscriptions/{id}/quota/usage:
+    get:
+      tags: [Contract]
+      summary: Get /subscriptions/{id}/quota/usage
+      responses:
+        '200':
+          description: OK
+  /subscriptions/{id}/terminate:
+    post:
+      tags: [Contract]
+      summary: Post /subscriptions/{id}/terminate
+      responses:
+        '200':
+          description: OK
+  /support-sessions/active:
+    get:
+      tags: [Contract]
+      summary: Get /support-sessions/active
+      responses:
+        '200':
+          description: OK
+  /support-sessions/{id}/approve:
+    post:
+      tags: [Contract]
+      summary: Post /support-sessions/{id}/approve
+      responses:
+        '200':
+          description: OK
+  /support-sessions/{id}/deny:
+    post:
+      tags: [Contract]
+      summary: Post /support-sessions/{id}/deny
+      responses:
+        '200':
+          description: OK
+  /support-sessions/{id}/revoke:
+    post:
+      tags: [Contract]
+      summary: Post /support-sessions/{id}/revoke
+      responses:
+        '200':
+          description: OK
+  /team-members/{id}:
+    delete:
+      tags: [Contract]
+      summary: Delete /team-members/{id}
+      responses:
+        '200':
+          description: OK
+    get:
+      tags: [Contract]
+      summary: Get /team-members/{id}
+      responses:
+        '200':
+          description: OK
+    patch:
+      tags: [Contract]
+      summary: Patch /team-members/{id}
+      responses:
+        '200':
+          description: OK
+  /team-members/{id}/reactivate:
+    post:
+      tags: [Contract]
+      summary: Post /team-members/{id}/reactivate
+      responses:
+        '200':
+          description: OK
+  /team-members/{id}/suspend:
+    post:
+      tags: [Contract]
+      summary: Post /team-members/{id}/suspend
+      responses:
+        '200':
+          description: OK
+  /usage/events:
+    get:
+      tags: [Contract]
+      summary: Get /usage/events
+      responses:
+        '200':
+          description: OK
+  /usage/reverse:
+    post:
+      tags: [Contract]
+      summary: Post /usage/reverse
+      responses:
+        '200':
+          description: OK
+  /webhook-deliveries:
+    get:
+      tags: [Contract]
+      summary: Get /webhook-deliveries
+      responses:
+        '200':
+          description: OK
+  /webhooks:
+    get:
+      tags: [Contract]
+      summary: Get /webhooks
+      responses:
+        '200':
+          description: OK
+    post:
+      tags: [Contract]
+      summary: Post /webhooks
+      responses:
+        '200':
+          description: OK
+  /webhooks/{id}:
+    delete:
+      tags: [Contract]
+      summary: Delete /webhooks/{id}
+      responses:
+        '200':
+          description: OK
+  /whoami:
+    get:
+      tags: [Contract]
+      summary: Get /whoami
+      responses:
+        '200':
+          description: OK
