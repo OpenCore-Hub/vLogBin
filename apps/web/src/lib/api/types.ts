@@ -584,6 +584,62 @@ export interface OverviewStats {
   trends: OverviewTrends;
 }
 
+/** Console Analytics（M4）月度收入汇总。 */
+export interface AnalyticsRevenueSummary {
+  provider_id: string;
+  month: string;
+  invoice_count: number;
+  subscription_count: number;
+  total_revenue_cents: number;
+  avg_invoice_line_cents: number;
+}
+
+/** Console Analytics（M4）月度活跃客户 / 用量汇总。 */
+export interface AnalyticsMAUSummary {
+  provider_id: string;
+  month: string;
+  active_customers: number;
+  unique_metrics: number;
+  total_usage_events: number;
+}
+
+/** Console Analytics（M4）转化漏斗汇总。 */
+export interface AnalyticsConversionSummary {
+  provider_id: string;
+  signup_month: string;
+  new_customers: number;
+  customers_with_subscription: number;
+  active_subscriptions: number;
+}
+
+/** Console Analytics（M4）流失汇总。 */
+export interface AnalyticsChurnSummary {
+  provider_id: string;
+  churn_month: string;
+  churned_subscriptions: number;
+  retained_subscriptions: number;
+}
+
+/** Console Analytics（M4）用量异常。 */
+export interface AnalyticsAnomaly {
+  provider_id: string;
+  metric_code: string;
+  day: string;
+  event_count: number;
+  avg_7d: number;
+  is_anomaly: boolean;
+}
+
+/** Console Analytics Dashboard 一次请求全量载荷。 */
+export interface AnalyticsDashboard {
+  revenue: AnalyticsRevenueSummary[];
+  mau: AnalyticsMAUSummary[];
+  conversion: AnalyticsConversionSummary[];
+  churn: AnalyticsChurnSummary[];
+  anomalies: AnalyticsAnomaly[];
+  generated_at: string;
+}
+
 // ===== 结果 / 输入类型 =====
 
 /** 创建 / 激活 Provider 的结果。 */

@@ -62,6 +62,7 @@ import type {
   OverviewStats,
   OverviewTrends,
   TrendPoint,
+  AnalyticsDashboard,
   Capability,
   CustomDomain,
   WebhookEndpoint,
@@ -120,6 +121,7 @@ export type {
   OverviewStats,
   OverviewTrends,
   TrendPoint,
+  AnalyticsDashboard,
   Capability,
   CustomDomain,
   WebhookEndpoint,
@@ -858,6 +860,67 @@ export async function getOverviewStats(): Promise<OverviewStats> {
       revenue: asTrendSeries(trends.revenue),
       usage_events: asTrendSeries(trends.usage_events),
     },
+  };
+}
+
+/** Console Analytics Dashboard（M4，operator 环境域）。 */
+export async function getAnalyticsDashboard(
+  providerId: string,
+  env: "test" | "live",
+): Promise<AnalyticsDashboard> {
+  const data = await request<Partial<AnalyticsDashboard>>(
+    `/v1/operator/providers/${encodeURIComponent(providerId)}/analytics/dashboard?env=${env}`,
+  );
+  const num = (v: unknown) => Number(v) || 0;
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  return {
+    revenue: Array.isArray(data.revenue)
+      ? data.revenue.map((r) => ({
+          provider_id: str(r.provider_id),
+          month: str(r.month),
+          invoice_count: num(r.invoice_count),
+          subscription_count: num(r.subscription_count),
+          total_revenue_cents: num(r.total_revenue_cents),
+          avg_invoice_line_cents: Number(r.avg_invoice_line_cents) || 0,
+        }))
+      : [],
+    mau: Array.isArray(data.mau)
+      ? data.mau.map((r) => ({
+          provider_id: str(r.provider_id),
+          month: str(r.month),
+          active_customers: num(r.active_customers),
+          unique_metrics: num(r.unique_metrics),
+          total_usage_events: num(r.total_usage_events),
+        }))
+      : [],
+    conversion: Array.isArray(data.conversion)
+      ? data.conversion.map((r) => ({
+          provider_id: str(r.provider_id),
+          signup_month: str(r.signup_month),
+          new_customers: num(r.new_customers),
+          customers_with_subscription: num(r.customers_with_subscription),
+          active_subscriptions: num(r.active_subscriptions),
+        }))
+      : [],
+    churn: Array.isArray(data.churn)
+      ? data.churn.map((r) => ({
+          provider_id: str(r.provider_id),
+          churn_month: str(r.churn_month),
+          churned_subscriptions: num(r.churned_subscriptions),
+          retained_subscriptions: num(r.retained_subscriptions),
+        }))
+      : [],
+    anomalies: Array.isArray(data.anomalies)
+      ? data.anomalies.map((r) => ({
+          provider_id: str(r.provider_id),
+          metric_code: str(r.metric_code),
+          day: str(r.day),
+          event_count: num(r.event_count),
+          avg_7d: Number(r.avg_7d) || 0,
+          is_anomaly: r.is_anomaly === true,
+        }))
+      : [],
+    generated_at: str(data.generated_at),
   };
 }
 
