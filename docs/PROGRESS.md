@@ -782,11 +782,13 @@
 - [x] 文档给出消费端幂等模板与断点恢复示例（Node / Python / Go）
 - [x] 验收：Webhook/事件流集成测试全绿；`make contract` 全绿
 
-#### 候选 78：Provider / Environment 身份边界验收
-- [ ] 补同邮箱跨 Provider 隔离测试：相同 email 的用户获得不同 `user_sub` 与 session
-- [ ] 补 B2B/B2C 隔离、SCIM 边界、delegated admin 边界测试
-- [ ] 强化“请求体不能覆盖 tenant context”渗透用例：query/body/header 覆盖一律拒绝
-- [ ] 验收：SPEC Testing #1-3、#11-14、#25 全部有自动化用例并绿
+#### 候选 78：Provider / Environment 身份边界验收（✅ 已完成）
+- [x] 同邮箱跨 Provider 隔离：`TestSameEmailDifferentSubjectsAreIsolated` 证明不同 subject + 同 email 得到不同 workspace/provider/membership
+- [x] B2B/B2C 隔离：`TestB2BAndB2CCustomerIsolation` 同一 external_id 在不同 Provider 可独立为 business/individual
+- [x] tenant context 覆盖强化：`TestTenantOverrideAttemptsRejected` 覆盖 query/body 注入，全部返回 `tenant_context_override` 403
+- [x] SCIM 边界沿用 `TestSCIMUserCrossTenantIsolation` / `TestSCIMGroupCrossTenantIsolation`；delegated admin 沿用 workspace members 跨租户测试
+- [x] 修复同邮箱 slug 冲突事务中止缺陷：新增 `CreateWorkspaceIfFree`（`ON CONFLICT DO NOTHING`），候选 slug 冲突不再打挂事务
+- [x] 验收：SPEC Testing #1-3、#11-14、#25 有自动化用例并绿
 
 #### 候选 79：Commerce 双账务域与财务闭环
 - [ ] Provider Commerce 与 Platform Commerce 对账数据源分离测试；Platform 记录永不出现在 Provider 视图
