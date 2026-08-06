@@ -18,6 +18,7 @@ import {
   PackageIcon,
   SettingsIcon,
   ShieldIcon,
+  TerminalIcon,
   UsersIcon,
   WebhookIcon,
 } from "@/components/ui/icons";
@@ -95,6 +96,16 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
         href: "/console/developers/api-keys",
         label: "API Keys",
         icon: KeyIcon,
+      },
+      {
+        href: "/console/developers/sdk",
+        label: "SDK",
+        icon: TerminalIcon,
+      },
+      {
+        href: "/console/developers/events-spec",
+        label: "事件规范",
+        icon: ActivityIcon,
       },
       {
         href: "/console/developers/webhooks",
