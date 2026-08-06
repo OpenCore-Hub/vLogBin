@@ -386,6 +386,7 @@
 | 全局错误与加载边界 | 根级 `not-found.tsx`（品牌 404 + 返回控制台）与 `global-error.tsx`（digest + 重试）；Console / Ops / Portal 专属 loading 骨架；修复 Ops Cell 成功反馈竞态（改为成功面板停留 + 完成后再 refresh） | ✅ 已完成（候选 61） |
 | 审计导出 | 审计页新增 CSV / JSON 下载（保留当前筛选窗口）；`/console/audit/export` route 代理 operator export 流并带 Content-Disposition；日期表单自动转 RFC3339 | ✅ 已完成（候选 62） |
 | E2E 稳定性加固 | Playwright worker 级会话复用（57 条用例只登录一次）；dev 栈限流余量提升（credential / IP 20000/分），消除全量串行 429 | ✅ 已完成（候选 63） |
+| Analytics 控制面 | operator dashboard 端点（revenue / MAU / conversion / churn / anomalies 一次返回）+ `/console/analytics` 摘要卡与五张明细表；openapi 64 paths / 75 schemas；集成测试 + E2E | ✅ 已完成（候选 64） |
 
 ## 四、Web 前端重构任务追踪（设计基线 v1.4）
 
@@ -399,7 +400,7 @@
 | M1 控制面 API | `apps/api` 新增 Console 端点（最大前置依赖） | ✅ 已完成（候选 29-33） |
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
 | M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | ✅ 已完成（候选 43-58） |
-| M4 生产级 | 多 workspace 切换 / 用量控制面 / 全局错误与加载边界 / 审计导出 / E2E 稳定性 / 后续生产硬化 | 🔄 进行中（候选 63） |
+| M4 生产级 | 多 workspace 切换 / 用量控制面 / 全局错误与加载边界 / 审计导出 / E2E 稳定性 / Analytics / 后续生产硬化 | 🔄 进行中（候选 64） |
 
 ### M0 — 基座（✅ 已完成，待提交）
 
@@ -672,6 +673,13 @@
   - `e2e/helpers.ts`：worker 级 `getWorkerSession`，57 条登录态用例共享一次 UI 登录 cookie，独立 context
   - `docker-compose.dev.yml`：dev 环境 `RL_CREDENTIAL_LIMIT` / `RL_IP_LIMIT` 提至 20000/分，消除全量串行限流 429
   - 验证：Playwright e2e **57/57 全绿** ✅（此前多次因限流 2-3 条偶发）
+- [x] Analytics 控制面 — 候选 64
+  - API：`GET /v1/operator/providers/{id}/analytics/dashboard?env=`，operator 会话上下文复用 `GetProviderDashboard`
+  - openapi：新增 `ProviderAnalyticsDashboard` schema + path，引用完整性通过（64 paths / 75 schemas，missing=[]）
+  - 前端：`/console/analytics` 收入 / 活跃客户 / 用量异常 / 流失订阅摘要卡 + 月度收入 / MAU / 转化 / 流失 / 异常五张明细表；侧边栏新增 Analytics
+  - 集成测试：`operator_analytics_test.go`（空载荷字段契约 + missing env 400）
+  - E2E：`29-analytics.spec.ts`
+  - 验证：Go build/vet ✅；集成回归 ✅；tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **58/58 全绿** ✅
 
 ### 技术债 / 结构偏差（M0 遗留，随里程碑消化）
 
