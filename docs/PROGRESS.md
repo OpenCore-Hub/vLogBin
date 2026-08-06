@@ -384,6 +384,7 @@
 | 多 workspace 切换 | `WORKSPACE_COOKIE` + `lib/workspace.ts`（workspace_id==provider_id 解析）；Topbar WorkspaceSwitcher（多 workspace 下拉、单 workspace 只读标签）；13 个 Console 页面全部改为按当前 workspace 解析 provider；Settings / Users 同步按 cookie 选择 | ✅ 已完成（候选 59） |
 | 用量控制面 | `/console/billing/usage`：事件/客户/指标/撤销摘要卡 + DataTable（事务/客户/指标检索、环境与时间列）；复用既有 usage-events 端点；侧边栏新增用量 | ✅ 已完成（候选 60） |
 | 全局错误与加载边界 | 根级 `not-found.tsx`（品牌 404 + 返回控制台）与 `global-error.tsx`（digest + 重试）；Console / Ops / Portal 专属 loading 骨架；修复 Ops Cell 成功反馈竞态（改为成功面板停留 + 完成后再 refresh） | ✅ 已完成（候选 61） |
+| 审计导出 | 审计页新增 CSV / JSON 下载（保留当前筛选窗口）；`/console/audit/export` route 代理 operator export 流并带 Content-Disposition；日期表单自动转 RFC3339 | ✅ 已完成（候选 62） |
 
 ## 四、Web 前端重构任务追踪（设计基线 v1.4）
 
@@ -397,7 +398,7 @@
 | M1 控制面 API | `apps/api` 新增 Console 端点（最大前置依赖） | ✅ 已完成（候选 29-33） |
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
 | M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | ✅ 已完成（候选 43-58） |
-| M4 生产级 | 多 workspace 切换 / 用量控制面 / 全局错误与加载边界 / 后续生产硬化 | 🔄 进行中（候选 61） |
+| M4 生产级 | 多 workspace 切换 / 用量控制面 / 全局错误与加载边界 / 审计导出 / 后续生产硬化 | 🔄 进行中（候选 62） |
 
 ### M0 — 基座（✅ 已完成，待提交）
 
@@ -659,6 +660,13 @@
   - Ops Cell 创建：移除 Server Action 内 `revalidatePath` 竞态，改为成功面板停留 + 「完成」后再 `router.refresh()`
   - E2E：`28-errors.spec.ts`（未知路由 → 品牌 404）；Ops E2E 断言收敛到对话框成功面板
   - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；404 用例 ✅；Ops E2E 单跑 2/2 ✅（全量串行受登录 429 限流影响，非代码回归）
+- [x] 审计导出 — 候选 62
+  - 审计页顶部「导出 CSV / JSON」，携带当前筛选（action / actor_type / target_type / from / to）
+  - `/console/audit/export` route handler：服务端会话透传 operator export 流，设置 `Content-Disposition` 下载
+  - `exportAuditEvents` operator client：原始 Response 流式返回，不经过 JSON 解析
+  - 日期表单自动转 RFC3339（`YYYY-MM-DD` → 当日 00:00 / 23:59:59）
+  - E2E：`19-audit.spec.ts` 增加下载断言（`.csv` 文件名）
+  - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；审计 E2E 单跑通过 ✅
 
 ### 技术债 / 结构偏差（M0 遗留，随里程碑消化）
 
