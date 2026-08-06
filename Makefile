@@ -17,6 +17,7 @@ lint:
 
 contract:
 	./scripts/check-openapi-contracts.sh
+	./scripts/check-asyncapi-contracts.sh
 
 sqlc:
 	cd apps/api && sqlc generate
