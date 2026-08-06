@@ -15,6 +15,7 @@ import {
   ZitadelApiError,
 } from "@/lib/auth/zitadel-session";
 import { authConfig } from "@/lib/auth/config";
+import { recordAuthEvent } from "@/lib/auth/auth-events";
 import {
   getLoginFlow,
   setLoginFlow,
@@ -99,6 +100,9 @@ export async function submitCustomSignup(
       password,
       sendEmailCode: true,
     });
+    recordAuthEvent("custom_signup.created", {
+      userId: created.userId,
+    });
     const session = await createSession({
       userId: created.userId,
       password,
@@ -142,6 +146,9 @@ export async function submitSignupEmailCode(
   }
   try {
     await verifyEmail({ userId: signupFlow.userId, verificationCode: code });
+    recordAuthEvent("custom_signup.email_verified", {
+      userId: signupFlow.userId,
+    });
     const session = await getSession({
       sessionId: loginFlow.sessionId,
       sessionToken: loginFlow.sessionToken,
@@ -231,6 +238,9 @@ export async function verifySignupPasskey(
     passkeyId: signupFlow.passkeyId,
     passkeyName: "vLogBin",
     publicKeyCredential,
+  });
+  recordAuthEvent("custom_signup.passkey_registered", {
+    userId: signupFlow.userId,
   });
   await clearSignupFlow();
   await completeLoginFlow(loginFlow);

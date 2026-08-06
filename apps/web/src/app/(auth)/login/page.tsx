@@ -9,6 +9,7 @@ import { Alert } from "@/components/ui/feedback";
 import {
   isOidcConfigured,
   isCustomLoginConfigured,
+  isCustomLoginAllowedForUser,
   isSessionSecretConfigured,
   authConfig,
 } from "@/lib/auth/config";
@@ -55,6 +56,9 @@ export default async function LoginPage({
         getAuthRequest(authRequestParam),
         getLoginSettings(),
       ]);
+      if (!isCustomLoginAllowedForUser(authRequest.hintUserId)) {
+        customLoginError = "该账号不在自建登录灰度范围，请使用托管登录。";
+      }
       const remembered = await getRememberedSessions();
       for (const candidate of remembered) {
         if (
@@ -121,7 +125,8 @@ export default async function LoginPage({
           {authConfig.mode === "oidc-custom-login" &&
           authRequestParam &&
           customLoginReady ? (
-            authRequest && loginSettings ? (
+          authRequest && loginSettings ? (
+            isCustomLoginAllowedForUser(authRequest.hintUserId) ? (
               <CustomLoginForm
                 authRequestId={authRequest.id}
                 next={safeNext}
@@ -129,6 +134,19 @@ export default async function LoginPage({
                 savedSessions={savedSessions}
               />
             ) : (
+              <div className="space-y-4">
+                <Alert variant="warning" title="托管登录">
+                  {customLoginError}
+                </Alert>
+                <form action={startOidcLogin}>
+                  <input type="hidden" name="next" value={safeNext} />
+                  <Button type="submit" size="lg" className="w-full">
+                    使用 ZITADEL 登录
+                  </Button>
+                </form>
+              </div>
+            )
+          ) : (
               <Alert variant="danger" title="登录不可用">
                 {customLoginError || "自建登录配置不完整。"}
               </Alert>

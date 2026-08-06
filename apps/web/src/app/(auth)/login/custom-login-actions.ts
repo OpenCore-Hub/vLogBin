@@ -28,12 +28,17 @@ import {
   submitWebAuthnAssertion,
   validateSession,
 } from "@/lib/auth/zitadel-session";
-import { authConfig } from "@/lib/auth/config";
+import {
+  authConfig,
+  isCustomLoginAllowedForOrg,
+  isCustomLoginAllowedForUser,
+} from "@/lib/auth/config";
 import {
   buildAuthorizationUrl,
   generatePkcePair,
   generateState,
 } from "@/lib/auth/oidc";
+import { recordAuthEvent } from "@/lib/auth/auth-events";
 import { AuthenticationMethodType } from "@zitadel/proto/zitadel/user/v2/user_service_pb";
 import {
   CustomLoginActionState,
@@ -103,6 +108,9 @@ async function redirectToHostedOidc(next?: string): Promise<never> {
     state,
     codeChallenge: pkce.challenge,
   });
+  recordAuthEvent("custom_login.hosted_fallback", {
+    next: safeNext(next),
+  });
   redirect(url);
 }
 
@@ -131,6 +139,10 @@ export async function completeLoginFlow(flow: LoginFlowData): Promise<never> {
     authRequestId: flow.authRequestId,
     sessionId: flow.sessionId,
     sessionToken: flow.sessionToken,
+  });
+  recordAuthEvent("custom_login.callback.completed", {
+    userId: flow.userId,
+    organizationId: flow.organizationId,
   });
   const jar = await cookies();
   if (flow.next) {
@@ -198,6 +210,12 @@ export async function submitCustomLoginIdentifier(
         error: "无法识别该登录标识。",
       };
     }
+    if (
+      !isCustomLoginAllowedForUser(user.userId) ||
+      !isCustomLoginAllowedForOrg(user.organizationId)
+    ) {
+      return await redirectToHostedOidc(next);
+    }
 
     const fingerprintId = await getOrCreateDeviceFingerprint();
     const requestHeaders = await headers();
@@ -214,6 +232,10 @@ export async function submitCustomLoginIdentifier(
       description: userAgent.slice(0, 200),
       userAgentHeader: userAgent ? { "user-agent": [userAgent] } : undefined,
       lifetimeSeconds: 24 * 60 * 60,
+    });
+    recordAuthEvent("custom_login.identifier.success", {
+      userId: user.userId,
+      organizationId: created.session.user?.organizationId,
     });
     await setLoginFlow({
       sessionId: created.sessionId,
@@ -273,9 +295,15 @@ export async function submitCustomLoginPassword(
     });
     const validation = await validateSession(session);
     if (validation.valid) {
+      recordAuthEvent("custom_login.password.success", {
+        userId: flow.userId,
+      });
       return await completeLoginFlow(nextFlow);
     }
     if (validation.reason === "mfa-required" && session.user) {
+      recordAuthEvent("custom_login.mfa_required", {
+        userId: session.user.id,
+      });
       const settings = await getLoginSettings(
         session.user.organizationId || undefined,
       );

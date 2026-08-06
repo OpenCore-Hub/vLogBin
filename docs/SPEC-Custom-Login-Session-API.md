@@ -2,7 +2,7 @@
 
 > 状态：设计定稿基线 + 架构/产品评审修订，基于 `third-party/zitadel` 源码逐项核对。
 > 评审修订：2026-08-06。评审裁决：有条件通过；补齐本节与 §2.1 的 P0 决策后进入 P0 实现。
-> 实现状态：P0/P1/P2/P3 完成（登录名/密码、TOTP、OTP email/SMS、Passkey/U2F、账号选择器、加密 flow/session cookie、OIDC 代理、注册/邮箱验证/Passkey 初始化/MFA 跳过/IDP 回退、基础设施故障自动回退）；真实 ZITADEL v4.16.0 契约探针已通过；剩余 P4 全流程 E2E 与灰度待续。
+> 实现状态：P0/P1/P2/P3 完成；真实 ZITADEL v4.16.0 契约探针通过；P4 灰度白名单（用户/组织）与结构化登录事件已实现；剩余完整浏览器 E2E 与按 env 放量。
 > 定位：vLogBin 提供与品牌一致的统一登录页，ZITADEL 继续作为独立身份引擎，vLogBin 只通过公开 Session API / OIDC API / User API 与其交互。
 > 合规边界：不修改、不内嵌 ZITADEL AGPL 核心源码。`proto/` 与 `apps/docs/` 为 Apache-2.0，`apps/login/`、`packages/zitadel-client/`、`packages/zitadel-proto/` 为 MIT，可作为接口与实现参考；法律结论以专业顾问意见为准。
 

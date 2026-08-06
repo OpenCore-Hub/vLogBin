@@ -62,6 +62,14 @@ export const authConfig = {
     serviceUserToken: str(process.env.ZITADEL_SERVICE_USER_TOKEN),
     loginClientPat: str(process.env.ZITADEL_LOGIN_CLIENT_PAT),
     trustedDomains: str(process.env.ZITADEL_TRUSTED_DOMAIN, "").split(",").map((v) => v.trim()).filter(Boolean),
+    customLoginAllowedOrgs: str(
+      process.env.ZITADEL_CUSTOM_LOGIN_ALLOWED_ORGS,
+      "",
+    ).split(",").map((v) => v.trim()).filter(Boolean),
+    customLoginAllowedUsers: str(
+      process.env.ZITADEL_CUSTOM_LOGIN_ALLOWED_USERS,
+      "",
+    ).split(",").map((v) => v.trim()).filter(Boolean),
   },
   apiBaseUrl: str(
     process.env.PLATFORM_API_URL,
@@ -90,6 +98,21 @@ export function isCustomLoginConfigured(): boolean {
         authConfig.zitadel.serviceUserToken ||
         authConfig.zitadel.loginClientPat),
   );
+}
+
+/** 用户/组织白名单为空表示全部放行；非空时仅在名单内使用自建登录。 */
+export function isCustomLoginAllowedForUser(userId: string | undefined): boolean {
+  if (!userId || authConfig.zitadel.customLoginAllowedUsers.length === 0) {
+    return true;
+  }
+  return authConfig.zitadel.customLoginAllowedUsers.includes(userId);
+}
+
+export function isCustomLoginAllowedForOrg(orgId: string | undefined): boolean {
+  if (!orgId || authConfig.zitadel.customLoginAllowedOrgs.length === 0) {
+    return true;
+  }
+  return authConfig.zitadel.customLoginAllowedOrgs.includes(orgId);
 }
 
 /** 会话密钥是否配置（未配置时禁止建立会话）。 */
