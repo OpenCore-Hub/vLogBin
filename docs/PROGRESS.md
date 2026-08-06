@@ -760,12 +760,12 @@
 - [x] 提供迁移指南模板与 Sunset 通知流程：`docs/API_COMPATIBILITY.md`
 - [x] 验收：模拟弃用端点头/指标单测通过；`api-version` 契约测试通过；12 个月政策有自动化断言
 
-#### 候选 75：公共错误契约
-- [ ] 统一错误信封：`code / message / request_id / details / retry_after`，全路由输出一致
-- [ ] 建立错误码目录（`docs/ERROR_CODES.md`）：每个错误码有触发条件、HTTP 状态、客户端建议动作
-- [ ] 429 必须带 `Retry-After`；5xx 必须带 `request_id`；前端 ErrorState 支持一键复制 request_id
-- [ ] 集成测试断言错误信封与错误码目录一致；审计/日志按 request_id 可关联
-- [ ] 验收：错误码覆盖率达到 100%；前端 Trace ID 复制入口可用
+#### 候选 75：公共错误契约（✅ 已完成）
+- [x] 统一错误信封：`writeError` 支持 `retry_after` / `details` 扩展字段，全路由输出一致
+- [x] 建立错误码目录：`docs/ERROR_CODES.md` 59 个错误码，含 HTTP 状态、触发条件、客户端建议
+- [x] 429 同时带 `Retry-After` 头与 body `retry_after`；5xx 带 `request_id`；前端 `ErrorState` 支持一键复制 request_id
+- [x] 集成测试断言错误信封与错误码目录一致（`scripts/check-error-codes.py` 覆盖 100%）
+- [x] 验收：`make contract` 全绿；全量集成全绿；错误码目录 59/59
 
 #### 候选 76：SDK 生成与官方客户端
 - [ ] 建立 OpenAPI→SDK 生成管线，优先 TypeScript/Node、Python、Go
