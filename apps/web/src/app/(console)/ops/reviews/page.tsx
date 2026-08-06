@@ -2,8 +2,8 @@ import { requireRole } from "@/lib/auth/rbac";
 import {
   listProviders,
   listRegions,
-  listRiskReviews,
-  listSupportSessions,
+  listLatestRiskReviews,
+  listAllSupportSessions,
   type Provider,
   type Region,
   type RiskReview,
@@ -28,19 +28,19 @@ export default async function OpsReviewsPage() {
     listRegions().catch(() => [] as Region[]),
   ]);
 
-  const perProvider = await Promise.all(
-    providers.map(async (provider) => {
-      const [reviews, sessions] = await Promise.all([
-        safeList<RiskReview>(() => listRiskReviews(provider.id)),
-        safeList<SupportSession>(() => listSupportSessions(provider.id)),
-      ]);
-      return { provider, reviews, sessions };
-    }),
-  );
-  const reviewRows = perProvider.flatMap(({ provider, reviews }) =>
-    reviews[0] ? [{ provider, review: reviews[0] }] : [],
-  );
-  const supportSessions = perProvider.flatMap(({ sessions }) => sessions);
+  const [reviews, supportSessions] = await Promise.all([
+    safeList<RiskReview>(() => listLatestRiskReviews()),
+    safeList<SupportSession>(() => listAllSupportSessions()),
+  ]);
+  const providerByID = new Map(providers.map((p) => [p.id, p]));
+  const reviewRows = reviews
+    .map((review) => {
+      const provider = providerByID.get(review.provider_id);
+      return provider ? { provider, review } : null;
+    })
+    .filter(
+      (row): row is { provider: Provider; review: RiskReview } => row !== null,
+    );
   const awaitingReviews = providers.filter(
     (p) =>
       p.lifecycle_state === "LIVE_REVIEW" &&

@@ -16,7 +16,7 @@ import type {
 import { formatDate } from "@/lib/format";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
-import { Dialog } from "@/components/ui/overlay";
+import { Dialog, ConfirmDialog } from "@/components/ui/overlay";
 import { EmptyState, ErrorState, Alert, SuccessPanel } from "@/components/ui/feedback";
 import { Badge, LifecycleBadge } from "@/components/ui/badge";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
@@ -29,6 +29,9 @@ import {
 import {
   assignProviderCellAction,
   createCellAction,
+  firstApproveSupportSessionAction,
+  revokeSupportSessionAction,
+  secondApproveSupportSessionAction,
   submitRiskReviewAction,
   updateCellStatusAction,
   type OpActionState,
@@ -83,6 +86,10 @@ export function OpsClient({
   const [reviewProvider, setReviewProvider] = useState<Provider | null>(null);
   const [createCellOpen, setCreateCellOpen] = useState(false);
   const [statusCell, setStatusCell] = useState<Cell | null>(null);
+  const [supportAction, setSupportAction] = useState<{
+    session: SupportSession;
+    kind: "first" | "second" | "revoke";
+  } | null>(null);
 
   const regionByID = new Map(regions.map((r) => [r.id, r.code]));
 
@@ -135,6 +142,7 @@ export function OpsClient({
               awaitingReviews={awaitingReviews}
               supportSessions={supportSessions}
               onReview={setReviewProvider}
+              onAction={(session, kind) => setSupportAction({ session, kind })}
             />
           </TabPanel>
 
@@ -174,6 +182,17 @@ export function OpsClient({
           open={!!statusCell}
           onOpenChange={(open) => !open && setStatusCell(null)}
           cell={statusCell}
+        />
+      )}
+      {supportAction && (
+        <SupportSessionDialog
+          key={`${supportAction.kind}-${supportAction.session.id}`}
+          session={supportAction.session}
+          kind={supportAction.kind}
+          onOpenChange={(open) => {
+            if (!open) setSupportAction(null);
+          }}
+          onSaved={() => router.refresh()}
         />
       )}
     </div>
@@ -251,11 +270,13 @@ function ReviewsTab({
   awaitingReviews,
   supportSessions,
   onReview,
+  onAction,
 }: {
   reviewRows: Array<{ provider: Provider; review: RiskReview }>;
   awaitingReviews: Provider[];
   supportSessions: SupportSession[];
   onReview: (provider: Provider) => void;
+  onAction: (session: SupportSession, kind: "first" | "second" | "revoke") => void;
 }) {
   const columns: DataTableColumn<{ provider: Provider; review: RiskReview }>[] = [
     {
@@ -343,13 +364,22 @@ function ReviewsTab({
 
       <section className="space-y-4">
         <h2 className="text-sm font-semibold">支持会话</h2>
-        <SupportSessionsTable sessions={supportSessions} />
+        <SupportSessionsTable
+          sessions={supportSessions}
+          onAction={onAction}
+        />
       </section>
     </div>
   );
 }
 
-function SupportSessionsTable({ sessions }: { sessions: SupportSession[] }) {
+function SupportSessionsTable({
+  sessions,
+  onAction,
+}: {
+  sessions: SupportSession[];
+  onAction: (session: SupportSession, kind: "first" | "second" | "revoke") => void;
+}) {
   const columns: DataTableColumn<SupportSession>[] = [
     {
       key: "status",
@@ -379,6 +409,43 @@ function SupportSessionsTable({ sessions }: { sessions: SupportSession[] }) {
       sortable: true,
       sortValue: (s) => s.expires_at ?? "",
       cell: (s) => <span className="text-xs text-muted-foreground tabular-nums">{formatDate(s.expires_at)}</span>,
+    },
+    {
+      key: "actions",
+      header: "操作",
+      cell: (s) => (
+        <div className="flex items-center justify-end gap-1">
+          {s.status === "requested" && s.access_type === "emergency" && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={Boolean(s.approved_by)}
+                onClick={() => onAction(s, "first")}
+              >
+                一审
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!s.approved_by || Boolean(s.second_approver)}
+                onClick={() => onAction(s, "second")}
+              >
+                二审
+              </Button>
+            </>
+          )}
+          {s.status === "active" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onAction(s, "revoke")}
+            >
+              吊销
+            </Button>
+          )}
+        </div>
+      ),
     },
   ];
   return (
@@ -744,5 +811,70 @@ function CellStatusDialog({
         </div>
       </form>
     </Dialog>
+  );
+}
+
+function SupportSessionDialog({
+  session,
+  kind,
+  onOpenChange,
+  onSaved,
+}: {
+  session: SupportSession;
+  kind: "first" | "second" | "revoke";
+  onOpenChange: (open: boolean) => void;
+  onSaved: () => void;
+}) {
+  const action =
+    kind === "first"
+      ? firstApproveSupportSessionAction
+      : kind === "second"
+        ? secondApproveSupportSessionAction
+        : revokeSupportSessionAction;
+  const { state, formAction, pending } = useActionFeedback<OpActionState>({
+    action,
+    initialState,
+    onSuccess: () => {
+      onOpenChange(false);
+      onSaved();
+    },
+    successTitle:
+      kind === "revoke" ? "支持会话已吊销" : "支持会话已批准",
+  });
+
+  function confirm() {
+    const fd = new FormData();
+    fd.set("session_id", session.id);
+    formAction(fd);
+  }
+
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={onOpenChange}
+      title={
+        kind === "revoke"
+          ? "吊销支持会话"
+          : kind === "second"
+            ? "第二审批"
+            : "第一审批"
+      }
+      description={
+        <div className="space-y-2">
+          <p>
+            {session.requested_by} 请求的 {session.access_type} 支持会话
+            （{session.reason}）。
+          </p>
+          {kind === "revoke" && (
+            <p>输入申请人 user_sub 确认吊销。</p>
+          )}
+          {state.error && <Alert title="操作失败">{state.error}</Alert>}
+        </div>
+      }
+      confirmText={kind === "revoke" ? session.requested_by : undefined}
+      pending={pending}
+      onConfirm={confirm}
+      confirmLabel={kind === "revoke" ? "吊销会话" : "确认审批"}
+    />
   );
 }

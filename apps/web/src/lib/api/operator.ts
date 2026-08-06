@@ -1957,6 +1957,13 @@ export async function listRiskReviews(providerId: string): Promise<RiskReview[]>
   return data.reviews.map(asRiskReview).filter((r): r is RiskReview => r !== null);
 }
 
+/** Operator review queue: newest risk review per provider. */
+export async function listLatestRiskReviews(): Promise<RiskReview[]> {
+  const data = await request<{ reviews?: unknown }>("/v1/operator/risk-reviews");
+  if (!Array.isArray(data.reviews)) return [];
+  return data.reviews.map(asRiskReview).filter((r): r is RiskReview => r !== null);
+}
+
 export async function submitRiskReview(
   providerId: string,
   input: {
@@ -2008,6 +2015,53 @@ export async function listSupportSessions(providerId: string): Promise<SupportSe
   return data.support_sessions
     .map(asSupportSession)
     .filter((s): s is SupportSession => s !== null);
+}
+
+/** Operator JIT access queue across all providers. */
+export async function listAllSupportSessions(
+  limit = 500,
+): Promise<SupportSession[]> {
+  const data = await request<{ support_sessions?: unknown }>(
+    `/v1/operator/support-sessions?limit=${limit}`,
+  );
+  if (!Array.isArray(data.support_sessions)) return [];
+  return data.support_sessions
+    .map(asSupportSession)
+    .filter((s): s is SupportSession => s !== null);
+}
+
+/** JIT 支持会话：第一审批（emergency 双人审批）。 */
+export async function firstApproveSupportSession(
+  sessionId: string,
+): Promise<SupportSession | null> {
+  const data = await request<{ session?: unknown }>(
+    `/v1/operator/support-sessions/${encodeURIComponent(sessionId)}/first-approve`,
+    { method: "POST" },
+  );
+  return asSupportSession(data.session ?? data);
+}
+
+/** JIT 支持会话：第二审批（emergency 双人审批）。 */
+export async function secondApproveSupportSession(
+  sessionId: string,
+): Promise<SupportSession | null> {
+  const data = await request<{ session?: unknown }>(
+    `/v1/operator/support-sessions/${encodeURIComponent(sessionId)}/second-approve`,
+    { method: "POST" },
+  );
+  return asSupportSession(data.session ?? data);
+}
+
+/** JIT 支持会话：吊销。 */
+export async function revokeSupportSession(
+  sessionId: string,
+  reason = "",
+): Promise<SupportSession | null> {
+  const data = await request<{ session?: unknown }>(
+    `/v1/operator/support-sessions/${encodeURIComponent(sessionId)}/revoke`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+  );
+  return asSupportSession(data.session ?? data);
 }
 
 function asCell(value: unknown): Cell | null {

@@ -7,12 +7,16 @@ import {
   assignProviderCell,
   createCell,
   createProvider,
+  firstApproveSupportSession,
   replayWebhookDelivery,
   revokeCredential,
+  revokeSupportSession,
+  secondApproveSupportSession,
   submitRiskReview,
   transitionLifecycle,
   updateCellStatus,
   type RiskReview,
+  type SupportSession,
   type LifecycleTarget,
 } from "@/lib/api/operator";
 import {
@@ -28,6 +32,7 @@ export interface OpActionState {
   apiKey?: string;
   providerId?: string;
   review?: RiskReview;
+  session?: SupportSession;
 }
 
 function errorMessage(err: unknown): string {
@@ -279,6 +284,60 @@ export async function updateCellStatusAction(
     await updateCellStatus(cellId, status as "active" | "draining" | "inactive");
     revalidatePath("/ops");
     return { ok: true };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+/** JIT 支持会话：第一审批。 */
+export async function firstApproveSupportSessionAction(
+  _prev: OpActionState,
+  formData: FormData,
+): Promise<OpActionState> {
+  await requireRole("operator");
+  const sessionId = String(formData.get("session_id") ?? "").trim();
+  if (!sessionId) return { ok: false, error: "缺少必要参数" };
+  try {
+    const session = await firstApproveSupportSession(sessionId);
+    if (!session) return { ok: false, error: "审批失败：API 未返回会话" };
+    revalidatePath("/ops/reviews");
+    return { ok: true, session };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+/** JIT 支持会话：第二审批。 */
+export async function secondApproveSupportSessionAction(
+  _prev: OpActionState,
+  formData: FormData,
+): Promise<OpActionState> {
+  await requireRole("operator");
+  const sessionId = String(formData.get("session_id") ?? "").trim();
+  if (!sessionId) return { ok: false, error: "缺少必要参数" };
+  try {
+    const session = await secondApproveSupportSession(sessionId);
+    if (!session) return { ok: false, error: "审批失败：API 未返回会话" };
+    revalidatePath("/ops/reviews");
+    return { ok: true, session };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+/** JIT 支持会话：吊销。 */
+export async function revokeSupportSessionAction(
+  _prev: OpActionState,
+  formData: FormData,
+): Promise<OpActionState> {
+  await requireRole("operator");
+  const sessionId = String(formData.get("session_id") ?? "").trim();
+  if (!sessionId) return { ok: false, error: "缺少必要参数" };
+  try {
+    const session = await revokeSupportSession(sessionId);
+    if (!session) return { ok: false, error: "吊销失败：API 未返回会话" };
+    revalidatePath("/ops/reviews");
+    return { ok: true, session };
   } catch (err) {
     return { ok: false, error: errorMessage(err) };
   }
