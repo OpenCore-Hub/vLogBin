@@ -9,10 +9,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/domain"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/tenant"
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 func TestWriteJSON(t *testing.T) {
@@ -216,6 +219,80 @@ func TestDeprecationMiddlewareNoHeaders(t *testing.T) {
 	}
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
+	}
+}
+
+func TestDeprecationMiddlewareHeadersAndMetric(t *testing.T) {
+	deprecatedAt := time.Now().AddDate(0, -13, 0)
+	sunsetAt := deprecatedAt.AddDate(0, 12, 0)
+	counter := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_api_deprecated_usage_total",
+			Help: "test",
+		},
+		[]string{"path"},
+	)
+	handler := deprecationMiddlewareWithRegistry(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+		[]DeprecationInfo{
+			{
+				PathPattern:  "GET /v1/old",
+				DeprecatedAt: deprecatedAt,
+				SunsetAt:     sunsetAt,
+				Replacement:  "GET /v1/new",
+			},
+		},
+		counter,
+	)
+
+	r := httptest.NewRequest("GET", "/v1/old", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Header().Get("Deprecation") != "true" {
+		t.Fatal("Deprecation header missing")
+	}
+	if w.Header().Get("Sunset") == "" {
+		t.Fatal("Sunset header missing")
+	}
+	if !strings.Contains(w.Header().Get("Link"), "/v1/new") {
+		t.Fatalf("Link header = %q, want successor version", w.Header().Get("Link"))
+	}
+	value := testutil.ToFloat64(counter.WithLabelValues("/v1/old"))
+	if value != 1 {
+		t.Fatalf("deprecated usage metric = %v, want 1", value)
+	}
+}
+
+func TestValidateDeprecationRegistry(t *testing.T) {
+	deprecatedAt := time.Now().AddDate(0, -13, 0)
+	if err := validateDeprecationRegistry([]DeprecationInfo{
+		{
+			PathPattern:  "GET /v1/old",
+			DeprecatedAt: deprecatedAt,
+			SunsetAt:     deprecatedAt.AddDate(0, 12, 0),
+		},
+	}); err != nil {
+		t.Fatalf("valid registry rejected: %v", err)
+	}
+	if err := validateDeprecationRegistry([]DeprecationInfo{
+		{
+			PathPattern:  "GET /v1/old",
+			DeprecatedAt: deprecatedAt,
+			SunsetAt:     deprecatedAt.AddDate(0, 11, 0),
+		},
+	}); err == nil {
+		t.Fatal("sunset before 12 months must fail")
+	}
+	if err := validateDeprecationRegistry([]DeprecationInfo{
+		{
+			DeprecatedAt: deprecatedAt,
+			SunsetAt:     deprecatedAt.AddDate(0, 12, 0),
+		},
+	}); err == nil {
+		t.Fatal("missing path pattern must fail")
 	}
 }
 

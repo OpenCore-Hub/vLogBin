@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // APIVersion is the current API version.
@@ -32,14 +34,35 @@ var deprecationRegistry = []DeprecationInfo{
 	// at least 12 months in the future.
 }
 
-// DeprecationMiddleware sets Sunset, Deprecation, and Link headers for
-// deprecated endpoints (RFC 8594 / RFC 9745). This satisfies the P0 gate:
-// "公开 API 12 个月兼容政策生效" and spec Section 7.2: "提供弃用遥测、
-// 迁移指南、契约测试和日落通知".
-func DeprecationMiddleware(next http.Handler) http.Handler {
+func validateDeprecationRegistry(registry []DeprecationInfo) error {
+	for _, info := range registry {
+		if info.PathPattern == "" {
+			return fmt.Errorf("deprecated endpoint path pattern is required")
+		}
+		if info.DeprecatedAt.IsZero() || info.SunsetAt.IsZero() {
+			return fmt.Errorf("deprecated endpoint %q requires deprecated_at and sunset_at", info.PathPattern)
+		}
+		if info.SunsetAt.Before(info.DeprecatedAt.AddDate(0, 12, 0)) {
+			return fmt.Errorf("deprecated endpoint %q sunset must be at least 12 months after deprecation", info.PathPattern)
+		}
+	}
+	return nil
+}
+
+// ValidateDeprecationRegistry verifies the startup deprecation registry
+// enforces the 12-month parallel compatibility policy.
+func ValidateDeprecationRegistry() error {
+	return validateDeprecationRegistry(deprecationRegistry)
+}
+
+func deprecationMiddlewareWithRegistry(
+	next http.Handler,
+	registry []DeprecationInfo,
+	counter *prometheus.CounterVec,
+) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := r.Method + " " + r.URL.Path
-		for _, info := range deprecationRegistry {
+		for _, info := range registry {
 			if matchDeprecatedPath(key, info.PathPattern) {
 				w.Header().Set("Deprecation", "true")
 				w.Header().Set("Sunset", info.SunsetAt.Format(time.RFC1123))
@@ -57,11 +80,30 @@ func DeprecationMiddleware(next http.Handler) http.Handler {
 					"replacement", info.Replacement,
 					"request_id", w.Header().Get("X-Request-ID"),
 				)
+				if counter != nil {
+					counter.WithLabelValues(r.URL.Path).Inc()
+				}
 				break
 			}
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// DeprecationMiddleware sets Sunset, Deprecation, and Link headers for
+// deprecated endpoints (RFC 8594 / RFC 9745).
+func DeprecationMiddleware(next http.Handler) http.Handler {
+	return deprecationMiddlewareWithRegistry(next, deprecationRegistry, nil)
+}
+
+// DeprecationMiddlewareWithCounter also records deprecated endpoint usage
+// into the provided Prometheus counter for sunset migration telemetry.
+func DeprecationMiddlewareWithCounter(next http.Handler, counter *prometheus.CounterVec) http.Handler {
+	return deprecationMiddlewareWithRegistry(next, deprecationRegistry, counter)
+}
+
+func (s *Server) deprecationMiddleware(next http.Handler) http.Handler {
+	return DeprecationMiddlewareWithCounter(next, s.metrics.HTTPDeprecatedUsageTotal)
 }
 
 // matchDeprecatedPath checks if the request key matches the deprecation

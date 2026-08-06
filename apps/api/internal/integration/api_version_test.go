@@ -3,6 +3,7 @@ package integration
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -22,8 +23,8 @@ func TestAPIVersionInfo(t *testing.T) {
 		t.Fatalf("supported_versions = %v, want [v1]", supported)
 	}
 	policy := body["compatibility_policy"].(string)
-	if policy == "" {
-		t.Fatal("compatibility_policy must be non-empty")
+	if !strings.Contains(policy, "12 months") {
+		t.Fatalf("compatibility_policy must document the 12-month window, got %q", policy)
 	}
 	if body["webhook_schema_version"] != "1.0" {
 		t.Fatalf("webhook_schema_version = %v, want 1.0", body["webhook_schema_version"])

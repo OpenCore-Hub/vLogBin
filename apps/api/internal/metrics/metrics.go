@@ -79,6 +79,10 @@ type Metrics struct {
 	// (per-IP before auth, or provider/env/credential/endpoint after auth)
 	// is visible without grepping access logs.
 	HTTPRateLimitedTotal *prometheus.CounterVec
+	// HTTPDeprecatedUsageTotal counts requests to deprecated API endpoints,
+	// labelled by raw path. A non-zero rate means clients still depend on
+	// endpoints scheduled for sunset.
+	HTTPDeprecatedUsageTotal *prometheus.CounterVec
 	// RateLimiterBackendErrorsTotal counts rate-limiter backend (Redis) call
 	// failures. The limiter fails open on backend errors, so this counter is
 	// the only signal that distributed rate limiting silently degraded to
@@ -257,6 +261,13 @@ func New() *Metrics {
 			},
 			[]string{"level"},
 		),
+		HTTPDeprecatedUsageTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "http_api_deprecated_usage_total",
+				Help: "Requests to deprecated API endpoints by path, so migration progress and sunset risk are observable.",
+			},
+			[]string{"path"},
+		),
 		RateLimiterBackendErrorsTotal: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "rate_limiter_backend_errors_total",
 			Help: "Cumulative number of rate-limiter backend (Redis) call failures; the limiter fails open on backend errors.",
@@ -353,6 +364,7 @@ func New() *Metrics {
 		m.DBPoolEmptyAcquireTotal,
 		m.DBQuerySlowTotal,
 		m.HTTPRateLimitedTotal,
+		m.HTTPDeprecatedUsageTotal,
 		m.RateLimiterBackendErrorsTotal,
 		m.CircuitBreakerState,
 		m.CircuitBreakerRequestsTotal,

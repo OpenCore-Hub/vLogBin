@@ -63,6 +63,9 @@ func NewServer(st *store.Store, svc *service.Service, operatorToken string, log 
 		Window: time.Minute,
 	})
 	s.SetIdempotencyTTL(0) // 24h default; main may override via IDEMPOTENCY_TTL
+	if err := ValidateDeprecationRegistry(); err != nil {
+		panic("invalid deprecation registry: " + err.Error())
+	}
 	return s
 }
 
@@ -173,7 +176,7 @@ func (s *Server) Router() chi.Router {
 	// 429 responses still flow through metricsMiddleware above.
 	r.Use(s.ipRateLimitMiddleware)
 	r.Use(s.requestTimeoutMiddleware)
-	r.Use(DeprecationMiddleware)
+	r.Use(s.deprecationMiddleware)
 
 	// Prometheus metrics (no auth — scrape target, see docs/DEPLOYMENT.md).
 	r.Get("/metrics", s.metrics.Handler().ServeHTTP)
