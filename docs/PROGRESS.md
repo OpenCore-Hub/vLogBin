@@ -404,6 +404,7 @@
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
 | M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | ✅ 已完成（候选 43-58） |
 | M4 生产级 | 多 workspace 切换 / 用量控制面 / 全局错误与加载边界 / 审计导出 / E2E 稳定性 / Analytics / 订阅控制面 / Portal 支付历史 / 对账中心 / 支持会话 / 硬额度 / 队列看板 / 后续生产硬化 | 🔄 进行中（候选 70） |
+| M5 正式商用（功能与契约层） | 验收基线 / OpenAPI / AsyncAPI / 版本兼容 / 错误契约 / SDK / Webhook 事件流 / 身份边界 / 双账务域 / 目录权益额度 / 生命周期与 Offboarding / 支持审计 WORM / 迁移故障恢复 / 发布门禁 | ⬜ 待办（候选 71-84 已规划） |
 
 ### M0 — 基座（✅ 已完成，待提交）
 
@@ -724,6 +725,103 @@
   - 集成测试：`TestOperatorQueueOverview` ✅
   - E2E：`33-queues.spec.ts`（造真实用量事件 → 最近 Outbox 可见）✅
   - 验证：Go build / vet / 非集成全量单测 ✅；集成回归（队列看板）✅；tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **63/63 全绿** ✅
+
+### M5 — 正式商用上线（功能与契约层，⬜ 规划中）
+
+> 目标：达到 SPEC §Testing Decisions 的公开平台契约验收线，以及架构设计 §7 契约治理、§23 发布升级、§25 P0 门禁中“代码与契约可验证”部分。
+> 边界：K8s/PITR/压测/合规证据属于运营与基础设施层，不在本清单；本清单交付后由外部运营侧补齐 P1/P2 证据。
+
+#### 候选 71：验收基线修复与黑盒契约测试框架
+- [ ] 修复 `TestRiskReviewAggregateLatestPerProvider`：聚合断言改为只统计本测试创建的 Provider IDs，消除同包并行污染（当前聚焦集成套件 23/24）
+- [ ] 建立公开平台契约黑盒验收 harness：只通过公共 API + Test/Live 凭证驱动 Auth / Billing / Metering / Entitlement / Quota / Event / Support
+- [ ] 将 SPEC Testing #1-40 拆成可断言用例并接入 CI：跨租户、环境隔离、幂等、冲销、目录不可变、订阅 pinning、发票重放、Commerce 隔离、同邮箱隔离、Webhook、事件游标、额度、Outbox、JIT、迁移、Offboarding
+- [ ] 验收：`go test ./internal/integration` 全量绿；黑盒 harness 全绿；SPEC #1-40 有测试映射表
+
+#### 候选 72：OpenAPI 契约完整性
+- [ ] 补齐 provider / operator / portal / events / quota / queues 全部公开路由到 `docs/openapi.yaml`
+- [ ] 建立路由↔schema 覆盖检查：未文档化公共路由在 CI 直接失败
+- [ ] 恢复字段一致性脚本：`lib/api/types.ts` ↔ OpenAPI 同名 schema diff 为 0
+- [ ] YAML 引用完整性、枚举、required、示例与错误码目录全部通过校验
+- [ ] 验收：公开路由 100% 文档化；types 漂移检查 0；CI 契约检查通过
+
+#### 候选 73：AsyncAPI 事件契约完整性
+- [ ] 用 outbox `event_type` 全量导出事件目录，每个事件有 schema、必填字段、示例、聚合与语义说明
+- [ ] 为每个事件声明 schema_version，并定义“同 major 只增不改”的演进规则
+- [ ] 补齐事件流 cursor 语义、顺序保证、at-least-once、消费端幂等要求与断点续读示例
+- [ ] AsyncAPI 与 Webhook 文档互指：`X-Webhook-Schema-Version` 对应事件 schema 版本
+- [ ] 验收：AsyncAPI 校验通过；outbox 事件类型覆盖率 100%；事件目录与实现零漂移
+
+#### 候选 74：API 版本与兼容生命周期
+- [ ] `/v1/api-version` 返回 current / supported / policy / deprecated endpoints 完整载荷
+- [ ] 建立 deprecation registry：新弃用端点必须声明 `deprecated_at`、`sunset_at >= 12 个月`、replacement
+- [ ] 为弃用端点输出 `Sunset` / `Deprecation` / `Link` 头，并累加 `http_api_deprecated_usage_total{path}` 指标
+- [ ] 提供迁移指南模板与 Sunset 通知流程；新增破坏性变更时先建新 major 再弃用旧 major
+- [ ] 验收：模拟弃用端点集成测试通过；`api-version` 契约测试通过；12 个月政策有自动化断言
+
+#### 候选 75：公共错误契约
+- [ ] 统一错误信封：`code / message / request_id / details / retry_after`，全路由输出一致
+- [ ] 建立错误码目录（`docs/ERROR_CODES.md`）：每个错误码有触发条件、HTTP 状态、客户端建议动作
+- [ ] 429 必须带 `Retry-After`；5xx 必须带 `request_id`；前端 ErrorState 支持一键复制 request_id
+- [ ] 集成测试断言错误信封与错误码目录一致；审计/日志按 request_id 可关联
+- [ ] 验收：错误码覆盖率达到 100%；前端 Trace ID 复制入口可用
+
+#### 候选 76：SDK 生成与官方客户端
+- [ ] 建立 OpenAPI→SDK 生成管线，优先 TypeScript/Node、Python、Go
+- [ ] SDK 覆盖 API Key/OIDC 认证、分页、游标、Idempotency-Key、错误信封解析
+- [ ] 提供 Webhook 验签 helper（timestamp + HMAC + replay window）与事件流 client
+- [ ] 发布包元数据、版本策略、最小/推荐版本说明与端到端 smoke tests
+- [ ] 验收：SDK smoke tests 对 dev API 全绿；生成物与 OpenAPI 契约 diff 为 0
+
+#### 候选 77：Webhook 与事件流对外契约
+- [ ] 正式化 Webhook 交付契约：签名头、timestamp、schema version、event type、重试、退避、suspend、dead_letter、replay
+- [ ] 补齐事件流端点跨 Provider 的一致性测试：cursor 无丢失无重复、filter、limit 上限
+- [ ] 为 Provider 提供投递状态 API 与失败原因查询；队列看板已覆盖 operator 侧
+- [ ] 文档给出消费端幂等模板与断点恢复示例（Node / Python / Go）
+- [ ] 验收：Webhook/事件流集成测试通过；对外文档与实现一致
+
+#### 候选 78：Provider / Environment 身份边界验收
+- [ ] 补同邮箱跨 Provider 隔离测试：相同 email 的用户获得不同 `user_sub` 与 session
+- [ ] 补 B2B/B2C 隔离、SCIM 边界、delegated admin 边界测试
+- [ ] 强化“请求体不能覆盖 tenant context”渗透用例：query/body/header 覆盖一律拒绝
+- [ ] 验收：SPEC Testing #1-3、#11-14、#25 全部有自动化用例并绿
+
+#### 候选 79：Commerce 双账务域与财务闭环
+- [ ] Provider Commerce 与 Platform Commerce 对账数据源分离测试；Platform 记录永不出现在 Provider 视图
+- [ ] 发票行重放：从不可变 metric/price/catalog 版本重算出账结果
+- [ ] PSP 支付状态与 Invoice 对账：重复/乱序 PSP 事件不重复支付或发票状态
+- [ ] 出账后修正闭环：credit note / adjustment / reversal 语义文档与测试
+- [ ] 验收：财务集成测试与 reconciliation 对账 check 全绿
+
+#### 候选 80：Catalog / Subscription / Entitlement / Quota 契约
+- [ ] 补目录不可变与订阅 pinning 黑盒测试；发布新版本不影响既有订阅
+- [ ] 权益 snapshot 单一真相源：从 pinned catalog version + 订阅状态计算，不直接依赖 Lago 权益判定
+- [ ] 硬额度 reserve/commit/release/expiry 并发契约；无额度或额度不足按文档返回
+- [ ] soft quota overage 与 hard quota 语义分开文档化
+- [ ] 验收：SPEC Testing #7-10、#19-21 全绿
+
+#### 候选 81：Provider 生命周期 / 准入 / Offboarding
+- [ ] Live 准入门禁：风险审核 + 能力授权 + PSP/Webhook 前置校验缺一不可
+- [ ] Suspension/Restricted 按能力阻断但不破坏既有财务数据
+- [ ] Offboarding：最终账单、全量导出（checksum 可验证）、凭证吊销、数据删除、保留策略、备份过期、删除证明
+- [ ] 验收：Offboarding 端到端集成测试通过；删除证明可验证；审计轨迹完整
+
+#### 候选 82：JIT Support / 审计 / WORM 契约
+- [ ] JIT 会话 scope/duration/expiry、Provider 审批、紧急双人审批、吊销、审计事件全链路
+- [ ] 审计哈希链 + 保留策略 + WORM 归档对外契约文档化；篡改检测可演示
+- [ ] request_id / trace_id 在审计、日志、错误响应中一致关联
+- [ ] 验收：支持会话与审计链集成测试全绿；WORM 归档幂等测试全绿
+
+#### 候选 83：迁移与故障恢复功能契约
+- [ ] Migration dry-run / validate / start / complete / rollback 与 cutover lock 行为按 SPEC 文档化并测试
+- [ ] 中断迁移 resume 不产生重复 identity/subscription；回滚不会出现双活跃计费源
+- [ ] Failover：fence 后再 switch；未确认 Usage/Outbox 在 complete 时重放
+- [ ] 验收：迁移与 failover 集成测试全绿；SPEC Testing #28-30、#36-37 有映射
+
+#### 候选 84：发布门禁与上线验收
+- [ ] 建立 `release-gate`：全量单测 + 全量集成 + 黑盒契约 harness + 全量 E2E + OpenAPI/AsyncAPI 检查 + SDK smoke + 兼容性检查一条命令可跑
+- [ ] 产出《正式商用上线验收清单》：P0 代码项逐条勾选，P1/P2 外部证据单列出
+- [ ] 修复全部 CI 偶发：集成套件隔离缺陷、已知 flaky、限流余量
+- [ ] 验收：发布门禁全绿；上线清单签署；P0/P1 Runbook 演练记录可审计
 
 ### 技术债 / 结构偏差（M0 遗留，随里程碑消化）
 
