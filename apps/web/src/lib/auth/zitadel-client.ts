@@ -1,7 +1,9 @@
 import "server-only";
 
 import { readFile } from "node:fs/promises";
-import { createServerTransport, newSystemToken } from "@zitadel/client/node";
+import { createConnectTransport } from "@connectrpc/connect-node";
+import { NewAuthorizationBearerInterceptor } from "@zitadel/client";
+import { newSystemToken } from "@zitadel/client/node";
 import {
   createOIDCServiceClient,
   createSessionServiceClient,
@@ -94,8 +96,10 @@ export async function getZitadelClients(): Promise<ZitadelClients> {
     return cachedClients.clients;
   }
 
-  const transport = createServerTransport(token, {
+  const transport = createConnectTransport({
+    httpVersion: "1.1",
     baseUrl: baseApiUrl(),
+    interceptors: [NewAuthorizationBearerInterceptor(token)],
   });
   const clients: ZitadelClients = {
     session: createSessionServiceClient(transport),

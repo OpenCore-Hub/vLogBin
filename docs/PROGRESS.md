@@ -339,6 +339,7 @@
 - [x] P1：登录名/邮箱/手机号搜索 + 密码页替换 + `login_flow` 加密 cookie 落地 + 代理路径打通 + 基础设施故障自动回退托管 OIDC
 - [x] P2：MFA 全类型（TOTP / OTP email/SMS / Passkey / U2F）与账号选择器（记住会话 cookie + 继续会话 + 失效清理）
 - [x] P3：注册 / 邮箱验证 / Passkey 初始化 / MFA 初始化跳过 / 未覆盖 IDP/SAML 显式回退托管登录页，复用 `provisionWorkspace` 事务
+- [x] 真实 ZITADEL 契约探针：`v4.16.0` 通过 `getLoginSettings` / `listUsers` / `listSessions`，版本门禁 ≥4.6.0 生效；传输改为官方同款 HTTP/1.1 Connect
 - [ ] P4：按 env/user/org 全量灰度，观察成功登录率、MFA 完成率与 fallback 率后删除旧跳转路径，Playwright E2E + 回归基线锁定
 - [x] 实现验证：`tsc` / ESLint / `vitest`（8 条 MFA 门槛用例）/ Next.js 生产构建全绿
 - **状态：🔄 进行中（P0/P1/P2/P3 完成；P4 真实 ZITADEL 联调、E2E 与灰度待续）**

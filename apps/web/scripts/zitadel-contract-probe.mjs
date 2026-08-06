@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
-import { createServerTransport, newSystemToken } from "@zitadel/client/node";
+import { createConnectTransport } from "@connectrpc/connect-node";
+import { NewAuthorizationBearerInterceptor } from "@zitadel/client";
+import { newSystemToken } from "@zitadel/client/node";
 import {
   createSessionServiceClient,
   createSettingsServiceClient,
@@ -12,6 +14,24 @@ function required(name) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
+}
+
+function assertVersionGate() {
+  const raw = process.env.ZITADEL_VERSION;
+  if (!raw) return undefined;
+  const version = raw.replace(/^v/, "");
+  const [major, minor] = version.split(".").map((part) => Number.parseInt(part, 10));
+  if (
+    !Number.isInteger(major) ||
+    !Number.isInteger(minor) ||
+    major < 4 ||
+    (major === 4 && minor < 6)
+  ) {
+    throw new Error(
+      `ZITADEL_VERSION ${raw} does not meet production baseline >=4.6.0`,
+    );
+  }
+  return version;
 }
 
 async function resolveToken() {
@@ -49,8 +69,13 @@ async function resolveToken() {
 }
 
 const apiUrl = (process.env.ZITADEL_API_URL?.trim() || required("ZITADEL_URL")).replace(/\/+$/, "");
+const version = assertVersionGate();
 const token = await resolveToken();
-const transport = createServerTransport(token, { baseUrl: apiUrl });
+const transport = createConnectTransport({
+  httpVersion: "1.1",
+  baseUrl: apiUrl,
+  interceptors: [NewAuthorizationBearerInterceptor(token)],
+});
 
 const settingsService = createSettingsServiceClient(transport);
 const userService = createUserServiceClient(transport);
@@ -80,6 +105,7 @@ console.log(
     {
       ok: true,
       apiUrl,
+      version,
       loginSettings: Boolean(loginSettings.settings),
       userListSupported: true,
       sessionListSupported: true,
