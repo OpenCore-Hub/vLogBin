@@ -21,9 +21,9 @@ await page.waitForURL((url) => url.pathname === "/login" && url.searchParams.has
 
 await page.locator('input[name="identifier"]').fill(adminLogin);
 await page.getByRole("button", { name: "继续" }).click();
-await page.locator('input[name="password"]').waitFor({ state: "visible" });
-await page.locator('input[name="password"]').fill(adminPassword);
-await page.getByRole("button", { name: "登录" }).click();
+  await page.locator('input[name="password"]').waitFor({ state: "visible" });
+  await page.locator('input[name="password"]').fill(adminPassword);
+  await page.getByRole("button", { name: "登录" }).click();
 
 try {
   await page.waitForURL(
@@ -44,10 +44,23 @@ console.log(
     {
       ok: true,
       callbackUrl: page.url(),
+      finalUrl: process.env.WAIT_CONSOLE === "true" ? page.url() : undefined,
     },
     null,
     2,
   ),
 );
+
+if (process.env.WAIT_CONSOLE === "true") {
+  await page.waitForURL(
+    (url) => url.pathname.startsWith("/console") || url.pathname === "/error",
+    { timeout: 30_000 },
+  );
+  console.log("FINAL_URL", page.url());
+  console.log(
+    "FINAL_BODY",
+    (await page.locator("body").innerText()).slice(0, 1000),
+  );
+}
 
 await browser.close();

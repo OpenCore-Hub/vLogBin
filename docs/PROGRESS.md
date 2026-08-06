@@ -342,8 +342,9 @@
 - [x] 真实 ZITADEL 契约探针：`v4.16.0` 通过 `getLoginSettings` / `listUsers` / `listSessions`，版本门禁 ≥4.6.0 生效；传输改为官方同款 HTTP/1.1 Connect
 - [x] P4 灰度控制面：`ZITADEL_CUSTOM_LOGIN_ALLOWED_USERS` / `ZITADEL_CUSTOM_LOGIN_ALLOWED_ORGS` 白名单生效，非名单用户/组织回退托管 OIDC；登录/注册/回退/MFA 结构化事件已输出
 - [x] P4：真实 ZITADEL v4.16.0 Playwright E2E 通过（自建登录页 → 密码 → MFA 门槛 → OIDC callback）；用户/组织灰度白名单与结构化登录事件已实现，按 env 放量由部署环境变量控制
+- [x] 真实回调联调：callback 已换取 token 并调用 `/v1/signup` 成功（API OIDC Verifier + JWT access token）；发现 `vlb_session` cookie 因内嵌 access/refresh token 超 4KB 被浏览器拒绝，下一步需服务端会话存储
 - [x] 实现验证：`tsc` / ESLint / `vitest`（8 条 MFA 门槛用例）/ Next.js 生产构建全绿
-- **状态：✅ P0-P4 主体完成；真实 ZITADEL 自建登录 E2E 已通过，进入运维放量与回归基线阶段**
+- **状态：✅ P0-P4 主体完成；真实 ZITADEL 自建登录 E2E 已通过；callback 到控制台待服务端会话存储收口**
 
 ### 测试体系扩充
 - [x] metrics_middleware / security / timeout / health / workspace / web_simulation 等新测试

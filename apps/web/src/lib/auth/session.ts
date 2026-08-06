@@ -134,6 +134,23 @@ export interface CreateSessionInput {
   tokenExp?: number;
 }
 
+/** 生成 vLogBin 会话 JWT，不写 cookie；由调用方决定如何提交。 */
+export async function createSessionToken(
+  input: CreateSessionInput,
+): Promise<{ token: string; expiresAt: number }> {
+  if (!isSessionSecretConfigured()) {
+    throw new SessionError(
+      "未配置 SESSION_SECRET（至少 32 字符），拒绝建立会话",
+    );
+  }
+  const expiresAt = Math.floor(Date.now() / 1000) + authConfig.sessionMaxAgeSeconds;
+  const token = await signClaims({
+    ...sessionToClaims(input),
+    exp: expiresAt,
+  });
+  return { token, expiresAt };
+}
+
 /** 读取当前会话（服务端）。 */
 export async function getSession(): Promise<Session | null> {
   const jar = await cookies();
@@ -160,16 +177,7 @@ export async function requireSession(): Promise<Session> {
 
 /** 建立会话（写入 httpOnly cookie）。 */
 export async function createSession(input: CreateSessionInput): Promise<void> {
-  if (!isSessionSecretConfigured()) {
-    throw new SessionError(
-      "未配置 SESSION_SECRET（至少 32 字符），拒绝建立会话",
-    );
-  }
-  const expiresAt = Math.floor(Date.now() / 1000) + authConfig.sessionMaxAgeSeconds;
-  const token = await signClaims({
-    ...sessionToClaims(input),
-    exp: expiresAt,
-  });
+  const { token } = await createSessionToken(input);
   const jar = await cookies();
   jar.set(SESSION_COOKIE, token, cookieOptions(authConfig.sessionMaxAgeSeconds));
 }

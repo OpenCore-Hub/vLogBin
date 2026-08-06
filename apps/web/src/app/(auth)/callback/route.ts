@@ -1,8 +1,8 @@
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import { NextResponse, type NextRequest } from "next/server";
 import { exchangeCode, verifyIdToken } from "@/lib/auth/oidc";
-import { createSession } from "@/lib/auth/session";
+import { SESSION_COOKIE, createSessionToken } from "@/lib/auth/session";
+import { authConfig } from "@/lib/auth/config";
 import { provisionWorkspace } from "@/lib/api/operator";
 import {
   OIDC_STATE_COOKIE,
@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  await createSession({
+  const { token } = await createSessionToken({
     sub: identity.sub,
     email: identity.email ?? "",
     name: identity.name ?? identity.preferredUsername ?? identity.email ?? "",
@@ -98,6 +98,13 @@ export async function GET(req: NextRequest) {
     refreshToken: tokenSet.refreshToken,
     tokenExp: Math.floor(Date.now() / 1000) + tokenSet.expiresIn,
   });
-
-  return redirect(next);
+  const headers = new Headers();
+  headers.set("Location", new URL(next, req.url).toString());
+  headers.append(
+    "Set-Cookie",
+    `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${authConfig.sessionMaxAgeSeconds}${
+      process.env.NODE_ENV === "production" ? "; Secure" : ""
+    }`,
+  );
+  return new Response(null, { status: 302, headers });
 }
