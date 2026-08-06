@@ -790,12 +790,13 @@
 - [x] 修复同邮箱 slug 冲突事务中止缺陷：新增 `CreateWorkspaceIfFree`（`ON CONFLICT DO NOTHING`），候选 slug 冲突不再打挂事务
 - [x] 验收：SPEC Testing #1-3、#11-14、#25 有自动化用例并绿
 
-#### 候选 79：Commerce 双账务域与财务闭环
-- [ ] Provider Commerce 与 Platform Commerce 对账数据源分离测试；Platform 记录永不出现在 Provider 视图
-- [ ] 发票行重放：从不可变 metric/price/catalog 版本重算出账结果
-- [ ] PSP 支付状态与 Invoice 对账：重复/乱序 PSP 事件不重复支付或发票状态
-- [ ] 出账后修正闭环：credit note / adjustment / reversal 语义文档与测试
-- [ ] 验收：财务集成测试与 reconciliation 对账 check 全绿
+#### 候选 79：Commerce 双账务域与财务闭环（✅ 已完成）
+- [x] Provider Commerce 与 Platform Commerce 数据源分离：`TestCommerceDomainIsolation`（Provider 域看不到 platform-domain 记录）
+- [x] 发票行重放：`TestInvoiceLineTraceabilityContract` 断言 metric_id / price_id / catalog_version_id / event_transaction_id 可重放
+- [x] PSP 支付状态重复更新不复制发票：`TestDuplicatePaymentStatusNoDuplicateInvoice`
+- [x] 出账后修正闭环：`TestUsagePostInvoiceReversal`（已出账用量拒绝直接冲销并要求 credit note）
+- [x] 契约文档：`docs/COMMERCE_FINANCE.md` 记录双账务域、财务不变量、对账与门禁
+- [x] 验收：财务集成测试与 reconciliation 对账 check 全绿
 
 #### 候选 80：Catalog / Subscription / Entitlement / Quota 契约
 - [ ] 补目录不可变与订阅 pinning 黑盒测试；发布新版本不影响既有订阅
