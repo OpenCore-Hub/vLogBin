@@ -147,6 +147,9 @@ type Metrics struct {
 	// consistency or financial invariant is currently violated; alerting on
 	// per-check >0 is the primary consumer of this family.
 	ReconciliationDrift *prometheus.GaugeVec
+	// AuthVaultOperationsTotal counts server-side OIDC token vault operations
+	// by operation and result so vault abuse/outage is alertable.
+	AuthVaultOperationsTotal *prometheus.CounterVec
 }
 
 // New builds the metric registry and registers the go runtime + process
@@ -343,6 +346,13 @@ func New() *Metrics {
 			},
 			[]string{"check"},
 		),
+		AuthVaultOperationsTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "auth_vault_operations_total",
+				Help: "Server-side OIDC token vault operations by operation and result.",
+			},
+			[]string{"operation", "result"},
+		),
 	}
 	reg.MustRegister(
 		m.HTTPRequestsTotal,
@@ -376,6 +386,7 @@ func New() *Metrics {
 		m.AuditAnchorsPublishedTotal,
 		m.AuditArchiveErrorsTotal,
 		m.ReconciliationDrift,
+		m.AuthVaultOperationsTotal,
 	)
 
 	// Pre-initialize the label sets the reporters and workers write to, so

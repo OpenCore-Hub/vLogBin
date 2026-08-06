@@ -77,6 +77,14 @@ type Config struct {
 	// AuthVaultServiceToken is the shared secret used by the vLogBin web
 	// backend to create/read/delete server-side OIDC token vault entries.
 	AuthVaultServiceToken string
+	// AuthVaultMasterKey is the AES-GCM key used to encrypt OIDC tokens in the
+	// server-side vault. Independent from PSP_MASTER_KEY for separate rotation.
+	AuthVaultMasterKey string
+	// AuthVaultMasterKeyPrevious lists previous vault keys for decryption-only
+	// fallback during rotation.
+	AuthVaultMasterKeyPrevious []string
+	// AuthVaultSweepInterval controls how often expired vault rows are purged.
+	AuthVaultSweepInterval time.Duration
 	// SupportSweepInterval controls how often the JIT support session
 	// expiry sweeper runs (SUPPORT_SWEEP_INTERVAL, default 30s).
 	SupportSweepInterval time.Duration
@@ -754,6 +762,12 @@ func Load() (Config, error) {
 	cfg.ZITADELURL = os.Getenv("ZITADEL_URL")
 	cfg.ZITADELPAT = os.Getenv("ZITADEL_PAT")
 	cfg.AuthVaultServiceToken = os.Getenv("AUTH_VAULT_SERVICE_TOKEN")
+	cfg.AuthVaultMasterKey = os.Getenv("AUTH_VAULT_MASTER_KEY")
+	cfg.AuthVaultMasterKeyPrevious = splitComma(os.Getenv("AUTH_VAULT_MASTER_KEY_PREVIOUS"))
+	cfg.AuthVaultSweepInterval = time.Hour
+	if err := durationEnv("AUTH_VAULT_SWEEP_INTERVAL", &cfg.AuthVaultSweepInterval); err != nil {
+		return Config{}, err
+	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")
 	}

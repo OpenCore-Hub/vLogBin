@@ -212,6 +212,20 @@ func main() {
 			"previous_keys", len(cfg.PSPMasterKeyPrevious))
 	}
 
+	var vaultEncryptor *crypto.Encryptor
+	if cfg.AuthVaultMasterKey != "" {
+		vaultEncryptor, err = crypto.NewEncryptorWithPrevious(
+			cfg.AuthVaultMasterKey,
+			cfg.AuthVaultMasterKeyPrevious,
+		)
+		if err != nil {
+			log.Error("invalid auth vault master key", "error", err)
+			os.Exit(1)
+		}
+		log.Info("auth vault encryption enabled",
+			"previous_keys", len(cfg.AuthVaultMasterKeyPrevious))
+	}
+
 	// ZITADEL OIDC + Management API (optional — when ZITADEL_URL is set).
 	var zitadelMgmt *zitadel.ManagementClient
 	var oidcVerifier *zitadel.Verifier
@@ -236,6 +250,7 @@ func main() {
 		service.WithLogger(log),
 		service.WithBillingAdapter(adapter),
 		service.WithCryptoEncryptor(encryptor),
+		service.WithAuthVaultEncryptor(vaultEncryptor),
 		service.WithZITADELManagement(zitadelMgmt, cfg.ZITADELURL),
 		service.WithUsageLateWindow(cfg.UsageLateWindow),
 		service.WithUsageFutureSkew(5*time.Minute),
@@ -492,6 +507,12 @@ func main() {
 		return service.NewSupportExpirySweeper(svc, cfg.SupportSweepInterval, log).WithMetrics(apiServer.Metrics()).WithQueryTimeout(cfg.DBQueryTimeout).Run(ctx)
 	})
 	workers = append(workers, bgWorker{name: "support-sweeper", stop: stopSupport, done: supportDone})
+	// Server-side OIDC token vault expiry sweeper: purges expired vault rows.
+	authVaultCtx, stopAuthVault := context.WithCancel(ctx)
+	authVaultDone := sup.Run(authVaultCtx, "auth-vault-sweeper", func(ctx context.Context) error {
+		return service.NewAuthVaultSweeper(svc, cfg.AuthVaultSweepInterval, log).WithMetrics(apiServer.Metrics()).WithQueryTimeout(cfg.DBQueryTimeout).Run(ctx)
+	})
+	workers = append(workers, bgWorker{name: "auth-vault-sweeper", stop: stopAuthVault, done: authVaultDone})
 
 	// Hard Quota reservation expiry sweeper: reclaims past-due reservations.
 	quotaCtx, stopQuota := context.WithCancel(ctx)

@@ -119,6 +119,7 @@ func TestMain(m *testing.M) {
 	defer appStore.Close()
 
 	testEncryptor, _ := crypto.NewEncryptor("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	vaultEncryptor, _ := crypto.NewEncryptor("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")
 
 	// The global test server carries a ZITADEL Management mock so the
 	// operator Console endpoints (OIDC Application management) can be
@@ -160,6 +161,7 @@ func TestMain(m *testing.M) {
 		service.WithBillingAdapter(billing.NewNoop(nil)),
 		service.WithURLValidator(webhook.ValidateURLAllowLoopback),
 		service.WithCryptoEncryptor(testEncryptor),
+		service.WithAuthVaultEncryptor(vaultEncryptor),
 		service.WithDNSResolver(testDNSResolver),
 		service.WithZITADELManagement(mgmtClient, zitadelServer.URL),
 	)

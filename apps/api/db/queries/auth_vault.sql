@@ -16,5 +16,5 @@ WHERE id = $1 AND expires_at > now();
 -- name: DeleteAuthVault :exec
 DELETE FROM auth_session_vault WHERE id = $1;
 
--- name: DeleteExpiredAuthVaults :exec
+-- name: DeleteExpiredAuthVaults :execrows
 DELETE FROM auth_session_vault WHERE expires_at <= now();

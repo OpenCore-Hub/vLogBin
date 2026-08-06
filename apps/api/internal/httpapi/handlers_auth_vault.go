@@ -66,9 +66,11 @@ func (s *Server) authVaultCreate(w http.ResponseWriter, r *http.Request) {
 		TTL:          ttl,
 	})
 	if err != nil {
+		s.authVaultMetric("create", false)
 		writeServiceError(w, r, err)
 		return
 	}
+	s.authVaultMetric("create", true)
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"vault": authVaultView(vault),
 	})
@@ -78,9 +80,11 @@ func (s *Server) authVaultGet(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	vault, err := s.svc.GetAuthVault(r.Context(), id)
 	if err != nil {
+		s.authVaultMetric("get", false)
 		writeServiceError(w, r, err)
 		return
 	}
+	s.authVaultMetric("get", true)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"vault": authVaultView(vault),
 	})
@@ -89,10 +93,20 @@ func (s *Server) authVaultGet(w http.ResponseWriter, r *http.Request) {
 func (s *Server) authVaultDelete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if err := s.svc.DeleteAuthVault(r.Context(), id); err != nil {
+		s.authVaultMetric("delete", false)
 		writeServiceError(w, r, err)
 		return
 	}
+	s.authVaultMetric("delete", true)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) authVaultMetric(operation string, ok bool) {
+	result := "success"
+	if !ok {
+		result = "error"
+	}
+	s.metrics.AuthVaultOperationsTotal.WithLabelValues(operation, result).Inc()
 }
 
 func authVaultView(v service.AuthVault) map[string]any {

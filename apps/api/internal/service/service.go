@@ -58,6 +58,9 @@ type Service struct {
 	// encryptor is used for PSP credential encryption. When nil, PSP
 	// credential creation returns an error.
 	encryptor *crypto.Encryptor
+	// authVaultEncryptor is used for server-side OIDC token vault encryption.
+	// Separate from PSP encryptor so vault key rotation is independent.
+	authVaultEncryptor *crypto.Encryptor
 	// reencryptReporter is notified by the credential re-encryption worker
 	// after each per-table batch with (table, reencrypted, errors) counts.
 	// Wired by main to credentials_reencrypted_total /

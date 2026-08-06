@@ -22,6 +22,9 @@ func TestLoadAllEnvVars(t *testing.T) {
 	t.Setenv("ZITADEL_URL", "https://auth.test")
 	t.Setenv("ZITADEL_PAT", "pat-token")
 	t.Setenv("AUTH_VAULT_SERVICE_TOKEN", "vault-service-token")
+	t.Setenv("AUTH_VAULT_MASTER_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	t.Setenv("AUTH_VAULT_MASTER_KEY_PREVIOUS", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	t.Setenv("AUTH_VAULT_SWEEP_INTERVAL", "30m")
 	t.Setenv("AUDIT_RETENTION_DAYS", "730")
 	t.Setenv("AUDIT_RETENTION_SWEEP_INTERVAL", "6h")
 
@@ -68,6 +71,15 @@ func TestLoadAllEnvVars(t *testing.T) {
 	}
 	if cfg.AuthVaultServiceToken != "vault-service-token" {
 		t.Fatalf("AuthVaultServiceToken = %v", cfg.AuthVaultServiceToken)
+	}
+	if cfg.AuthVaultMasterKey == "" {
+		t.Fatal("AuthVaultMasterKey = empty")
+	}
+	if len(cfg.AuthVaultMasterKeyPrevious) != 1 {
+		t.Fatalf("AuthVaultMasterKeyPrevious = %v", cfg.AuthVaultMasterKeyPrevious)
+	}
+	if cfg.AuthVaultSweepInterval != 30*time.Minute {
+		t.Fatalf("AuthVaultSweepInterval = %v", cfg.AuthVaultSweepInterval)
 	}
 	if cfg.AuditRetentionDays != 730 {
 		t.Fatalf("AuditRetentionDays = %v, want 730", cfg.AuditRetentionDays)

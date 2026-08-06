@@ -7,15 +7,23 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
+	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/crypto"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store"
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/store/storegen"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 var ErrAuthVaultNotFound = errors.New("auth vault not found")
 var ErrAuthVaultEncryptionDisabled = errors.New("auth vault encryption disabled")
+
+func WithAuthVaultEncryptor(e *crypto.Encryptor) Option {
+	return func(s *Service) { s.authVaultEncryptor = e }
+}
 
 type AuthVault struct {
 	ID           string
@@ -48,7 +56,7 @@ func (s *Service) CreateAuthVault(
 	ctx context.Context,
 	input CreateAuthVaultInput,
 ) (AuthVault, error) {
-	if s.encryptor == nil {
+	if s.authVaultEncryptor == nil {
 		return AuthVault{}, ErrAuthVaultEncryptionDisabled
 	}
 	idBytes := make([]byte, 32)
@@ -57,11 +65,11 @@ func (s *Service) CreateAuthVault(
 	}
 	id := hex.EncodeToString(idBytes)
 
-	encryptedAccess, err := s.encryptor.Encrypt(input.AccessToken)
+	encryptedAccess, err := s.authVaultEncryptor.Encrypt(input.AccessToken)
 	if err != nil {
 		return AuthVault{}, fmt.Errorf("encrypt access token: %w", err)
 	}
-	encryptedRefresh, err := s.encryptor.Encrypt(input.RefreshToken)
+	encryptedRefresh, err := s.authVaultEncryptor.Encrypt(input.RefreshToken)
 	if err != nil {
 		return AuthVault{}, fmt.Errorf("encrypt refresh token: %w", err)
 	}
@@ -89,6 +97,12 @@ func (s *Service) CreateAuthVault(
 		if err != nil {
 			return err
 		}
+		if err := insertAuthVaultAudit(ctx, q, "auth_vault.create", id, map[string]any{
+			"userSub": input.UserSub,
+			"env":     input.Env,
+		}); err != nil {
+			return err
+		}
 		vault = authVaultFromRow(row, input.AccessToken, input.RefreshToken)
 		return nil
 	})
@@ -99,14 +113,20 @@ func (s *Service) CreateAuthVault(
 }
 
 func (s *Service) GetAuthVault(ctx context.Context, id string) (AuthVault, error) {
-	if s.encryptor == nil {
+	if s.authVaultEncryptor == nil {
 		return AuthVault{}, ErrAuthVaultEncryptionDisabled
 	}
 	var row storegen.AuthSessionVault
 	err := s.store.WithOperator(ctx, func(tx pgx.Tx, q *store.Queries) error {
 		var err error
 		row, err = q.GetAuthVault(ctx, id)
-		return err
+		if err != nil {
+			return err
+		}
+		return insertAuthVaultAudit(ctx, q, "auth_vault.get", id, map[string]any{
+			"userSub": row.UserSub,
+			"env":     row.Env,
+		})
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -115,13 +135,13 @@ func (s *Service) GetAuthVault(ctx context.Context, id string) (AuthVault, error
 		return AuthVault{}, fmt.Errorf("get auth vault: %w", err)
 	}
 
-	accessToken, err := s.encryptor.Decrypt(row.AccessToken)
+	accessToken, err := s.authVaultEncryptor.Decrypt(row.AccessToken)
 	if err != nil {
 		return AuthVault{}, fmt.Errorf("decrypt access token: %w", err)
 	}
 	refreshToken := ""
 	if row.RefreshToken != "" {
-		refreshToken, err = s.encryptor.Decrypt(row.RefreshToken)
+		refreshToken, err = s.authVaultEncryptor.Decrypt(row.RefreshToken)
 		if err != nil {
 			return AuthVault{}, fmt.Errorf("decrypt refresh token: %w", err)
 		}
@@ -135,14 +155,21 @@ func (s *Service) GetAuthVault(ctx context.Context, id string) (AuthVault, error
 
 func (s *Service) DeleteAuthVault(ctx context.Context, id string) error {
 	return s.store.WithOperator(ctx, func(tx pgx.Tx, q *store.Queries) error {
-		return q.DeleteAuthVault(ctx, id)
+		if err := q.DeleteAuthVault(ctx, id); err != nil {
+			return err
+		}
+		return insertAuthVaultAudit(ctx, q, "auth_vault.delete", id, nil)
 	})
 }
 
-func (s *Service) DeleteExpiredAuthVaults(ctx context.Context) error {
-	return s.store.WithOperator(ctx, func(tx pgx.Tx, q *store.Queries) error {
-		return q.DeleteExpiredAuthVaults(ctx)
+func (s *Service) DeleteExpiredAuthVaults(ctx context.Context) (int64, error) {
+	var deleted int64
+	err := s.store.WithOperator(ctx, func(tx pgx.Tx, q *store.Queries) error {
+		var err error
+		deleted, err = q.DeleteExpiredAuthVaults(ctx)
+		return err
 	})
+	return deleted, err
 }
 
 func authVaultFromRow(
@@ -164,4 +191,38 @@ func authVaultFromRow(
 		TokenExp:     row.TokenExp,
 		ExpiresAt:    row.ExpiresAt,
 	}
+}
+
+func insertAuthVaultAudit(
+	ctx context.Context,
+	q *store.Queries,
+	action, id string,
+	metadata map[string]any,
+) error {
+	if metadata == nil {
+		metadata = map[string]any{}
+	}
+	raw, err := json.Marshal(metadata)
+	if err != nil {
+		return err
+	}
+	_, err = q.InsertAuditEvent(ctx, storegen.InsertAuditEventParams{
+		ProviderID:    uuid.NullUUID{},
+		EnvironmentID: uuid.NullUUID{},
+		ActorType:     "vault-service",
+		ActorID:       "auth-vault-service",
+		Action:        action,
+		TargetType:    pgtype.Text{String: "auth_vault", Valid: true},
+		TargetID:      pgtype.Text{String: id, Valid: true},
+		Metadata:      raw,
+	})
+	return err
+}
+
+func NewAuthVaultSweeper(
+	svc *Service,
+	interval time.Duration,
+	log *slog.Logger,
+) *ExpirySweeper {
+	return NewExpirySweeper("auth_vault", svc.DeleteExpiredAuthVaults, interval, log)
 }

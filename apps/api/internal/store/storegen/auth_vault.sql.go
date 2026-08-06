@@ -76,13 +76,16 @@ func (q *Queries) DeleteAuthVault(ctx context.Context, id string) error {
 	return err
 }
 
-const deleteExpiredAuthVaults = `-- name: DeleteExpiredAuthVaults :exec
+const deleteExpiredAuthVaults = `-- name: DeleteExpiredAuthVaults :execrows
 DELETE FROM auth_session_vault WHERE expires_at <= now()
 `
 
-func (q *Queries) DeleteExpiredAuthVaults(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, deleteExpiredAuthVaults)
-	return err
+func (q *Queries) DeleteExpiredAuthVaults(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredAuthVaults)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getAuthVault = `-- name: GetAuthVault :one
