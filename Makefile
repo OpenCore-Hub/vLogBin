@@ -1,4 +1,4 @@
-.PHONY: build test test-integration lint contract sdk sqlc dev dev-down frontend docker-build test-env test-env-down clean
+.PHONY: build test test-integration lint contract release-gate sdk sqlc dev dev-down frontend docker-build test-env test-env-down clean
 
 # ---- Go API ----
 
@@ -21,6 +21,9 @@ contract:
 
 sdk:
 	cd sdk/go && go test ./...
+
+release-gate:
+	./scripts/release-gate.sh
 
 sqlc:
 	cd apps/api && sqlc generate
