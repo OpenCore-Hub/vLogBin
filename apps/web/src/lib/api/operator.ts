@@ -343,6 +343,55 @@ export async function updateWorkspace(
   return asWorkspace(data.workspace);
 }
 
+/** 列出工作区成员（任意 active member 可读）。 */
+export async function listWorkspaceMembers(
+  workspaceId: string,
+): Promise<WorkspaceMembership[]> {
+  const data = await request<{ members?: unknown }>(
+    `/v1/me/workspaces/${encodeURIComponent(workspaceId)}/members`,
+  );
+  if (!Array.isArray(data.members)) return [];
+  return data.members
+    .map(asWorkspaceMembership)
+    .filter((m): m is WorkspaceMembership => m !== null);
+}
+
+/** 邀请 / 恢复工作区成员（provider_admin only）。 */
+export async function inviteWorkspaceMember(
+  workspaceId: string,
+  input: { user_sub: string; role: string },
+): Promise<WorkspaceMembership | null> {
+  const data = await request<{ member?: unknown }>(
+    `/v1/me/workspaces/${encodeURIComponent(workspaceId)}/members`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return asWorkspaceMembership(data.member);
+}
+
+/** 更新成员角色（provider_admin only）。 */
+export async function updateWorkspaceMemberRole(
+  workspaceId: string,
+  userSub: string,
+  role: string,
+): Promise<WorkspaceMembership | null> {
+  const data = await request<{ member?: unknown }>(
+    `/v1/me/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userSub)}`,
+    { method: "PATCH", body: JSON.stringify({ role }) },
+  );
+  return asWorkspaceMembership(data.member);
+}
+
+/** 移除工作区成员（provider_admin only，保留最后一位 admin）。 */
+export async function removeWorkspaceMember(
+  workspaceId: string,
+  userSub: string,
+): Promise<void> {
+  await request<unknown>(
+    `/v1/me/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userSub)}`,
+    { method: "DELETE" },
+  );
+}
+
 function asProvider(value: unknown): Provider | null {
   const rec = asRecord(value);
   if (!rec) return null;

@@ -48,6 +48,11 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
         icon: AppIcon,
       },
       {
+        href: "/console/identity/users",
+        label: "Users",
+        icon: UsersIcon,
+      },
+      {
         href: "/console/identity/policies",
         label: "Policies",
         icon: ShieldIcon,
