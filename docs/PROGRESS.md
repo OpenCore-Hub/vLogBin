@@ -381,6 +381,7 @@
 | Catalog 控制面 | `/console/catalog`：目录版本选择（URL `?version=` 可分享/回退）+ 版本元数据 / 指标 / 套餐 / 价格 / 权益五段视图；当前 draft 摘要；侧边栏新增目录 | ✅ 已完成（候选 56） |
 | Developers SDK / 事件规范 | `/console/developers/sdk`（cURL / Node / Python 用量上报示例 + CodeBlock 复制）与 `/console/developers/events-spec`（事件目录 + payload 规范）；侧边栏补齐 SDK / 事件规范 | ✅ 已完成（候选 57） |
 | Identity Users 控制面 | `/console/identity/users`：workspace 成员列表 / 邀请 / 角色更新 / 移除（type-to-confirm）；复用既有 `/v1/me/workspaces/{id}/members` API；侧边栏新增 Users | ✅ 已完成（候选 58） |
+| 多 workspace 切换 | `WORKSPACE_COOKIE` + `lib/workspace.ts`（workspace_id==provider_id 解析）；Topbar WorkspaceSwitcher（多 workspace 下拉、单 workspace 只读标签）；13 个 Console 页面全部改为按当前 workspace 解析 provider；Settings / Users 同步按 cookie 选择 | ✅ 已完成（候选 59） |
 
 ## 四、Web 前端重构任务追踪（设计基线 v1.4）
 
@@ -393,7 +394,8 @@
 | M0 基座 | 目录 / tokens / 认证 / 官网 / Console 布局 / Ops 迁移 / 引导 | ✅ 已完成（静态验收，待提交） |
 | M1 控制面 API | `apps/api` 新增 Console 端点（最大前置依赖） | ✅ 已完成（候选 29-33） |
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
-| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 58） |
+| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | ✅ 已完成（候选 43-58） |
+| M4 生产级 | 多 workspace 切换 / 后续生产硬化 | 🔄 进行中（候选 59） |
 
 ### M0 — 基座（✅ 已完成，待提交）
 
@@ -558,7 +560,7 @@
   - §11：openapi.yaml 新增 `AuditStats` / `AuditCount` / `AuditSeriesPoint` / `AuditChainState` / `AuditChainVerifyResult` schemas + 4 paths，YAML 引用完整性通过（61 paths / 74 schemas，missing=[]）
   - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **47/47 全绿** ✅（新增 `19-audit.spec.ts`）
 
-### M3 — 完善面（🔄 进行中）
+### M3 — 完善面（✅ 已完成）
 
 - [x] Developers：API Keys / Webhooks / Events 页面（§8 表标 M2，推进以 §9 路线图为准，依赖 M1 端点）— 候选 43
 - [x] Settings 页面（§6.6.2 按心智分组：基础 / 安全 / 高级）— 候选 44
@@ -630,6 +632,17 @@
   - 侧边栏 Identity 分组新增「Users」
   - E2E：`25-users.spec.ts`（邀请 → 改角色 → 移除）
   - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright 全量 53/54 + Ops Cell 单跑通过（唯一失败为全量串行偶发，非代码回归）
+
+### M4 — 生产级（🔄 进行中）
+
+- [x] 多 workspace 切换 — 候选 59
+  - `WORKSPACE_COOKIE`（`vlb_workspace`）+ `switchWorkspace` server action（cookie 持久化 + `/console` layout revalidate）
+  - `lib/workspace.ts`：`resolveWorkspaceId` / `resolveWorkspaceProvider`（workspace_id == provider_id，cookie 失效自动回退首个 provider）
+  - `WorkspaceSwitcher`：单 workspace 只读标签；多 workspace 下拉（名称 + slug + 当前勾选），切换后 `router.refresh()`
+  - ConsoleLayout / OpsLayout 注入 workspaces；Topbar 常驻切换器
+  - 13 个 Console 页面改为 `resolveWorkspaceProvider()`（Plans / Customers / Invoices / Dashboard / Payments / API Keys / Webhooks / Events / Applications / Policies / Audit / Catalog / 详情页）；Overview / Settings / Users 按 cookie 选择
+  - E2E：`26-workspace-switcher.spec.ts`
+  - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright 全量 53/55 + Ops Cell / Portal 单跑通过（仅全量串行限流/偶发，非代码回归）
 
 ### 技术债 / 结构偏差（M0 遗留，随里程碑消化）
 
