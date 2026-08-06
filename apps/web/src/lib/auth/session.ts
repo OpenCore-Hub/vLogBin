@@ -9,6 +9,10 @@ import { SESSION_COOKIE } from "../env-shared";
 
 export { SESSION_COOKIE };
 
+export const SESSION_TOKEN_COOKIE_PREFIX = "vlb_session_token_";
+const SESSION_TOKEN_CHUNK_MAX = 3000;
+const SESSION_TOKEN_CHUNK_LIMIT = 10;
+
 export type Env = "test" | "live";
 
 export interface Session {
@@ -31,12 +35,17 @@ interface SessionClaims {
   roles: string[];
   workspaceId: string;
   env: Env;
-  /** base64url(iv).base64url(tag).base64url(data) */
-  at?: string;
-  rt?: string;
+  /** 加密 token 分片数量；0 表示无凭据。 */
+  tc?: number;
   exp_: number;
   /** 会话过期时间（jose payload 注入） */
   exp?: number;
+}
+
+interface TokenVault {
+  accessToken?: string;
+  refreshToken?: string;
+  tokenExp?: number;
 }
 
 export class SessionError extends Error {
@@ -93,7 +102,70 @@ function cookieOptions(maxAge: number) {
   };
 }
 
-export function sessionToClaims(s: Omit<Session, "expiresAt">): SessionClaims {
+function tokenChunkNames(count: number): string[] {
+  return Array.from({ length: count }, (_, index) => `${SESSION_TOKEN_COOKIE_PREFIX}${index}`);
+}
+
+function splitTokenChunks(blob: string): string[] {
+  if (!blob) return [];
+  const chunks: string[] = [];
+  for (let offset = 0; offset < blob.length; offset += SESSION_TOKEN_CHUNK_MAX) {
+    chunks.push(blob.slice(offset, offset + SESSION_TOKEN_CHUNK_MAX));
+  }
+  return chunks;
+}
+
+function sealTokenVault(input: CreateSessionInput): string {
+  const vault: TokenVault = {
+    accessToken: input.accessToken,
+    refreshToken: input.refreshToken,
+    tokenExp: input.tokenExp,
+  };
+  return sealSecret(JSON.stringify(vault));
+}
+
+function readTokenVault(
+  jar: Awaited<ReturnType<typeof cookies>>,
+  count: number,
+): TokenVault {
+  if (!count || count > SESSION_TOKEN_CHUNK_LIMIT) return {};
+  const parts: string[] = [];
+  for (const name of tokenChunkNames(count)) {
+    const raw = jar.get(name)?.value;
+    if (!raw) return {};
+    parts.push(raw);
+  }
+  try {
+    const parsed = JSON.parse(unsealSecret(parts.join(""))) as Record<
+      string,
+      unknown
+    >;
+    return {
+      accessToken:
+        typeof parsed.accessToken === "string" ? parsed.accessToken : undefined,
+      refreshToken:
+        typeof parsed.refreshToken === "string" ? parsed.refreshToken : undefined,
+      tokenExp:
+        typeof parsed.tokenExp === "number" ? parsed.tokenExp : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function deleteTokenChunks(
+  jar: Awaited<ReturnType<typeof cookies>>,
+  maxCount = SESSION_TOKEN_CHUNK_LIMIT,
+): void {
+  for (const name of tokenChunkNames(maxCount)) {
+    jar.delete(name);
+  }
+}
+
+export function sessionToClaims(
+  s: Omit<Session, "expiresAt">,
+  tokenChunkCount = 0,
+): SessionClaims {
   return {
     sub: s.sub,
     email: s.email,
@@ -101,13 +173,15 @@ export function sessionToClaims(s: Omit<Session, "expiresAt">): SessionClaims {
     roles: s.roles,
     workspaceId: s.workspaceId,
     env: s.env,
-    at: s.accessToken ? sealSecret(s.accessToken) : undefined,
-    rt: s.refreshToken ? sealSecret(s.refreshToken) : undefined,
+    tc: tokenChunkCount,
     exp_: s.tokenExp ?? 0,
   };
 }
 
-export function claimsToSession(c: SessionClaims): Session {
+export function claimsToSession(
+  c: SessionClaims,
+  vault: TokenVault = {},
+): Session {
   return {
     sub: c.sub,
     email: c.email,
@@ -115,9 +189,9 @@ export function claimsToSession(c: SessionClaims): Session {
     roles: c.roles,
     workspaceId: c.workspaceId,
     env: c.env,
-    accessToken: c.at ? unsealSecret(c.at) : undefined,
-    refreshToken: c.rt ? unsealSecret(c.rt) : undefined,
-    tokenExp: c.exp_ || undefined,
+    accessToken: vault.accessToken,
+    refreshToken: vault.refreshToken,
+    tokenExp: c.exp_ || vault.tokenExp || undefined,
     expiresAt: 0, // 由调用方补充
   };
 }
@@ -137,18 +211,23 @@ export interface CreateSessionInput {
 /** 生成 vLogBin 会话 JWT，不写 cookie；由调用方决定如何提交。 */
 export async function createSessionToken(
   input: CreateSessionInput,
-): Promise<{ token: string; expiresAt: number }> {
+): Promise<{
+  token: string;
+  expiresAt: number;
+  tokenChunks: string[];
+}> {
   if (!isSessionSecretConfigured()) {
     throw new SessionError(
       "未配置 SESSION_SECRET（至少 32 字符），拒绝建立会话",
     );
   }
   const expiresAt = Math.floor(Date.now() / 1000) + authConfig.sessionMaxAgeSeconds;
+  const tokenChunks = splitTokenChunks(sealTokenVault(input));
   const token = await signClaims({
-    ...sessionToClaims(input),
+    ...sessionToClaims(input, tokenChunks.length),
     exp: expiresAt,
   });
-  return { token, expiresAt };
+  return { token, expiresAt, tokenChunks };
 }
 
 /** 读取当前会话（服务端）。 */
@@ -158,7 +237,8 @@ export async function getSession(): Promise<Session | null> {
   if (!raw) return null;
   try {
     const claims = await verifyClaims(raw);
-    const session = claimsToSession(claims);
+    const vault = readTokenVault(jar, claims.tc ?? 0);
+    const session = claimsToSession(claims, vault);
     session.expiresAt = claims.exp ?? 0;
     return session;
   } catch {
@@ -177,9 +257,17 @@ export async function requireSession(): Promise<Session> {
 
 /** 建立会话（写入 httpOnly cookie）。 */
 export async function createSession(input: CreateSessionInput): Promise<void> {
-  const { token } = await createSessionToken(input);
+  const { token, tokenChunks } = await createSessionToken(input);
   const jar = await cookies();
+  deleteTokenChunks(jar);
   jar.set(SESSION_COOKIE, token, cookieOptions(authConfig.sessionMaxAgeSeconds));
+  tokenChunks.forEach((chunk, index) => {
+    jar.set(
+      `${SESSION_TOKEN_COOKIE_PREFIX}${index}`,
+      chunk,
+      cookieOptions(authConfig.sessionMaxAgeSeconds),
+    );
+  });
 }
 
 /** 更新会话（保留身份，覆盖凭据/环境）。 */
@@ -206,6 +294,7 @@ export async function updateSession(
 /** 销毁会话。 */
 export async function destroySession(): Promise<void> {
   const jar = await cookies();
+  deleteTokenChunks(jar);
   jar.delete(SESSION_COOKIE);
 }
 

@@ -1,7 +1,11 @@
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 import { exchangeCode, verifyIdToken } from "@/lib/auth/oidc";
-import { SESSION_COOKIE, createSessionToken } from "@/lib/auth/session";
+import {
+  SESSION_COOKIE,
+  SESSION_TOKEN_COOKIE_PREFIX,
+  createSessionToken,
+} from "@/lib/auth/session";
 import { authConfig } from "@/lib/auth/config";
 import { provisionWorkspace } from "@/lib/api/operator";
 import {
@@ -87,7 +91,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const { token } = await createSessionToken({
+  const { token, tokenChunks } = await createSessionToken({
     sub: identity.sub,
     email: identity.email ?? "",
     name: identity.name ?? identity.preferredUsername ?? identity.email ?? "",
@@ -98,13 +102,25 @@ export async function GET(req: NextRequest) {
     refreshToken: tokenSet.refreshToken,
     tokenExp: Math.floor(Date.now() / 1000) + tokenSet.expiresIn,
   });
-  const headers = new Headers();
-  headers.set("Location", new URL(next, req.url).toString());
-  headers.append(
-    "Set-Cookie",
-    `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${authConfig.sessionMaxAgeSeconds}${
-      process.env.NODE_ENV === "production" ? "; Secure" : ""
-    }`,
+  jar.set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: authConfig.sessionMaxAgeSeconds,
+  });
+  tokenChunks.forEach((chunk, index) => {
+    jar.set(`${SESSION_TOKEN_COOKIE_PREFIX}${index}`, chunk, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: authConfig.sessionMaxAgeSeconds,
+    });
+  });
+  const target = new URL(next, req.url).toString();
+  return new Response(
+    `<!doctype html><html><head><meta http-equiv="refresh" content="0;url=${target}"></head><body></body></html>`,
+    { headers: { "Content-Type": "text/html; charset=utf-8" } },
   );
-  return new Response(null, { status: 302, headers });
 }
