@@ -1510,6 +1510,53 @@ func (s *Service) OutboxBacklog(ctx context.Context) (map[string]int64, error) {
 	return counts, err
 }
 
+// QueueOverview is the operator queue board payload: outbox and webhook
+// delivery counts by status plus recent outbox events for drill-down.
+type QueueOverview struct {
+	Outbox            map[string]int64       `json:"outbox"`
+	WebhookDeliveries map[string]int64       `json:"webhook_deliveries"`
+	RecentOutbox      []storegen.OutboxEvent `json:"recent_outbox"`
+}
+
+// QueueOverview returns the operator queue board in one transaction.
+func (s *Service) QueueOverview(ctx context.Context, limit int32) (*QueueOverview, error) {
+	var out QueueOverview
+	err := s.store.WithOperator(ctx, func(tx pgx.Tx, q *store.Queries) error {
+		outboxRows, err := q.CountOutboxEventsByStatus(ctx)
+		if err != nil {
+			return err
+		}
+		webhookRows, err := q.CountWebhookDeliveriesByStatus(ctx)
+		if err != nil {
+			return err
+		}
+		events, err := q.ListOutboxEventsFiltered(ctx, storegen.ListOutboxEventsFilteredParams{
+			Status: "",
+			Limit:  limit,
+		})
+		if err != nil {
+			return err
+		}
+		out.Outbox = make(map[string]int64, len(outboxRows))
+		for _, row := range outboxRows {
+			out.Outbox[row.Status] = row.Count
+		}
+		out.WebhookDeliveries = make(map[string]int64, len(webhookRows))
+		for _, row := range webhookRows {
+			out.WebhookDeliveries[row.Status] = row.Count
+		}
+		out.RecentOutbox = events
+		if out.RecentOutbox == nil {
+			out.RecentOutbox = []storegen.OutboxEvent{}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // WebhookBacklog returns the current webhook_deliveries count grouped by
 // status. It powers the Prometheus webhook_deliveries gauge.
 func (s *Service) WebhookBacklog(ctx context.Context) (map[string]int64, error) {

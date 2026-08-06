@@ -282,6 +282,8 @@ func (s *Server) Router() chi.Router {
 			r.Delete("/providers/{id}/auth/zitadel", s.operatorDisableHostedAuth)
 			// Reconciliation results (operator monitoring).
 			r.Get("/reconciliation-results", s.operatorListReconciliationResults)
+			// Queue capacity / dead-letter board (operator monitoring).
+			r.Get("/queues/overview", s.operatorQueueOverview)
 			// Tamper-evident audit chain (operator-only, migration 0031).
 			r.Get("/audit/chain", s.auditChainState)
 			r.Get("/audit/chain/verify", s.auditChainVerify)

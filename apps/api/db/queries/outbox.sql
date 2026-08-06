@@ -14,6 +14,13 @@ WHERE provider_id = $1 AND environment_id = $2
 ORDER BY created_at DESC
 LIMIT $3;
 
+-- name: ListOutboxEventsFiltered :many
+-- Operator queue board: recent events across all providers, optional status filter.
+SELECT * FROM outbox_events
+WHERE (sqlc.arg('status')::text = '' OR status = sqlc.arg('status'))
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg('limit')::int;
+
 -- name: CountUnconfirmedOutbox :one
 -- Counts outbox events that are pending or failed (not yet delivered)
 -- for a provider. Used by CompleteFailover to report replay counts

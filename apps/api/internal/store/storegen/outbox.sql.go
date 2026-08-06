@@ -272,6 +272,55 @@ func (q *Queries) ListOutboxEventsByTenant(ctx context.Context, arg ListOutboxEv
 	return items, nil
 }
 
+const listOutboxEventsFiltered = `-- name: ListOutboxEventsFiltered :many
+SELECT id, provider_id, environment_id, aggregate_type, aggregate_id, event_type, payload, payload_hash, transaction_id, status, attempts, created_at, published_at, next_attempt_at, last_error FROM outbox_events
+WHERE ($1::text = '' OR status = $1)
+ORDER BY created_at DESC, id DESC
+LIMIT $2::int
+`
+
+type ListOutboxEventsFilteredParams struct {
+	Status string `json:"status"`
+	Limit  int32  `json:"limit"`
+}
+
+// Operator queue board: recent events across all providers, optional status filter.
+func (q *Queries) ListOutboxEventsFiltered(ctx context.Context, arg ListOutboxEventsFilteredParams) ([]OutboxEvent, error) {
+	rows, err := q.db.Query(ctx, listOutboxEventsFiltered, arg.Status, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OutboxEvent
+	for rows.Next() {
+		var i OutboxEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProviderID,
+			&i.EnvironmentID,
+			&i.AggregateType,
+			&i.AggregateID,
+			&i.EventType,
+			&i.Payload,
+			&i.PayloadHash,
+			&i.TransactionID,
+			&i.Status,
+			&i.Attempts,
+			&i.CreatedAt,
+			&i.PublishedAt,
+			&i.NextAttemptAt,
+			&i.LastError,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markOutboxEventDeadLetter = `-- name: MarkOutboxEventDeadLetter :exec
 UPDATE outbox_events
 SET status = 'dead_letter',
