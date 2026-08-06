@@ -10,6 +10,7 @@
 > 验证状态：真实 standalone 后端闭环已确认（vault 201 + signup 200）；浏览器 console 最终验收因 Playwright 中间跳转竞态待稳定后补测。
 > 最终验证：standalone（`HOSTNAME=localhost`）下 Playwright 真实登录到达 `/console`，Console 成功加载 vault/workspaces/overview 数据。
 > 生产安全基线：vault 使用独立 `AUTH_VAULT_MASTER_KEY` 加密并支持 previous-key 轮换；create/get/delete 均写入审计事件并上报 `auth_vault_operations_total` 指标；过期 vault 由 `auth-vault-sweeper` 定时清理。
+> 工作负载身份：web 用 `AUTH_VAULT_SERVICE_PRIVATE_KEY` 签发 5 分钟 RS256 JWT（iss `vlogbin-web`、aud `vlogbin-auth-vault`），API 用 `AUTH_VAULT_PUBLIC_KEY` 验签；静态 token 仅作回退。
 > 定位：vLogBin 提供与品牌一致的统一登录页，ZITADEL 继续作为独立身份引擎，vLogBin 只通过公开 Session API / OIDC API / User API 与其交互。
 > 合规边界：不修改、不内嵌 ZITADEL AGPL 核心源码。`proto/` 与 `apps/docs/` 为 Apache-2.0，`apps/login/`、`packages/zitadel-client/`、`packages/zitadel-proto/` 为 MIT，可作为接口与实现参考；法律结论以专业顾问意见为准。
 

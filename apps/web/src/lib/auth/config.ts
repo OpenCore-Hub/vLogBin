@@ -62,6 +62,9 @@ export const authConfig = {
     serviceUserToken: str(process.env.ZITADEL_SERVICE_USER_TOKEN),
     loginClientPat: str(process.env.ZITADEL_LOGIN_CLIENT_PAT),
     authVaultServiceToken: str(process.env.AUTH_VAULT_SERVICE_TOKEN),
+    authVaultPrivateKey: str(process.env.AUTH_VAULT_SERVICE_PRIVATE_KEY),
+    authVaultPrivateKeyFile: str(process.env.AUTH_VAULT_SERVICE_PRIVATE_KEY_FILE),
+    authVaultAudience: str(process.env.AUTH_VAULT_AUDIENCE, "vlogbin-auth-vault"),
     trustedDomains: str(process.env.ZITADEL_TRUSTED_DOMAIN, "").split(",").map((v) => v.trim()).filter(Boolean),
     customLoginAllowedOrgs: str(
       process.env.ZITADEL_CUSTOM_LOGIN_ALLOWED_ORGS,

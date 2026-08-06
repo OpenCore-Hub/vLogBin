@@ -25,11 +25,13 @@ import (
 )
 
 type Server struct {
-	store          *store.Store
-	svc            *service.Service
-	operatorToken  string
-	authVaultToken string
-	log            *slog.Logger
+	store              *store.Store
+	svc                *service.Service
+	operatorToken      string
+	authVaultToken     string
+	authVaultPublicKey string
+	authVaultAudience  string
+	log                *slog.Logger
 	// corsOrigins (atomic.Value of []string), rateLimits (atomic.Value of
 	// config.RateLimitConfig) and slowRequestThreshold (atomic.Int64 of
 	// nanoseconds) are read on every request and swapped by the config
@@ -141,6 +143,13 @@ func (s *Server) SetOIDCVerifier(v *zitadel.Verifier) {
 // When empty, /v1/auth/vault returns 503.
 func (s *Server) SetAuthVaultServiceToken(token string) {
 	s.authVaultToken = token
+}
+
+// SetAuthVaultPublicKey enables JWT-based web workload identity for
+// /v1/auth/vault. Preferred over the static shared secret.
+func (s *Server) SetAuthVaultPublicKey(pem, audience string) {
+	s.authVaultPublicKey = pem
+	s.authVaultAudience = audience
 }
 
 // SetPortalIssuer enables customer portal token endpoints. Must be called

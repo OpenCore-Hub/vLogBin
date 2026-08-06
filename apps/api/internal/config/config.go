@@ -77,6 +77,12 @@ type Config struct {
 	// AuthVaultServiceToken is the shared secret used by the vLogBin web
 	// backend to create/read/delete server-side OIDC token vault entries.
 	AuthVaultServiceToken string
+	// AuthVaultPublicKey is the PEM-encoded RSA public key used to verify
+	// short-lived JWTs signed by the vLogBin web backend. Prefer over the
+	// static shared secret.
+	AuthVaultPublicKey string
+	// AuthVaultAudience is the audience required in web-signed vault JWTs.
+	AuthVaultAudience string
 	// AuthVaultMasterKey is the AES-GCM key used to encrypt OIDC tokens in the
 	// server-side vault. Independent from PSP_MASTER_KEY for separate rotation.
 	AuthVaultMasterKey string
@@ -762,6 +768,11 @@ func Load() (Config, error) {
 	cfg.ZITADELURL = os.Getenv("ZITADEL_URL")
 	cfg.ZITADELPAT = os.Getenv("ZITADEL_PAT")
 	cfg.AuthVaultServiceToken = os.Getenv("AUTH_VAULT_SERVICE_TOKEN")
+	cfg.AuthVaultPublicKey = os.Getenv("AUTH_VAULT_PUBLIC_KEY")
+	cfg.AuthVaultAudience = os.Getenv("AUTH_VAULT_AUDIENCE")
+	if cfg.AuthVaultAudience == "" {
+		cfg.AuthVaultAudience = "vlogbin-auth-vault"
+	}
 	cfg.AuthVaultMasterKey = os.Getenv("AUTH_VAULT_MASTER_KEY")
 	cfg.AuthVaultMasterKeyPrevious = splitComma(os.Getenv("AUTH_VAULT_MASTER_KEY_PREVIOUS"))
 	cfg.AuthVaultSweepInterval = time.Hour

@@ -257,6 +257,7 @@ func main() {
 	)
 	apiServer := httpapi.NewServer(st, svc, cfg.OperatorToken, log)
 	apiServer.SetAuthVaultServiceToken(cfg.AuthVaultServiceToken)
+	apiServer.SetAuthVaultPublicKey(cfg.AuthVaultPublicKey, cfg.AuthVaultAudience)
 	apiServer.SetCORSOrigins(cfg.CORSAllowedOrigins)
 	apiServer.SetRateLimits(cfg.RateLimits)
 	if cfg.PortalTokenSecret != "" {

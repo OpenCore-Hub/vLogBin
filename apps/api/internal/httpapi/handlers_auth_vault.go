@@ -9,6 +9,7 @@ import (
 
 	"github.com/OpenCore-Hub/vLogBin/apps/api/internal/service"
 	"github.com/go-chi/chi/v5"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 type authVaultCreateRequest struct {
@@ -26,17 +27,45 @@ type authVaultCreateRequest struct {
 
 func (s *Server) authVaultAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.authVaultToken == "" {
+		if s.authVaultToken == "" && s.authVaultPublicKey == "" {
 			writeError(w, http.StatusServiceUnavailable, "not_configured", "auth vault service token not configured", reqIDFromRequest(r))
 			return
 		}
 		token, ok := bearerToken(r)
-		if !ok || subtle.ConstantTimeCompare([]byte(token), []byte(s.authVaultToken)) != 1 {
-			writeError(w, http.StatusUnauthorized, "unauthorized", "invalid auth vault token", reqIDFromRequest(r))
+		if ok && s.authVaultToken != "" {
+			if subtle.ConstantTimeCompare([]byte(token), []byte(s.authVaultToken)) == 1 {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+		if ok && s.authVaultPublicKey != "" && s.verifyAuthVaultJWT(token) == nil {
+			next.ServeHTTP(w, r)
 			return
 		}
-		next.ServeHTTP(w, r)
+		writeError(w, http.StatusUnauthorized, "unauthorized", "invalid auth vault token", reqIDFromRequest(r))
 	})
+}
+
+func (s *Server) verifyAuthVaultJWT(token string) error {
+	publicKey, err := jwt.ParseRSAPublicKeyFromPEM([]byte(s.authVaultPublicKey))
+	if err != nil {
+		return err
+	}
+	_, err = jwt.ParseWithClaims(
+		token,
+		&jwt.RegisteredClaims{},
+		func(t *jwt.Token) (any, error) {
+			if t.Method.Alg() != jwt.SigningMethodRS256.Alg() {
+				return nil, jwt.ErrTokenSignatureInvalid
+			}
+			return publicKey, nil
+		},
+		jwt.WithValidMethods([]string{"RS256"}),
+		jwt.WithIssuer("vlogbin-web"),
+		jwt.WithAudience(s.authVaultAudience),
+		jwt.WithExpirationRequired(),
+	)
+	return err
 }
 
 func (s *Server) authVaultCreate(w http.ResponseWriter, r *http.Request) {

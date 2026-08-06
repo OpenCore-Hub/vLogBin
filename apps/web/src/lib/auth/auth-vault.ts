@@ -1,5 +1,7 @@
 import "server-only";
 
+import { readFile } from "node:fs/promises";
+import { SignJWT, importPKCS8 } from "jose";
 import { authConfig } from "./config";
 
 export interface CreateAuthVaultInput {
@@ -40,24 +42,52 @@ export class AuthVaultError extends Error {
   }
 }
 
+let cachedServiceToken: { token: string; expiresAt: number } | null = null;
+
+async function resolveServiceToken(): Promise<string> {
+  if (
+    authConfig.zitadel.authVaultPrivateKey ||
+    authConfig.zitadel.authVaultPrivateKeyFile
+  ) {
+    if (cachedServiceToken && cachedServiceToken.expiresAt > Date.now()) {
+      return cachedServiceToken.token;
+    }
+    const key = authConfig.zitadel.authVaultPrivateKeyFile
+      ? await readFile(authConfig.zitadel.authVaultPrivateKeyFile, "utf8")
+      : authConfig.zitadel.authVaultPrivateKey;
+    const token = await new SignJWT({})
+      .setProtectedHeader({ alg: "RS256" })
+      .setIssuer("vlogbin-web")
+      .setSubject("web-backend")
+      .setAudience(authConfig.zitadel.authVaultAudience)
+      .setIssuedAt()
+      .setExpirationTime("5m")
+      .sign(await importPKCS8(key, "RS256"));
+    cachedServiceToken = { token, expiresAt: Date.now() + 4 * 60 * 1000 };
+    return token;
+  }
+  if (authConfig.zitadel.authVaultServiceToken) {
+    return authConfig.zitadel.authVaultServiceToken;
+  }
+  throw new AuthVaultError(
+    "AUTH_VAULT_SERVICE_PRIVATE_KEY 或 AUTH_VAULT_SERVICE_TOKEN 未配置，无法访问服务端会话保险库。",
+    "not-configured",
+    503,
+  );
+}
+
 async function request<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  if (!authConfig.zitadel.authVaultServiceToken) {
-    throw new AuthVaultError(
-      "AUTH_VAULT_SERVICE_TOKEN 未配置，无法访问服务端会话保险库。",
-      "not-configured",
-      503,
-    );
-  }
+  const serviceToken = await resolveServiceToken();
   let res: Response;
   try {
     res = await fetch(`${authConfig.apiBaseUrl}${path}`, {
       ...init,
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${authConfig.zitadel.authVaultServiceToken}`,
+        Authorization: `Bearer ${serviceToken}`,
         ...init?.headers,
       },
       cache: "no-store",
@@ -106,10 +136,11 @@ export async function getAuthVault(id: string): Promise<AuthVault> {
 }
 
 export async function deleteAuthVault(id: string): Promise<void> {
+  const serviceToken = await resolveServiceToken();
   const res = await fetch(`${authConfig.apiBaseUrl}/v1/auth/vault/${encodeURIComponent(id)}`, {
     method: "DELETE",
     headers: {
-      Authorization: `Bearer ${authConfig.zitadel.authVaultServiceToken}`,
+      Authorization: `Bearer ${serviceToken}`,
     },
   });
   if (!res.ok) {

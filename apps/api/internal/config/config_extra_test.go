@@ -25,6 +25,8 @@ func TestLoadAllEnvVars(t *testing.T) {
 	t.Setenv("AUTH_VAULT_MASTER_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 	t.Setenv("AUTH_VAULT_MASTER_KEY_PREVIOUS", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	t.Setenv("AUTH_VAULT_SWEEP_INTERVAL", "30m")
+	t.Setenv("AUTH_VAULT_PUBLIC_KEY", "-----BEGIN PUBLIC KEY-----\ntest\n-----END PUBLIC KEY-----")
+	t.Setenv("AUTH_VAULT_AUDIENCE", "vlogbin-auth-vault")
 	t.Setenv("AUDIT_RETENTION_DAYS", "730")
 	t.Setenv("AUDIT_RETENTION_SWEEP_INTERVAL", "6h")
 
@@ -80,6 +82,12 @@ func TestLoadAllEnvVars(t *testing.T) {
 	}
 	if cfg.AuthVaultSweepInterval != 30*time.Minute {
 		t.Fatalf("AuthVaultSweepInterval = %v", cfg.AuthVaultSweepInterval)
+	}
+	if !strings.Contains(cfg.AuthVaultPublicKey, "BEGIN PUBLIC KEY") {
+		t.Fatalf("AuthVaultPublicKey = %q", cfg.AuthVaultPublicKey)
+	}
+	if cfg.AuthVaultAudience != "vlogbin-auth-vault" {
+		t.Fatalf("AuthVaultAudience = %v", cfg.AuthVaultAudience)
 	}
 	if cfg.AuditRetentionDays != 730 {
 		t.Fatalf("AuditRetentionDays = %v, want 730", cfg.AuditRetentionDays)
