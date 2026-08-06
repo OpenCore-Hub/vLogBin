@@ -25,10 +25,11 @@ import (
 )
 
 type Server struct {
-	store         *store.Store
-	svc           *service.Service
-	operatorToken string
-	log           *slog.Logger
+	store          *store.Store
+	svc            *service.Service
+	operatorToken  string
+	authVaultToken string
+	log            *slog.Logger
 	// corsOrigins (atomic.Value of []string), rateLimits (atomic.Value of
 	// config.RateLimitConfig) and slowRequestThreshold (atomic.Int64 of
 	// nanoseconds) are read on every request and swapped by the config
@@ -134,6 +135,12 @@ func (s *Server) RateLimits() config.RateLimitConfig {
 // operator auth. When set, operator tokens are verified as JWTs.
 func (s *Server) SetOIDCVerifier(v *zitadel.Verifier) {
 	s.oidcVerifier = v
+}
+
+// SetAuthVaultServiceToken enables server-side web session token vault routes.
+// When empty, /v1/auth/vault returns 503.
+func (s *Server) SetAuthVaultServiceToken(token string) {
+	s.authVaultToken = token
 }
 
 // SetPortalIssuer enables customer portal token endpoints. Must be called
@@ -325,6 +332,13 @@ func (s *Server) Router() chi.Router {
 			r.Post("/support-sessions/{sessionId}/first-approve", s.firstApproveEmergency)
 			r.Post("/support-sessions/{sessionId}/second-approve", s.secondApproveEmergency)
 			r.Post("/support-sessions/{sessionId}/revoke", s.operatorRevokeSupportSession)
+		})
+		// Server-side web session token vault (AUTH_VAULT_SERVICE_TOKEN).
+		r.Route("/auth/vault", func(r chi.Router) {
+			r.Use(s.authVaultAuth)
+			r.Post("/", s.authVaultCreate)
+			r.Get("/{id}", s.authVaultGet)
+			r.Delete("/{id}", s.authVaultDelete)
 		})
 		// Control plane: platform-user self-service (design baseline §3.1 R11).
 		r.Route("/signup", func(r chi.Router) {

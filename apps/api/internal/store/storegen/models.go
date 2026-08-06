@@ -96,6 +96,21 @@ type AuditEvent struct {
 	EventHash     pgtype.Text   `json:"event_hash"`
 }
 
+type AuthSessionVault struct {
+	ID           string    `json:"id"`
+	UserSub      string    `json:"user_sub"`
+	Email        string    `json:"email"`
+	Name         string    `json:"name"`
+	Roles        []byte    `json:"roles"`
+	WorkspaceID  string    `json:"workspace_id"`
+	Env          string    `json:"env"`
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token"`
+	TokenExp     int64     `json:"token_exp"`
+	CreatedAt    time.Time `json:"created_at"`
+	ExpiresAt    time.Time `json:"expires_at"`
+}
+
 type BudgetAlert struct {
 	ID                uuid.UUID     `json:"id"`
 	ProviderID        uuid.UUID     `json:"provider_id"`

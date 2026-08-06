@@ -165,6 +165,7 @@ func TestMain(m *testing.M) {
 	)
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	apiServer := httpapi.NewServer(appStore, svc, operatorToken, logger)
+	apiServer.SetAuthVaultServiceToken("test-auth-vault-token")
 	portalIssuer, _ := portal.NewIssuer("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", 24*time.Hour)
 	apiServer.SetPortalIssuer(portalIssuer)
 	apiServer.SetStartupComplete() // migrations + pool + service are ready

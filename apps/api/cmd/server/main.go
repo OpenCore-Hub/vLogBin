@@ -241,6 +241,7 @@ func main() {
 		service.WithUsageFutureSkew(5*time.Minute),
 	)
 	apiServer := httpapi.NewServer(st, svc, cfg.OperatorToken, log)
+	apiServer.SetAuthVaultServiceToken(cfg.AuthVaultServiceToken)
 	apiServer.SetCORSOrigins(cfg.CORSAllowedOrigins)
 	apiServer.SetRateLimits(cfg.RateLimits)
 	if cfg.PortalTokenSecret != "" {

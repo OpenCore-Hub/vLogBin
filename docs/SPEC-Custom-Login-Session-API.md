@@ -5,6 +5,7 @@
 > 实现状态：P0/P1/P2/P3/P4 主体完成；真实 ZITADEL v4.16.0 契约探针与 Playwright 自建登录 E2E 通过；用户/组织灰度白名单与结构化登录事件已实现；按 env 放量由部署环境变量控制。
 > 已知边界：真实 OIDC callback 可换取 token 并完成 `/v1/signup`；`vlb_session` cookie 内嵌 access/refresh token 在 JWT access token 场景下超过 4KB，浏览器可能拒绝写入，进入控制台前需迁移为服务端会话存储。
 > 已落地缓解：access/refresh token 拆到独立加密分片 cookie（`vlb_session_token_N`），主会话 cookie 仅保留身份；callback 使用 200 + meta refresh 先落 cookie 再进入控制台。
+> 终态推进：平台 API 已新增 `auth_session_vault` 服务端 token vault（`POST/GET/DELETE /v1/auth/vault/{id}`，加密存储），web 会话下一步切换为“身份 cookie + vault token id”，彻底移除客户端 token。
 > 定位：vLogBin 提供与品牌一致的统一登录页，ZITADEL 继续作为独立身份引擎，vLogBin 只通过公开 Session API / OIDC API / User API 与其交互。
 > 合规边界：不修改、不内嵌 ZITADEL AGPL 核心源码。`proto/` 与 `apps/docs/` 为 Apache-2.0，`apps/login/`、`packages/zitadel-client/`、`packages/zitadel-proto/` 为 MIT，可作为接口与实现参考；法律结论以专业顾问意见为准。
 

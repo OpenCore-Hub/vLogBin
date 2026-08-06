@@ -21,6 +21,7 @@ func TestLoadAllEnvVars(t *testing.T) {
 	t.Setenv("PSP_MASTER_KEY", "abcdef")
 	t.Setenv("ZITADEL_URL", "https://auth.test")
 	t.Setenv("ZITADEL_PAT", "pat-token")
+	t.Setenv("AUTH_VAULT_SERVICE_TOKEN", "vault-service-token")
 	t.Setenv("AUDIT_RETENTION_DAYS", "730")
 	t.Setenv("AUDIT_RETENTION_SWEEP_INTERVAL", "6h")
 
@@ -64,6 +65,9 @@ func TestLoadAllEnvVars(t *testing.T) {
 	}
 	if cfg.ZITADELPAT != "pat-token" {
 		t.Fatalf("ZITADELPAT = %v", cfg.ZITADELPAT)
+	}
+	if cfg.AuthVaultServiceToken != "vault-service-token" {
+		t.Fatalf("AuthVaultServiceToken = %v", cfg.AuthVaultServiceToken)
 	}
 	if cfg.AuditRetentionDays != 730 {
 		t.Fatalf("AuditRetentionDays = %v, want 730", cfg.AuditRetentionDays)

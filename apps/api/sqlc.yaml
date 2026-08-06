@@ -36,6 +36,7 @@ sql:
       - "db/migrations/0034_provider_risk_reviews.sql"
       - "db/migrations/0035_auth_config_redirect_uris.sql"
       - "db/migrations/0036_auth_config_name.sql"
+      - "db/migrations/0037_auth_session_vault.sql"
     queries: "db/queries"
     gen:
       go:

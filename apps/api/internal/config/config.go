@@ -74,6 +74,9 @@ type Config struct {
 	// ZITADELPAT is a Personal Access Token for the ZITADEL Management
 	// API (ZITADEL_PAT). Required for Hosted Auth project management.
 	ZITADELPAT string
+	// AuthVaultServiceToken is the shared secret used by the vLogBin web
+	// backend to create/read/delete server-side OIDC token vault entries.
+	AuthVaultServiceToken string
 	// SupportSweepInterval controls how often the JIT support session
 	// expiry sweeper runs (SUPPORT_SWEEP_INTERVAL, default 30s).
 	SupportSweepInterval time.Duration
@@ -750,6 +753,7 @@ func Load() (Config, error) {
 	}
 	cfg.ZITADELURL = os.Getenv("ZITADEL_URL")
 	cfg.ZITADELPAT = os.Getenv("ZITADEL_PAT")
+	cfg.AuthVaultServiceToken = os.Getenv("AUTH_VAULT_SERVICE_TOKEN")
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")
 	}
