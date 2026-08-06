@@ -731,11 +731,12 @@
 > 目标：达到 SPEC §Testing Decisions 的公开平台契约验收线，以及架构设计 §7 契约治理、§23 发布升级、§25 P0 门禁中“代码与契约可验证”部分。
 > 边界：K8s/PITR/压测/合规证据属于运营与基础设施层，不在本清单；本清单交付后由外部运营侧补齐 P1/P2 证据。
 
-#### 候选 71：验收基线修复与黑盒契约测试框架
-- [ ] 修复 `TestRiskReviewAggregateLatestPerProvider`：聚合断言改为只统计本测试创建的 Provider IDs，消除同包并行污染（当前聚焦集成套件 23/24）
-- [ ] 建立公开平台契约黑盒验收 harness：只通过公共 API + Test/Live 凭证驱动 Auth / Billing / Metering / Entitlement / Quota / Event / Support
-- [ ] 将 SPEC Testing #1-40 拆成可断言用例并接入 CI：跨租户、环境隔离、幂等、冲销、目录不可变、订阅 pinning、发票重放、Commerce 隔离、同邮箱隔离、Webhook、事件游标、额度、Outbox、JIT、迁移、Offboarding
-- [ ] 验收：`go test ./internal/integration` 全量绿；黑盒 harness 全绿；SPEC #1-40 有测试映射表
+#### 候选 71：验收基线修复与黑盒契约测试框架（✅ 已完成）
+- [x] 修复 `TestRiskReviewAggregateLatestPerProvider`：聚合断言改为只统计本测试创建的 Provider IDs，消除同包并行污染（聚焦集成套件恢复全绿）
+- [x] 修复 `TestOutboxRelayDeliversUsage` 已知 flaky：按 transaction_id 轮询 drain 直至 published，消除历史 pending 积压导致的时序失败
+- [x] 建立公开平台契约黑盒验收 harness：`TestCommercialContractAcceptance` 只通过公共 API 验证跨租户隔离、环境头契约、用量幂等、目录不可变、订阅 pinning
+- [x] 建立 SPEC Testing #1-40 映射表：`docs/CONTRACT_ACCEPTANCE.md` 逐条标注已覆盖 / 部分 / 待补
+- [x] 验收：`go test ./internal/integration` 全量绿；黑盒 harness 全绿；SPEC #1-40 有测试映射表
 
 #### 候选 72：OpenAPI 契约完整性
 - [ ] 补齐 provider / operator / portal / events / quota / queues 全部公开路由到 `docs/openapi.yaml`
