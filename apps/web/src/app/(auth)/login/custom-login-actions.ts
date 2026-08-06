@@ -87,7 +87,7 @@ function methodLabel(method: AuthenticationMethodType): string {
   }
 }
 
-async function completeFlow(flow: LoginFlowData): Promise<never> {
+export async function completeLoginFlow(flow: LoginFlowData): Promise<never> {
   if (!flow.authRequestId) {
     throw new ZitadelApiError("登录请求已失效，请重新开始。", "session-invalid");
   }
@@ -234,7 +234,7 @@ export async function submitCustomLoginPassword(
     });
     const validation = await validateSession(session);
     if (validation.valid) {
-      return await completeFlow(nextFlow);
+      return await completeLoginFlow(nextFlow);
     }
     if (validation.reason === "mfa-required" && session.user) {
       return {
@@ -349,7 +349,7 @@ export async function submitCustomLoginMfa(
     });
     const validation = await validateSession(session);
     if (validation.valid) {
-      return await completeFlow(nextFlow);
+      return await completeLoginFlow(nextFlow);
     }
     return {
       ...prev,
@@ -433,7 +433,7 @@ export async function submitCustomLoginWebAuthn(
       validation.reason === "mfa-required" ? "mfa-required" : "session-invalid",
     );
   }
-  await completeFlow(nextFlow);
+  await completeLoginFlow(nextFlow);
 }
 
 export async function continueWithSavedSession(
@@ -469,7 +469,7 @@ export async function continueWithSavedSession(
       next,
     };
     await setLoginFlow(flow);
-    return await completeFlow(flow);
+    return await completeLoginFlow(flow);
   } catch (err) {
     return errorState(initialState, err, "继续会话失败，请重新登录。");
   }

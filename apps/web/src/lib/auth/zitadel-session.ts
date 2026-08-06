@@ -45,7 +45,10 @@ import {
   SearchQuerySchema as UserSearchQuerySchema,
   UserFieldName,
 } from "@zitadel/proto/zitadel/user/v2/query_pb";
-import { SetHumanEmailSchema } from "@zitadel/proto/zitadel/user/v2/email_pb";
+import {
+  SendEmailVerificationCodeSchema,
+  SetHumanEmailSchema,
+} from "@zitadel/proto/zitadel/user/v2/email_pb";
 import { PasswordSchema } from "@zitadel/proto/zitadel/user/v2/password_pb";
 import { SetHumanProfileSchema } from "@zitadel/proto/zitadel/user/v2/user_pb";
 import {
@@ -54,6 +57,8 @@ import {
   GetUserByIDRequestSchema,
   ListAuthenticationMethodTypesRequestSchema,
   ListUsersRequestSchema,
+  ResendEmailCodeRequestSchema,
+  VerifyEmailRequestSchema,
 } from "@zitadel/proto/zitadel/user/v2/user_service_pb";
 import {
   authConfig,
@@ -873,6 +878,39 @@ export async function createUser(
       throw new ZitadelApiError("ZITADEL 未返回 userId。", "invalid-response");
     }
     return { userId: response.id, emailCode: response.emailCode };
+  } catch (err) {
+    throw toApiError(err);
+  }
+}
+
+export async function verifyEmail(input: {
+  userId: string;
+  verificationCode: string;
+}): Promise<void> {
+  isCustomLoginActive();
+  try {
+    const clients = await getZitadelClients();
+    await clients.user.verifyEmail(
+      create(VerifyEmailRequestSchema, input),
+    );
+  } catch (err) {
+    throw toApiError(err);
+  }
+}
+
+export async function resendEmailCode(userId: string): Promise<void> {
+  isCustomLoginActive();
+  try {
+    const clients = await getZitadelClients();
+    await clients.user.resendEmailCode(
+      create(ResendEmailCodeRequestSchema, {
+        userId,
+        verification: {
+          case: "sendCode",
+          value: create(SendEmailVerificationCodeSchema, {}),
+        },
+      }),
+    );
   } catch (err) {
     throw toApiError(err);
   }
