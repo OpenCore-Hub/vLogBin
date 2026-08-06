@@ -344,6 +344,7 @@ spec:
 | Outbox pending 事件 | > 1000 持续 10 分钟 |
 | 数据库连接池使用率 | > 80% |
 | Webhook 投递失败率 | > 5% |
+| 弃用 API 用量（`http_api_deprecated_usage_total{path}` 增量）| > 0 持续 5 分钟（排查仍依赖旧版本的客户并发送迁移通知）|
 | DB 慢查询（`db_query_slow_total` 增量）| > 0 持续 5 分钟（需设置 `DB_SLOW_QUERY_THRESHOLD`）|
 | 限流后端错误（`rate_limiter_backend_errors_total` 增量）| > 0 持续 5 分钟（`RATE_LIMIT_BACKEND=redis` 时）|
 

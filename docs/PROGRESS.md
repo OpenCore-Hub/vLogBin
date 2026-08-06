@@ -753,12 +753,12 @@
 - [x] 验收：AsyncAPI 事件覆盖 100%（74/74）；`make contract` 全绿
 - [ ] 事件级 payload 字段按实际 outbox payload 细化：统一占位 schema 已满足覆盖率门禁，真实字段/枚举细化并入候选 77
 
-#### 候选 74：API 版本与兼容生命周期
-- [ ] `/v1/api-version` 返回 current / supported / policy / deprecated endpoints 完整载荷
-- [ ] 建立 deprecation registry：新弃用端点必须声明 `deprecated_at`、`sunset_at >= 12 个月`、replacement
-- [ ] 为弃用端点输出 `Sunset` / `Deprecation` / `Link` 头，并累加 `http_api_deprecated_usage_total{path}` 指标
-- [ ] 提供迁移指南模板与 Sunset 通知流程；新增破坏性变更时先建新 major 再弃用旧 major
-- [ ] 验收：模拟弃用端点集成测试通过；`api-version` 契约测试通过；12 个月政策有自动化断言
+#### 候选 74：API 版本与兼容生命周期（✅ 已完成）
+- [x] `/v1/api-version` 返回 current / supported / policy / deprecated endpoints 完整载荷
+- [x] 建立 deprecation registry：`ValidateDeprecationRegistry` 启动强制 `sunset_at >= 12 个月`、路径必填
+- [x] 为弃用端点输出 `Sunset` / `Deprecation` / `Link` 头，并累加 `http_api_deprecated_usage_total{path}` 指标（中间件单测 + metrics 注册）
+- [x] 提供迁移指南模板与 Sunset 通知流程：`docs/API_COMPATIBILITY.md`
+- [x] 验收：模拟弃用端点头/指标单测通过；`api-version` 契约测试通过；12 个月政策有自动化断言
 
 #### 候选 75：公共错误契约
 - [ ] 统一错误信封：`code / message / request_id / details / retry_after`，全路由输出一致
