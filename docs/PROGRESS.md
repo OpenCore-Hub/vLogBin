@@ -379,6 +379,7 @@
 | Billing Dashboard | `/console/billing/dashboard`：收入/活跃订阅/客户/待收账单指标卡（Sparkline）+ 近 30 天收入 AreaChart + 近期账单表；侧边栏 Billing 首项；补充根级 `.dockerignore` 加速构建 | ✅ 已完成（候选 54） |
 | Payments 控制面 | `/console/billing/payments`：支付成功/待支付/支付失败金额卡 + 发票数；DataTable 支付状态筛选；说明本地不存支付凭据、支付状态由 Lago 同步；侧边栏新增支付 | ✅ 已完成（候选 55） |
 | Catalog 控制面 | `/console/catalog`：目录版本选择（URL `?version=` 可分享/回退）+ 版本元数据 / 指标 / 套餐 / 价格 / 权益五段视图；当前 draft 摘要；侧边栏新增目录 | ✅ 已完成（候选 56） |
+| Developers SDK / 事件规范 | `/console/developers/sdk`（cURL / Node / Python 用量上报示例 + CodeBlock 复制）与 `/console/developers/events-spec`（事件目录 + payload 规范）；侧边栏补齐 SDK / 事件规范 | ✅ 已完成（候选 57） |
 
 ## 四、Web 前端重构任务追踪（设计基线 v1.4）
 
@@ -391,7 +392,7 @@
 | M0 基座 | 目录 / tokens / 认证 / 官网 / Console 布局 / Ops 迁移 / 引导 | ✅ 已完成（静态验收，待提交） |
 | M1 控制面 API | `apps/api` 新增 Console 端点（最大前置依赖） | ✅ 已完成（候选 29-33） |
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
-| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 56） |
+| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 57） |
 
 ### M0 — 基座（✅ 已完成，待提交）
 
@@ -615,6 +616,12 @@
   - 侧边栏新增「目录」
   - E2E：`23-catalog.spec.ts`（发布目录 → 指标 / 套餐 / 权益渲染）
   - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright 全量 51/52 + Portal 单跑通过（唯一失败为登录 429 限流偶发，非代码回归）
+- [x] Developers SDK / 事件规范 — 候选 57
+  - `/console/developers/sdk`：cURL / Node.js / Python 用量上报示例，CodeBlock 一键复制
+  - `/console/developers/events-spec`：事件目录（13 类事件 + 聚合 + 说明）与示例 payload
+  - 侧边栏 Developers 分组补齐「SDK」「事件规范」
+  - E2E：`24-developer-guides.spec.ts`
+  - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright 全量 52/53 + Portal 单跑通过（唯一失败为登录 429 限流偶发，非代码回归）
 
 ### 技术债 / 结构偏差（M0 遗留，随里程碑消化）
 
