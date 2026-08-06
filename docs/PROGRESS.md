@@ -345,8 +345,9 @@
 - [x] 真实回调联调：callback 已换取 token 并调用 `/v1/signup` 成功（API OIDC Verifier + JWT access token）；发现 `vlb_session` cookie 因内嵌 access/refresh token 超 4KB 被浏览器拒绝，下一步需服务端会话存储
 - [x] 会话 cookie 分片：access/refresh token 从主 JWT 拆到 `vlb_session_token_N` 独立加密分片，主 `vlb_session` 仅保留身份；callback 改为 200 + meta refresh 保留 cookie 后再进入控制台
 - [x] API 服务端 token vault：`0037_auth_session_vault` + `POST/GET/DELETE /v1/auth/vault/{id}` + 加密存取 + 集成测试通过；web 侧接入待续
+- [x] web 会话切换服务端 vault：主 cookie 仅含身份 JWT + `vid`，`getSession` 经 `/v1/auth/vault/{id}` 按需取 token，登出删除 vault；token 分片 cookie 已移除
 - [x] 实现验证：`tsc` / ESLint / `vitest`（8 条 MFA 门槛用例）/ Next.js 生产构建全绿
-- **状态：✅ P0-P4 主体完成；真实 ZITADEL 自建登录 E2E 已通过；API 服务端 token vault 已落地，web 会话切换为 vault 后完成终态**
+- **状态：✅ P0-P4 主体完成；真实 ZITADEL 自建登录 E2E 已通过；API + web 服务端 token vault 已落地，待真实浏览器闭环验收**
 
 ### 测试体系扩充
 - [x] metrics_middleware / security / timeout / health / workspace / web_simulation 等新测试

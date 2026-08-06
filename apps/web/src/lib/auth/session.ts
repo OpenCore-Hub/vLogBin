@@ -2,16 +2,17 @@ import "server-only";
 
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
+import {
+  AuthVault,
+  createAuthVault,
+  deleteAuthVault,
+  getAuthVault,
+} from "./auth-vault";
 import { authConfig, isSessionSecretConfigured } from "./config";
-import { sealSecret, unsealSecret } from "./crypto";
 import { OidcError, refreshTokens, verifyIdToken } from "./oidc";
 import { SESSION_COOKIE } from "../env-shared";
 
 export { SESSION_COOKIE };
-
-export const SESSION_TOKEN_COOKIE_PREFIX = "vlb_session_token_";
-const SESSION_TOKEN_CHUNK_MAX = 3000;
-const SESSION_TOKEN_CHUNK_LIMIT = 10;
 
 export type Env = "test" | "live";
 
@@ -35,17 +36,11 @@ interface SessionClaims {
   roles: string[];
   workspaceId: string;
   env: Env;
-  /** 加密 token 分片数量；0 表示无凭据。 */
-  tc?: number;
+  /** 服务端 token vault id；无凭据时为空。 */
+  vid?: string;
   exp_: number;
   /** 会话过期时间（jose payload 注入） */
   exp?: number;
-}
-
-interface TokenVault {
-  accessToken?: string;
-  refreshToken?: string;
-  tokenExp?: number;
 }
 
 export class SessionError extends Error {
@@ -54,6 +49,9 @@ export class SessionError extends Error {
     this.name = "SessionError";
   }
 }
+
+const vaultCache = new Map<string, { expiresAt: number; vault: AuthVault }>();
+const VAULT_CACHE_TTL_MS = 10_000;
 
 /* ---------------- Token 加解密（AES-256-GCM，密钥由 SESSION_SECRET 派生） ---------------- */
 
@@ -102,69 +100,24 @@ function cookieOptions(maxAge: number) {
   };
 }
 
-function tokenChunkNames(count: number): string[] {
-  return Array.from({ length: count }, (_, index) => `${SESSION_TOKEN_COOKIE_PREFIX}${index}`);
-}
-
-function splitTokenChunks(blob: string): string[] {
-  if (!blob) return [];
-  const chunks: string[] = [];
-  for (let offset = 0; offset < blob.length; offset += SESSION_TOKEN_CHUNK_MAX) {
-    chunks.push(blob.slice(offset, offset + SESSION_TOKEN_CHUNK_MAX));
-  }
-  return chunks;
-}
-
-function sealTokenVault(input: CreateSessionInput): string {
-  const vault: TokenVault = {
-    accessToken: input.accessToken,
-    refreshToken: input.refreshToken,
-    tokenExp: input.tokenExp,
-  };
-  return sealSecret(JSON.stringify(vault));
-}
-
-function readTokenVault(
-  jar: Awaited<ReturnType<typeof cookies>>,
-  count: number,
-): TokenVault {
-  if (!count || count > SESSION_TOKEN_CHUNK_LIMIT) return {};
-  const parts: string[] = [];
-  for (const name of tokenChunkNames(count)) {
-    const raw = jar.get(name)?.value;
-    if (!raw) return {};
-    parts.push(raw);
+async function loadVault(id: string | undefined): Promise<AuthVault | null> {
+  if (!id) return null;
+  const cached = vaultCache.get(id);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.vault;
   }
   try {
-    const parsed = JSON.parse(unsealSecret(parts.join(""))) as Record<
-      string,
-      unknown
-    >;
-    return {
-      accessToken:
-        typeof parsed.accessToken === "string" ? parsed.accessToken : undefined,
-      refreshToken:
-        typeof parsed.refreshToken === "string" ? parsed.refreshToken : undefined,
-      tokenExp:
-        typeof parsed.tokenExp === "number" ? parsed.tokenExp : undefined,
-    };
+    const vault = await getAuthVault(id);
+    vaultCache.set(id, { expiresAt: Date.now() + VAULT_CACHE_TTL_MS, vault });
+    return vault;
   } catch {
-    return {};
-  }
-}
-
-function deleteTokenChunks(
-  jar: Awaited<ReturnType<typeof cookies>>,
-  maxCount = SESSION_TOKEN_CHUNK_LIMIT,
-): void {
-  for (const name of tokenChunkNames(maxCount)) {
-    jar.delete(name);
+    return null;
   }
 }
 
 export function sessionToClaims(
   s: Omit<Session, "expiresAt">,
-  tokenChunkCount = 0,
+  vaultId?: string,
 ): SessionClaims {
   return {
     sub: s.sub,
@@ -173,14 +126,14 @@ export function sessionToClaims(
     roles: s.roles,
     workspaceId: s.workspaceId,
     env: s.env,
-    tc: tokenChunkCount,
+    vid: vaultId,
     exp_: s.tokenExp ?? 0,
   };
 }
 
 export function claimsToSession(
   c: SessionClaims,
-  vault: TokenVault = {},
+  vault: AuthVault | null = null,
 ): Session {
   return {
     sub: c.sub,
@@ -189,9 +142,9 @@ export function claimsToSession(
     roles: c.roles,
     workspaceId: c.workspaceId,
     env: c.env,
-    accessToken: vault.accessToken,
-    refreshToken: vault.refreshToken,
-    tokenExp: c.exp_ || vault.tokenExp || undefined,
+    accessToken: vault?.accessToken,
+    refreshToken: vault?.refreshToken,
+    tokenExp: c.exp_ || vault?.tokenExp || undefined,
     expiresAt: 0, // 由调用方补充
   };
 }
@@ -214,7 +167,7 @@ export async function createSessionToken(
 ): Promise<{
   token: string;
   expiresAt: number;
-  tokenChunks: string[];
+  vaultId?: string;
 }> {
   if (!isSessionSecretConfigured()) {
     throw new SessionError(
@@ -222,12 +175,27 @@ export async function createSessionToken(
     );
   }
   const expiresAt = Math.floor(Date.now() / 1000) + authConfig.sessionMaxAgeSeconds;
-  const tokenChunks = splitTokenChunks(sealTokenVault(input));
+  let vaultId: string | undefined;
+  if (input.accessToken || input.refreshToken) {
+    const vault = await createAuthVault({
+      userSub: input.sub,
+      email: input.email,
+      name: input.name,
+      roles: input.roles,
+      workspaceId: input.workspaceId,
+      env: input.env,
+      accessToken: input.accessToken ?? "",
+      refreshToken: input.refreshToken ?? "",
+      tokenExp: input.tokenExp ?? 0,
+      ttlSeconds: authConfig.sessionMaxAgeSeconds + 3600,
+    });
+    vaultId = vault.id;
+  }
   const token = await signClaims({
-    ...sessionToClaims(input, tokenChunks.length),
+    ...sessionToClaims(input, vaultId),
     exp: expiresAt,
   });
-  return { token, expiresAt, tokenChunks };
+  return { token, expiresAt, vaultId };
 }
 
 /** 读取当前会话（服务端）。 */
@@ -237,10 +205,25 @@ export async function getSession(): Promise<Session | null> {
   if (!raw) return null;
   try {
     const claims = await verifyClaims(raw);
-    const vault = readTokenVault(jar, claims.tc ?? 0);
+    const vault = await loadVault(claims.vid);
+    if (claims.vid && !vault) {
+      jar.delete(SESSION_COOKIE);
+      return null;
+    }
     const session = claimsToSession(claims, vault);
     session.expiresAt = claims.exp ?? 0;
     return session;
+  } catch {
+    return null;
+  }
+}
+
+async function readCurrentClaims(): Promise<SessionClaims | null> {
+  const jar = await cookies();
+  const raw = jar.get(SESSION_COOKIE)?.value;
+  if (!raw) return null;
+  try {
+    return await verifyClaims(raw);
   } catch {
     return null;
   }
@@ -256,18 +239,13 @@ export async function requireSession(): Promise<Session> {
 }
 
 /** 建立会话（写入 httpOnly cookie）。 */
-export async function createSession(input: CreateSessionInput): Promise<void> {
-  const { token, tokenChunks } = await createSessionToken(input);
+export async function createSession(
+  input: CreateSessionInput,
+): Promise<{ vaultId?: string }> {
+  const { token, vaultId } = await createSessionToken(input);
   const jar = await cookies();
-  deleteTokenChunks(jar);
   jar.set(SESSION_COOKIE, token, cookieOptions(authConfig.sessionMaxAgeSeconds));
-  tokenChunks.forEach((chunk, index) => {
-    jar.set(
-      `${SESSION_TOKEN_COOKIE_PREFIX}${index}`,
-      chunk,
-      cookieOptions(authConfig.sessionMaxAgeSeconds),
-    );
-  });
+  return { vaultId };
 }
 
 /** 更新会话（保留身份，覆盖凭据/环境）。 */
@@ -276,6 +254,7 @@ export async function updateSession(
 ): Promise<Session> {
   const current = await getSession();
   if (!current) throw new SessionError("会话不存在");
+  const oldClaims = await readCurrentClaims();
   const next: CreateSessionInput = {
     sub: patch.sub ?? current.sub,
     email: patch.email ?? current.email,
@@ -287,14 +266,20 @@ export async function updateSession(
     refreshToken: patch.refreshToken ?? current.refreshToken,
     tokenExp: patch.tokenExp ?? current.tokenExp,
   };
-  await createSession(next);
+  const { vaultId } = await createSession(next);
+  if (oldClaims?.vid && oldClaims.vid !== vaultId) {
+    await deleteAuthVault(oldClaims.vid).catch(() => {});
+  }
   return (await getSession()) as Session;
 }
 
 /** 销毁会话。 */
 export async function destroySession(): Promise<void> {
   const jar = await cookies();
-  deleteTokenChunks(jar);
+  const claims = await readCurrentClaims();
+  if (claims?.vid) {
+    await deleteAuthVault(claims.vid).catch(() => {});
+  }
   jar.delete(SESSION_COOKIE);
 }
 

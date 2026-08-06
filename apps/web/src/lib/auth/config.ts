@@ -61,6 +61,7 @@ export const authConfig = {
     systemUserPrivateKeyFile: str(process.env.SYSTEM_USER_PRIVATE_KEY_FILE),
     serviceUserToken: str(process.env.ZITADEL_SERVICE_USER_TOKEN),
     loginClientPat: str(process.env.ZITADEL_LOGIN_CLIENT_PAT),
+    authVaultServiceToken: str(process.env.AUTH_VAULT_SERVICE_TOKEN),
     trustedDomains: str(process.env.ZITADEL_TRUSTED_DOMAIN, "").split(",").map((v) => v.trim()).filter(Boolean),
     customLoginAllowedOrgs: str(
       process.env.ZITADEL_CUSTOM_LOGIN_ALLOWED_ORGS,
