@@ -377,6 +377,7 @@
 | UI 组件补齐（Card/Drawer/Pagination） | 新增 `Card` 家族（CardHeader/Title/Content/Footer）、`Drawer`（Esc 关闭 + 焦点管理 + 滚动锁 + 左右侧开）、`Pagination`（页码 + 省略号 + URL 驱动）；接入审计统计卡 / 窄屏侧边栏 / DataTable 分页；修复移动端汉堡按钮被顶栏遮挡的 z-index 问题 | ✅ 已完成（候选 52） |
 | Policies 控制面 | M1 候选 31 的前端落地：operator 3 端点（list/set/delete plan entitlements，`?env=` 显式解析）+ openapi 3 paths；前端 `/console/identity/policies` 套餐选择 + 权益 CRUD + live/删除 type-to-confirm；集成测试 `operator_catalog_policies_test.go` + E2E `20-policies.spec.ts` | ✅ 已完成（候选 53） |
 | Billing Dashboard | `/console/billing/dashboard`：收入/活跃订阅/客户/待收账单指标卡（Sparkline）+ 近 30 天收入 AreaChart + 近期账单表；侧边栏 Billing 首项；补充根级 `.dockerignore` 加速构建 | ✅ 已完成（候选 54） |
+| Payments 控制面 | `/console/billing/payments`：支付成功/待支付/支付失败金额卡 + 发票数；DataTable 支付状态筛选；说明本地不存支付凭据、支付状态由 Lago 同步；侧边栏新增支付 | ✅ 已完成（候选 55） |
 
 ## 四、Web 前端重构任务追踪（设计基线 v1.4）
 
@@ -389,7 +390,7 @@
 | M0 基座 | 目录 / tokens / 认证 / 官网 / Console 布局 / Ops 迁移 / 引导 | ✅ 已完成（静态验收，待提交） |
 | M1 控制面 API | `apps/api` 新增 Console 端点（最大前置依赖） | ✅ 已完成（候选 29-33） |
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
-| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 54） |
+| M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | 🔄 进行中（候选 55） |
 
 ### M0 — 基座（✅ 已完成，待提交）
 
@@ -600,6 +601,13 @@
   - 根级 `.dockerignore`：排除 node_modules / .next / test-results / server 二进制 / third-party 等，显著缩短 dev 镜像构建上下文
   - E2E：`21-billing-dashboard.spec.ts`（种子套餐+客户+订阅 → 指标与近期账单渲染）
   - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **50/50 全绿** ✅
+- [x] Payments 控制面 — 候选 55
+  - `/console/billing/payments`：支付成功 / 待支付 / 支付失败 / 发票数四张金额卡
+  - DataTable 支付状态筛选（succeeded / pending / failed），发票详情可跳转
+  - 页面明确「本地不保存支付方式与渠道凭据，支付状态由 Lago 发票同步维护」
+  - 侧边栏 Billing 分组新增「支付」
+  - E2E：`22-payments.spec.ts`（摘要卡 + 空账单态）
+  - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **51/51 全绿** ✅
 
 ### 技术债 / 结构偏差（M0 遗留，随里程碑消化）
 
