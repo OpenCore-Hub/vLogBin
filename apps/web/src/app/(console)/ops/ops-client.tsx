@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { useActionFeedback } from "@/hooks/use-action-feedback";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import type {
@@ -164,6 +165,7 @@ export function OpsClient({
           open={createCellOpen}
           onOpenChange={setCreateCellOpen}
           regions={regions}
+          onSaved={() => router.refresh()}
         />
       )}
       {statusCell && (
@@ -643,12 +645,18 @@ function CreateCellDialog({
   open,
   onOpenChange,
   regions,
+  onSaved,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   regions: Region[];
+  onSaved: () => void;
 }) {
-  const [state, formAction, pending] = useActionState(createCellAction, initialState);
+  const { state, formAction, pending } = useActionFeedback<OpActionState>({
+    action: createCellAction,
+    initialState,
+    successTitle: "Cell 已创建",
+  });
   return (
     <Dialog
       open={open}
@@ -660,7 +668,16 @@ function CreateCellDialog({
       {state.ok ? (
         <div className="space-y-4">
           <SuccessPanel title="Cell 已创建" />
-          <div className="flex justify-end"><Button onClick={() => onOpenChange(false)}>完成</Button></div>
+          <div className="flex justify-end">
+            <Button
+              onClick={() => {
+                onOpenChange(false);
+                onSaved();
+              }}
+            >
+              完成
+            </Button>
+          </div>
         </div>
       ) : (
         <form action={formAction} className="space-y-4">

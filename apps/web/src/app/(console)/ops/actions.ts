@@ -258,7 +258,6 @@ export async function createCellAction(
       capacity_limits: {},
     });
     if (!cell) return { ok: false, error: "创建失败：API 未返回 Cell" };
-    revalidatePath("/ops");
     return { ok: true };
   } catch (err) {
     return { ok: false, error: errorMessage(err) };

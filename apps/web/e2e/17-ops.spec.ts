@@ -33,6 +33,8 @@ test.describe("Ops enhancement", () => {
     await page.getByRole("dialog").getByLabel("Region").selectOption(regionId);
     await page.getByRole("dialog").getByLabel("Code").fill(code);
     await page.getByRole("dialog").getByRole("button", { name: "创建 Cell" }).click();
-    await expect(page.getByText("Cell 已创建", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("dialog").getByText("Cell 已创建", { exact: true }),
+    ).toBeVisible();
   });
 });
