@@ -382,6 +382,7 @@
 | Developers SDK / 事件规范 | `/console/developers/sdk`（cURL / Node / Python 用量上报示例 + CodeBlock 复制）与 `/console/developers/events-spec`（事件目录 + payload 规范）；侧边栏补齐 SDK / 事件规范 | ✅ 已完成（候选 57） |
 | Identity Users 控制面 | `/console/identity/users`：workspace 成员列表 / 邀请 / 角色更新 / 移除（type-to-confirm）；复用既有 `/v1/me/workspaces/{id}/members` API；侧边栏新增 Users | ✅ 已完成（候选 58） |
 | 多 workspace 切换 | `WORKSPACE_COOKIE` + `lib/workspace.ts`（workspace_id==provider_id 解析）；Topbar WorkspaceSwitcher（多 workspace 下拉、单 workspace 只读标签）；13 个 Console 页面全部改为按当前 workspace 解析 provider；Settings / Users 同步按 cookie 选择 | ✅ 已完成（候选 59） |
+| 用量控制面 | `/console/billing/usage`：事件/客户/指标/撤销摘要卡 + DataTable（事务/客户/指标检索、环境与时间列）；复用既有 usage-events 端点；侧边栏新增用量 | ✅ 已完成（候选 60） |
 
 ## 四、Web 前端重构任务追踪（设计基线 v1.4）
 
@@ -395,7 +396,7 @@
 | M1 控制面 API | `apps/api` 新增 Console 端点（最大前置依赖） | ✅ 已完成（候选 29-33） |
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
 | M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | ✅ 已完成（候选 43-58） |
-| M4 生产级 | 多 workspace 切换 / 后续生产硬化 | 🔄 进行中（候选 59） |
+| M4 生产级 | 多 workspace 切换 / 用量控制面 / 后续生产硬化 | 🔄 进行中（候选 60） |
 
 ### M0 — 基座（✅ 已完成，待提交）
 
@@ -643,6 +644,13 @@
   - 13 个 Console 页面改为 `resolveWorkspaceProvider()`（Plans / Customers / Invoices / Dashboard / Payments / API Keys / Webhooks / Events / Applications / Policies / Audit / Catalog / 详情页）；Overview / Settings / Users 按 cookie 选择
   - E2E：`26-workspace-switcher.spec.ts`
   - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright 全量 53/55 + Ops Cell / Portal 单跑通过（仅全量串行限流/偶发，非代码回归）
+- [x] 用量控制面 — 候选 60
+  - `/console/billing/usage`：事件数 / 客户数 / 指标数 / 撤销事件摘要卡
+  - DataTable：事务 ID / 客户 / 指标 / 类型 / 环境 / 发生时间 / 入库时间，搜索 + 排序 + 分页 URL 化
+  - 数据复用既有 `/v1/operator/providers/{id}/usage-events`，无新增后端
+  - 侧边栏 Billing 分组新增「用量」
+  - E2E：`27-usage.spec.ts`（建目录 + 客户 + 订阅 → 上报用量 → 摘要与事件渲染）
+  - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright 全量 55/56 + Ops Cell 单跑通过（唯一失败为全量串行偶发，非代码回归）
 
 ### 技术债 / 结构偏差（M0 遗留，随里程碑消化）
 
