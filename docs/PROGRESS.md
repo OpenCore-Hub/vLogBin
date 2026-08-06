@@ -403,7 +403,7 @@
 | M1 控制面 API | `apps/api` 新增 Console 端点（最大前置依赖） | ✅ 已完成（候选 29-33） |
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
 | M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | ✅ 已完成（候选 43-58） |
-| M4 生产级 | 多 workspace 切换 / 用量控制面 / 全局错误与加载边界 / 审计导出 / E2E 稳定性 / Analytics / 订阅控制面 / Portal 支付历史 / 对账中心 / 支持会话 / 硬额度 / 队列看板 / 后续生产硬化 | 🔄 进行中（候选 70） |
+| M4 生产级 | 多 workspace 切换 / 用量控制面 / 全局错误与加载边界 / 审计导出 / E2E 稳定性 / Analytics / 订阅控制面 / Portal 支付历史 / 对账中心 / 支持会话 / 硬额度 / 队列看板 / 后续生产硬化 | ✅ 已完成（候选 59-70） |
 | M5 正式商用（功能与契约层） | 验收基线 / OpenAPI / AsyncAPI / 版本兼容 / 错误契约 / SDK / Webhook 事件流 / 身份边界 / 双账务域 / 目录权益额度 / 生命周期与 Offboarding / 支持审计 WORM / 迁移故障恢复 / 发布门禁 | ✅ 已完成（候选 71-84） |
 
 ### M0 — 基座（✅ 已完成，待提交）
@@ -642,7 +642,7 @@
   - E2E：`25-users.spec.ts`（邀请 → 改角色 → 移除）
   - 验证：tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright 全量 53/54 + Ops Cell 单跑通过（唯一失败为全量串行偶发，非代码回归）
 
-### M4 — 生产级（🔄 进行中）
+### M4 — 生产级（✅ 已完成）
 
 - [x] 多 workspace 切换 — 候选 59
   - `WORKSPACE_COOKIE`（`vlb_workspace`）+ `switchWorkspace` server action（cookie 持久化 + `/console` layout revalidate）
@@ -726,7 +726,7 @@
   - E2E：`33-queues.spec.ts`（造真实用量事件 → 最近 Outbox 可见）✅
   - 验证：Go build / vet / 非集成全量单测 ✅；集成回归（队列看板）✅；tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **63/63 全绿** ✅
 
-### M5 — 正式商用上线（功能与契约层，⬜ 规划中）
+### M5 — 正式商用上线（功能与契约层，✅ 已完成）
 
 > 目标：达到 SPEC §Testing Decisions 的公开平台契约验收线，以及架构设计 §7 契约治理、§23 发布升级、§25 P0 门禁中“代码与契约可验证”部分。
 > 边界：K8s/PITR/压测/合规证据属于运营与基础设施层，不在本清单；本清单交付后由外部运营侧补齐 P1/P2 证据。
@@ -776,7 +776,10 @@
 - [x] 事件流 client：`StreamEvents` cursor 分页 + `has_more` 续读
 - [x] SDK smoke tests：认证头 / 幂等键 / 错误信封 / 用量上报 / Webhook 验签全绿（`make sdk`）
 - [x] `make release-gate` 覆盖 Go / TypeScript / Python 三语言 SDK 测试
-- [ ] OpenAPI→SDK 生成管线、包发布与生成物 diff 检查（后续候选）
+- [x] OpenAPI→SDK 生成管线：`sdk/operations.yaml` + `scripts/sync-sdk-operations.py` 生成 `sdk/generated/manifest.json`，OpenAPI 路径/schema/参数/x-idempotency-key 变更即驱动 SDK 契约校验
+- [x] 三语言契约校验：`scripts/check-sdk-contract.py` 校验 Go / TypeScript / Python 的操作符号、路径、幂等键与查询参数全部对齐
+- [x] 包产物 diff：`scripts/check-sdk-artifacts.py` 固定 TypeScript dist 与 Python 包源码指纹，`make sdk` 检查漂移
+- [x] 发布管线：`scripts/publish-sdks.sh`（dry-run / publish）+ `docs/SDK_RELEASE.md` + GitHub Actions SDK gate；npm/PyPI 实际发布由 registry 凭证显式触发
 
 #### 候选 77：Webhook 与事件流对外契约（✅ 已完成）
 - [x] 正式化 Webhook 交付契约：`docs/WEBHOOK_EVENTS.md` 覆盖签名头、timestamp、schema version、event type、重试、退避、dead_letter、replay
@@ -832,6 +835,7 @@
 #### 候选 84：发布门禁与上线验收（✅ 代码侧已完成）
 - [x] 建立 `make release-gate`：API build/vet、非集成单测、全量集成、契约检查、SDK、Web tsc/eslint、全量 E2E 一条命令可跑
 - [x] `make sdk` 扩展为 Go / TypeScript / Python 三语言测试；release-gate 第 5 步覆盖三语言
+- [x] `make contract` 扩展为 SDK 操作清单与三语言契约校验；`make sdk` 扩展为契约 + 包产物 diff
 - [x] 产出《正式商用上线验收清单》：`docs/RELEASE_ACCEPTANCE.md`（P0 代码项逐条勾选，P1/P2 外部证据单列出）
 - [x] 修复全部 CI 偶发：集成套件隔离缺陷、已知 outbox flaky、限流余量均已收敛
 - [x] 验收：`make release-gate` 全绿（含 63/63 E2E）；P0/P1 Runbook 演练记录由运营侧补充后签署
