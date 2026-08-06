@@ -403,7 +403,7 @@
 | M1 控制面 API | `apps/api` 新增 Console 端点（最大前置依赖） | ✅ 已完成（候选 29-33） |
 | M2 Console 主流程 | Overview 完整版 + Identity / Billing + 环境隔离端到端 | ✅ 已完成（候选 34-42） |
 | M3 完善面 | Developers / Settings / Ops 增强 / Portal / E2E 全量 | ✅ 已完成（候选 43-58） |
-| M4 生产级 | 多 workspace 切换 / 用量控制面 / 全局错误与加载边界 / 审计导出 / E2E 稳定性 / Analytics / 订阅控制面 / Portal 支付历史 / 对账中心 / 后续生产硬化 | 🔄 进行中（候选 67） |
+| M4 生产级 | 多 workspace 切换 / 用量控制面 / 全局错误与加载边界 / 审计导出 / E2E 稳定性 / Analytics / 订阅控制面 / Portal 支付历史 / 对账中心 / 支持会话 / 硬额度 / 队列看板 / 后续生产硬化 | 🔄 进行中（候选 70） |
 
 ### M0 — 基座（✅ 已完成，待提交）
 
@@ -717,6 +717,13 @@
   - 集成测试：`TestOperatorQuotaControlPlane`（聚合读取 / 预占可见 / 更新 / 删除）✅
   - E2E：`32-quota.spec.ts`（UI 创建额度上限 + type-to-confirm 删除）✅
   - 验证：Go build / vet / 非集成全量单测 ✅；集成回归（额度控制面）✅；tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **62/62 全绿** ✅
+- [x] 队列容量 / 死信运营看板 — 候选 70
+  - API：`GET /v1/operator/queues/overview` 单事务返回 Outbox / Webhook 投递按状态计数 + 最近 Outbox 事件（跨 Provider，`limit` 可配）
+  - SQL：`ListOutboxEventsFiltered`（可选 status 过滤，具名参数避免 `column_1` 生成名）
+  - 前端：`/console/queues` 八张容量卡（Outbox pending/failed/dead_letter/published + Webhook pending/failed/dead_letter/delivered）+ 最近 Outbox DataTable（状态筛选、最后错误、重试次数）；侧边栏新增「队列」
+  - 集成测试：`TestOperatorQueueOverview` ✅
+  - E2E：`33-queues.spec.ts`（造真实用量事件 → 最近 Outbox 可见）✅
+  - 验证：Go build / vet / 非集成全量单测 ✅；集成回归（队列看板）✅；tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **63/63 全绿** ✅
 
 ### 技术债 / 结构偏差（M0 遗留，随里程碑消化）
 
