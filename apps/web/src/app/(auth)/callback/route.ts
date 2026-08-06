@@ -101,16 +101,14 @@ export async function GET(req: NextRequest) {
     refreshToken: tokenSet.refreshToken,
     tokenExp: Math.floor(Date.now() / 1000) + tokenSet.expiresIn,
   });
-  jar.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: authConfig.sessionMaxAgeSeconds,
-  });
   const target = new URL(next, req.url).toString();
-  return new Response(
-    `<!doctype html><html><head><meta http-equiv="refresh" content="0;url=${target}"></head><body></body></html>`,
-    { headers: { "Content-Type": "text/html; charset=utf-8" } },
+  const headers = new Headers();
+  headers.set("Location", target);
+  headers.append(
+    "Set-Cookie",
+    `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${authConfig.sessionMaxAgeSeconds}${
+      process.env.NODE_ENV === "production" ? "; Secure" : ""
+    }`,
   );
+  return new Response(null, { status: 302, headers });
 }

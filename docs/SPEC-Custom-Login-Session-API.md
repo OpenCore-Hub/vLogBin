@@ -7,6 +7,7 @@
 > 已落地缓解：access/refresh token 拆到独立加密分片 cookie（`vlb_session_token_N`），主会话 cookie 仅保留身份；callback 使用 200 + meta refresh 先落 cookie 再进入控制台。
 > 终态推进：平台 API 已新增 `auth_session_vault` 服务端 token vault（`POST/GET/DELETE /v1/auth/vault/{id}`，加密存储），web 会话下一步切换为“身份 cookie + vault token id”，彻底移除客户端 token。
 > 终态已落地：web 会话 cookie 仅保留身份 JWT + `vid`，access/refresh token 全部通过平台 API token vault 按需读取；token 分片 cookie 已移除。
+> 验证状态：真实 standalone 后端闭环已确认（vault 201 + signup 200）；浏览器 console 最终验收因 Playwright 中间跳转竞态待稳定后补测。
 > 定位：vLogBin 提供与品牌一致的统一登录页，ZITADEL 继续作为独立身份引擎，vLogBin 只通过公开 Session API / OIDC API / User API 与其交互。
 > 合规边界：不修改、不内嵌 ZITADEL AGPL 核心源码。`proto/` 与 `apps/docs/` 为 Apache-2.0，`apps/login/`、`packages/zitadel-client/`、`packages/zitadel-proto/` 为 MIT，可作为接口与实现参考；法律结论以专业顾问意见为准。
 

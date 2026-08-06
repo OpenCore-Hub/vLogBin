@@ -50,7 +50,6 @@ console.log(
     2,
   ),
 );
-
 if (process.env.WAIT_CONSOLE === "true") {
   await page.waitForURL(
     (url) => url.pathname.startsWith("/console") || url.pathname === "/error",

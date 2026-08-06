@@ -346,8 +346,9 @@
 - [x] 会话 cookie 分片：access/refresh token 从主 JWT 拆到 `vlb_session_token_N` 独立加密分片，主 `vlb_session` 仅保留身份；callback 改为 200 + meta refresh 保留 cookie 后再进入控制台
 - [x] API 服务端 token vault：`0037_auth_session_vault` + `POST/GET/DELETE /v1/auth/vault/{id}` + 加密存取 + 集成测试通过；web 侧接入待续
 - [x] web 会话切换服务端 vault：主 cookie 仅含身份 JWT + `vid`，`getSession` 经 `/v1/auth/vault/{id}` 按需取 token，登出删除 vault；token 分片 cookie 已移除
+- [x] standalone 后端闭环：真实 callback 每次均完成 `/v1/auth/vault` 201 + `/v1/signup` 200；浏览器 console 最终验收待 Playwright 中间跳转稳定
 - [x] 实现验证：`tsc` / ESLint / `vitest`（8 条 MFA 门槛用例）/ Next.js 生产构建全绿
-- **状态：✅ P0-P4 主体完成；真实 ZITADEL 自建登录 E2E 已通过；API + web 服务端 token vault 已落地，待真实浏览器闭环验收**
+- **状态：✅ P0-P4 主体完成；真实 ZITADEL 自建登录 E2E 已通过；API + web 服务端 token vault 闭环已确认，浏览器 console 最终验收待续**
 
 ### 测试体系扩充
 - [x] metrics_middleware / security / timeout / health / workspace / web_simulation 等新测试
