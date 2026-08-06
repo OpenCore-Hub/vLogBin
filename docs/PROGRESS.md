@@ -710,6 +710,13 @@
   - 集成测试：`TestRiskReviewAggregateLatestPerProvider` / `TestSupportSessionOperatorAggregateList` ✅
   - E2E：`17-ops.spec.ts` 新增支持会话用例（紧急会话按钮/弹窗 + 标准会话 UI 吊销）✅
   - 验证：Go build / vet / 非集成全量单测 ✅；集成回归（聚合端点）✅；tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **61/61 全绿** ✅
+- [x] 硬额度控制面（持久化预占账本可视化）— 候选 69
+  - API：operator 控制面 4 端点（`GET .../quota` 聚合额度+实时用量、`GET .../quota/reservations`、`PUT .../quota-limits/{key}`、`DELETE .../quota-limits/{key}`），全部 `?env=test|live` 显式解析
+  - 服务层：`ListQuotaLimitsWithUsage`（单事务返回 limit + committed/reserved，避免 N+1）
+  - 前端：`/console/billing/quota` 订阅切换（`?subscription=` URL 化）+ 摘要卡 + 额度上限 DataTable（编辑/删除）+ 预占账本 DataTable；侧边栏 Billing 分组新增「额度」
+  - 集成测试：`TestOperatorQuotaControlPlane`（聚合读取 / 预占可见 / 更新 / 删除）✅
+  - E2E：`32-quota.spec.ts`（UI 创建额度上限 + type-to-confirm 删除）✅
+  - 验证：Go build / vet / 非集成全量单测 ✅；集成回归（额度控制面）✅；tsc 0 错误 ✅；eslint 0 错误 ✅；Playwright e2e **62/62 全绿** ✅
 
 ### 技术债 / 结构偏差（M0 遗留，随里程碑消化）
 
