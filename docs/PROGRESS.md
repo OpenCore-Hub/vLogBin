@@ -350,8 +350,9 @@
 - [x] 浏览器最终闭环：standalone（`HOSTNAME=localhost`）下 Playwright 真实登录到达 `/console`，Console 成功加载 vault/workspaces/overview 数据
 - [x] 生产安全/运维封顶：独立 `AUTH_VAULT_MASTER_KEY`（支持 previous 轮换）、vault 操作审计落库、`auth_vault_operations_total` 指标、过期 vault sweep worker 接入 main
 - [x] 工作负载身份：web 使用 `AUTH_VAULT_SERVICE_PRIVATE_KEY` 签发 5 分钟 RS256 JWT，API 用 `AUTH_VAULT_PUBLIC_KEY` 验签；静态 `AUTH_VAULT_SERVICE_TOKEN` 仅作回退
+- [x] CI 生产门禁：新增 `.github/workflows/ci.yml` 与 `scripts/ci-zitadel-e2e.sh`，真实 ZITADEL/API/Web 浏览器 Console E2E 进 CI
 - [x] 实现验证：`tsc` / ESLint / `vitest`（8 条 MFA 门槛用例）/ Next.js 生产构建全绿
-- **状态：✅ P0-P4 完成；真实 ZITADEL 自建登录 + 服务端 token vault + standalone 浏览器 Console 闭环通过；独立密钥/审计/指标/清理 worker/短期 JWT 工作负载身份已落地**
+- **状态：✅ P0-P4 完成；真实 ZITADEL 自建登录 + 服务端 token vault + standalone 浏览器 Console 闭环通过；独立密钥/审计/指标/清理 worker/短期 JWT 工作负载身份/CI E2E 已落地**
 
 ### 测试体系扩充
 - [x] metrics_middleware / security / timeout / health / workspace / web_simulation 等新测试
