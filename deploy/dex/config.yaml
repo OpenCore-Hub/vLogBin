@@ -1,0 +1,32 @@
+issuer: http://idp.localhost:18082/dex
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:8082
+  allowedOrigins:
+    - http://localhost:3100
+    - http://localhost:8080
+
+oauth2:
+  responseTypes:
+    - code
+  skipApprovalScreen: true
+
+connectors:
+  - type: mockCallback
+    id: e2e-idp
+    name: vLogBin E2E IdP
+    config:
+      username: idp-user
+      preferredEmail: idp-user@example.com
+      preferredGroups:
+        - vlogbin
+
+staticClients:
+  - id: vlogbin-idp
+    redirectURIs:
+      - http://localhost:8080/idps/callback
+    name: vLogBin E2E IdP
+    secret: e2e-idp-client-secret

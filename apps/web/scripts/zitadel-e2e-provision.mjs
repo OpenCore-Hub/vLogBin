@@ -15,6 +15,14 @@ const adminPassword = process.env.ZITADEL_ADMIN_PASSWORD;
 const appName =
   process.env.ZITADEL_E2E_APP_NAME || `vlogbin-e2e-${Date.now()}`;
 const appRedirectUri = process.env.ZITADEL_E2E_REDIRECT_URI;
+const idpName =
+  process.env.ZITADEL_E2E_IDP_NAME || "vLogBin E2E IdP";
+const idpIssuer =
+  process.env.ZITADEL_E2E_IDP_ISSUER || "http://idp.localhost:18082/dex";
+const idpClientId =
+  process.env.ZITADEL_E2E_IDP_CLIENT_ID || "vlogbin-idp";
+const idpClientSecret =
+  process.env.ZITADEL_E2E_IDP_CLIENT_SECRET || "e2e-idp-client-secret";
 
 if (
   !zitadelUrl ||
@@ -160,6 +168,73 @@ if (!appResponse.ok || !appJson.clientId) {
   );
 }
 
+const idpResponse = await fetch(`${zitadelUrl}/admin/v1/idps/generic_oidc`, {
+  method: "POST",
+  headers: authHeaders,
+  body: JSON.stringify({
+    name: idpName,
+    issuer: idpIssuer,
+    clientId: idpClientId,
+    clientSecret: idpClientSecret,
+    scopes: ["openid", "profile", "email"],
+    providerOptions: {
+      isLinkingAllowed: false,
+      isCreationAllowed: true,
+      isAutoCreation: true,
+      isAutoUpdate: true,
+      autoLinking: "AUTO_LINKING_OPTION_UNSPECIFIED",
+    },
+    isIdTokenMapping: true,
+    usePkce: false,
+  }),
+});
+const idpJson = await idpResponse.json();
+if (!idpResponse.ok || !idpJson.id) {
+  throw new Error(
+    `Create generic OIDC IdP failed: ${idpResponse.status} ${JSON.stringify(idpJson)}`,
+  );
+}
+
+const policyResponse = await fetch(`${zitadelUrl}/admin/v1/policies/login`, {
+  method: "PUT",
+  headers: authHeaders,
+  body: JSON.stringify({
+    allowUsernamePassword: true,
+    allowRegister: true,
+    allowExternalIdp: true,
+    forceMfa: false,
+    passwordlessType: "PASSWORDLESS_TYPE_ALLOWED",
+    hidePasswordReset: false,
+    ignoreUnknownUsernames: false,
+    defaultRedirectUri: appRedirectUri,
+    allowDomainDiscovery: false,
+    disableLoginWithEmail: false,
+    disableLoginWithPhone: false,
+    forceMfaLocalOnly: false,
+  }),
+});
+const policyJson = await policyResponse.json();
+if (!policyResponse.ok) {
+  throw new Error(
+    `Update login policy failed: ${policyResponse.status} ${JSON.stringify(policyJson)}`,
+  );
+}
+
+const policyIdpResponse = await fetch(
+  `${zitadelUrl}/admin/v1/policies/login/idps`,
+  {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify({ idpId: idpJson.id }),
+  },
+);
+const policyIdpJson = await policyIdpResponse.json();
+if (!policyIdpResponse.ok) {
+  throw new Error(
+    `Add IdP to login policy failed: ${policyIdpResponse.status} ${JSON.stringify(policyIdpJson)}`,
+  );
+}
+
 console.log(
   JSON.stringify(
     {
@@ -168,6 +243,8 @@ console.log(
       appId: appJson.appId,
       clientId: appJson.clientId,
       clientSecret: appJson.clientSecret,
+      idpId: idpJson.id,
+      idpName,
     },
     null,
     2,
