@@ -26,6 +26,7 @@ import {
   getActiveIdentityProviders,
   getAuthRequest,
   getLoginSettings,
+  getOrganizationsByDomain,
   getSession,
   humanMFAInitSkipped,
   listAuthenticationMethodTypes,
@@ -457,10 +458,10 @@ export async function submitCustomLoginIdentifier(
 
   try {
     const authRequest = await getAuthRequest(authRequestId);
-    const organizationId = await resolveOrganizationFromScopes(
+    let organizationId = await resolveOrganizationFromScopes(
       authRequest.scope,
     );
-    const settings = await getLoginSettings(organizationId);
+    let settings = await getLoginSettings(organizationId);
     let users = await searchUsers({ loginName: identifier, organizationId });
     if (users.length === 0 && !settings.disableLoginWithEmail) {
       users = await searchUsers({ email: identifier, organizationId });
@@ -468,17 +469,42 @@ export async function submitCustomLoginIdentifier(
     if (users.length === 0 && !settings.disableLoginWithPhone) {
       users = await searchUsers({ phone: identifier, organizationId });
     }
+    if (users.length === 0 && !organizationId && identifier.includes("@")) {
+      const suffix = identifier.match(/@([^@]+)$/)?.[1];
+      if (suffix) {
+        const orgs = await getOrganizationsByDomain(suffix);
+        if (orgs.length === 1) {
+          const discoveredSettings = await getLoginSettings(orgs[0].id).catch(
+            () => undefined,
+          );
+          if (discoveredSettings?.allowDomainDiscovery) {
+            organizationId = orgs[0].id;
+            settings = discoveredSettings;
+            users = await searchUsers({
+              loginName: identifier,
+              organizationId,
+            });
+            if (users.length === 0 && !settings.disableLoginWithEmail) {
+              users = await searchUsers({ email: identifier, organizationId });
+            }
+            if (users.length === 0 && !settings.disableLoginWithPhone) {
+              users = await searchUsers({ phone: identifier, organizationId });
+            }
+          }
+        }
+      }
+    }
     if (users.length > 1) {
       return {
         ...initialState,
-        error: "该登录标识存在多个账号，请联系管理员。",
+        error: "登录标识或凭据无效，请重试。",
       };
     }
     const user = users[0];
     if (!user || !user.active) {
       return {
         ...initialState,
-        error: "无法识别该登录标识。",
+        error: "登录标识或凭据无效，请重试。",
       };
     }
     if (

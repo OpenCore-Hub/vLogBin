@@ -12,6 +12,7 @@ import {
   createUserServiceClient,
 } from "@zitadel/client/v2";
 import { authConfig, isCustomLoginConfigured } from "./config";
+import { applyCustomHeaders } from "./custom-headers";
 
 export class ZitadelCredentialError extends Error {
   constructor(message: string) {
@@ -44,6 +45,20 @@ function baseApiUrl(): string {
   return authConfig.zitadel.apiUrl;
 }
 
+function zitadelInstanceHost(): string {
+  return (
+    authConfig.zitadel.instanceHost ||
+    new URL(baseApiUrl()).host
+  );
+}
+
+function zitadelPublicHost(): string {
+  return (
+    authConfig.zitadel.publicHost ||
+    new URL(authConfig.baseUrl).host
+  );
+}
+
 async function systemToken(): Promise<string> {
   const now = Date.now();
   if (cachedSystemToken && cachedSystemToken.expiresAt > now) {
@@ -51,14 +66,7 @@ async function systemToken(): Promise<string> {
   }
 
   let token: string;
-  if (authConfig.zitadel.loginClientKeyFile) {
-    const key = await readFile(authConfig.zitadel.loginClientKeyFile, "utf8");
-    token = await newSystemToken({
-      audience: authConfig.zitadel.audience || baseApiUrl(),
-      subject: "login-client",
-      key,
-    });
-  } else if (
+  if (
     authConfig.zitadel.systemUserId &&
     (authConfig.zitadel.systemUserPrivateKey ||
       authConfig.zitadel.systemUserPrivateKeyFile)
@@ -71,6 +79,13 @@ async function systemToken(): Promise<string> {
     token = await newSystemToken({
       audience: authConfig.zitadel.audience || baseApiUrl(),
       subject: authConfig.zitadel.systemUserId,
+      key,
+    });
+  } else if (authConfig.zitadel.loginClientKeyFile) {
+    const key = await readFile(authConfig.zitadel.loginClientKeyFile, "utf8");
+    token = await newSystemToken({
+      audience: authConfig.zitadel.audience || baseApiUrl(),
+      subject: "login-client",
       key,
     });
   } else if (authConfig.zitadel.serviceUserToken) {
@@ -105,7 +120,21 @@ export async function getZitadelClients(): Promise<ZitadelClients> {
   const transport = createConnectTransport({
     httpVersion: "1.1",
     baseUrl: baseApiUrl(),
-    interceptors: [NewAuthorizationBearerInterceptor(token)],
+    interceptors: [
+      NewAuthorizationBearerInterceptor(token),
+      (next) => (req) => {
+        req.header.set("x-zitadel-instance-host", zitadelInstanceHost());
+        req.header.set("x-zitadel-public-host", zitadelPublicHost());
+        applyCustomHeaders(
+          {
+            set: (key, value) => req.header.set(key, value),
+            delete: (key) => req.header.delete(key),
+          },
+          authConfig.zitadel.customRequestHeaders,
+        );
+        return next(req);
+      },
+    ],
   });
   const clients: ZitadelClients = {
     session: createSessionServiceClient(transport),

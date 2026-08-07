@@ -98,6 +98,7 @@ echo "==> Starting web standalone"
   APP_BASE_URL="http://localhost:3100" \
   ZITADEL_URL="http://localhost:8080" \
   ZITADEL_API_URL="http://localhost:8080" \
+  ZITADEL_PUBLIC_HOST="localhost:8080" \
   ZITADEL_CLIENT_ID="$CLIENT_ID" \
   ZITADEL_CLIENT_SECRET="$CLIENT_SECRET" \
   ZITADEL_LOGIN_CLIENT_PAT="$LOGIN_CLIENT_PAT" \

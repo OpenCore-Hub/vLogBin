@@ -28,5 +28,6 @@ staticClients:
   - id: vlogbin-idp
     redirectURIs:
       - http://localhost:8080/idps/callback
+      - http://localhost:3100/idps/callback
     name: vLogBin E2E IdP
     secret: e2e-idp-client-secret

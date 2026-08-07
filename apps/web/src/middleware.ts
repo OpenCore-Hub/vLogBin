@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, SESSION_MAX_AGE_SECONDS } from "./lib/env-shared";
 import { authConfig } from "./lib/auth/config";
+import { applyCustomHeaders } from "./lib/auth/custom-headers";
 
 /** 受保护路由前缀（粗粒度；细粒度 RBAC 由服务端校验）。 */
 const PROTECTED_PREFIXES = ["/console", "/ops"];
@@ -30,11 +31,18 @@ export function middleware(req: NextRequest) {
       const requestHeaders = new Headers(req.headers);
       requestHeaders.set(
         "x-zitadel-public-host",
-        new URL(authConfig.baseUrl).host,
+        authConfig.zitadel.publicHost || new URL(authConfig.baseUrl).host,
       );
       requestHeaders.set(
         "x-zitadel-instance-host",
-        new URL(authConfig.zitadel.apiUrl).host,
+        authConfig.zitadel.instanceHost || new URL(authConfig.zitadel.apiUrl).host,
+      );
+      applyCustomHeaders(
+        {
+          set: (key, value) => requestHeaders.set(key, value),
+          delete: (key) => requestHeaders.delete(key),
+        },
+        authConfig.zitadel.customRequestHeaders,
       );
       const organization = req.nextUrl.searchParams.get("organization");
       if (organization) {
