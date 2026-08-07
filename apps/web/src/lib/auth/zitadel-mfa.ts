@@ -25,6 +25,7 @@ export interface LoginSettingsSnapshot {
   forceMfaLocalOnly: boolean;
   hidePasswordReset: boolean;
   ignoreUnknownUsernames: boolean;
+  allowDomainDiscovery: boolean;
   defaultRedirectUri: string;
   disableLoginWithEmail: boolean;
   disableLoginWithPhone: boolean;

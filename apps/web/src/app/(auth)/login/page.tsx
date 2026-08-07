@@ -19,6 +19,7 @@ import {
   getLoginSettings,
   getSession,
   listAuthenticationMethodTypes,
+  resolveOrganizationFromScopes,
   validateSession,
 } from "@/lib/auth/zitadel-session";
 import {
@@ -78,16 +79,17 @@ export default async function LoginPage({
     customLoginReady
   ) {
     try {
-      [authRequest, loginSettings] = await Promise.all([
-        getAuthRequest(authRequestParam),
-        getLoginSettings(),
-      ]);
+      authRequest = await getAuthRequest(authRequestParam);
+      const organizationId = await resolveOrganizationFromScopes(
+        authRequest.scope,
+      );
+      loginSettings = await getLoginSettings(organizationId);
       if (!isCustomLoginAllowedForUser(authRequest.hintUserId)) {
         customLoginError = "该账号不在自建登录灰度范围，请使用托管登录。";
       }
       if (loginSettings?.allowExternalIdp) {
         try {
-          identityProviders = await getActiveIdentityProviders();
+          identityProviders = await getActiveIdentityProviders(organizationId);
         } catch {
           // 身份源列表失败时仍保留本地账号登录入口。
         }

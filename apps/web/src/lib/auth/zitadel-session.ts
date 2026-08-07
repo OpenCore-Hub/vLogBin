@@ -5,6 +5,13 @@ import { create, timestampMs } from "@zitadel/client";
 import { makeReqCtx } from "@zitadel/client/v2";
 import { DurationSchema } from "@bufbuild/protobuf/wkt";
 import { TextQueryMethod } from "@zitadel/proto/zitadel/object/v2/object_pb";
+import { ListOrganizationsRequestSchema } from "@zitadel/proto/zitadel/org/v2/org_service_pb";
+import {
+  DefaultOrganizationQuerySchema,
+  OrganizationDomainQuerySchema,
+  OrganizationFieldName,
+  SearchQuerySchema as OrganizationSearchQuerySchema,
+} from "@zitadel/proto/zitadel/org/v2/query_pb";
 import { CredentialsCheckErrorSchema } from "@zitadel/proto/zitadel/message_pb";
 import {
   CreateCallbackRequestSchema,
@@ -74,7 +81,15 @@ import {
   authConfig,
   isCustomLoginConfigured,
 } from "./config";
-import { getZitadelClients } from "./zitadel-client";
+import {
+  decodeIdpCreateUser,
+  type IdpCreateUserData,
+} from "./idp-intent";
+import { splitDisplayName } from "./identity-profile";
+import {
+  getServiceAccountOrganizationId,
+  getZitadelClients,
+} from "./zitadel-client";
 import {
   LoginSettingsSnapshot,
   SessionValidationResult,
@@ -195,6 +210,7 @@ export interface IdpIntentSnapshot {
   idpUserId: string;
   idpUserName: string;
   userId?: string;
+  createUser?: IdpCreateUserData;
   addHumanUser?: {
     username?: string;
     profile?: {
@@ -297,6 +313,7 @@ function toLoginSettingsSnapshot(settings: {
   forceMfaLocalOnly: boolean;
   hidePasswordReset: boolean;
   ignoreUnknownUsernames: boolean;
+  allowDomainDiscovery: boolean;
   defaultRedirectUri: string;
   disableLoginWithEmail: boolean;
   disableLoginWithPhone: boolean;
@@ -312,6 +329,7 @@ function toLoginSettingsSnapshot(settings: {
     forceMfaLocalOnly: settings.forceMfaLocalOnly,
     hidePasswordReset: settings.hidePasswordReset,
     ignoreUnknownUsernames: settings.ignoreUnknownUsernames,
+    allowDomainDiscovery: settings.allowDomainDiscovery,
     defaultRedirectUri: settings.defaultRedirectUri,
     disableLoginWithEmail: settings.disableLoginWithEmail,
     disableLoginWithPhone: settings.disableLoginWithPhone,
@@ -965,6 +983,107 @@ export async function getActiveIdentityProviders(
   }
 }
 
+const ORG_ID_SCOPE_PATTERN = /^urn:zitadel:iam:org:id:([0-9]+)$/;
+const ORG_DOMAIN_SCOPE_PATTERN = /^urn:zitadel:iam:org:domain:primary:(.+)$/;
+
+async function listOrganizations(
+  queries: Array<Parameters<typeof create>[1]>,
+): Promise<Array<{ id: string }>> {
+  const clients = await getZitadelClients();
+  const response = await clients.org.listOrganizations(
+    create(ListOrganizationsRequestSchema, {
+      query: { offset: BigInt(0), limit: 10, asc: true },
+      sortingColumn: OrganizationFieldName.NAME,
+      queries: queries as never,
+    }),
+  );
+  return (response.result ?? []).map((org) => ({ id: org.id }));
+}
+
+export async function getOrganizationsByDomain(
+  domain: string,
+): Promise<Array<{ id: string }>> {
+  isCustomLoginActive();
+  return listOrganizations([
+    create(OrganizationSearchQuerySchema, {
+      query: {
+        case: "domainQuery",
+        value: create(OrganizationDomainQuerySchema, {
+          domain,
+          method: TextQueryMethod.EQUALS,
+        }),
+      },
+    }),
+  ]);
+}
+
+export async function getDefaultOrganizationId(): Promise<string | undefined> {
+  isCustomLoginActive();
+  try {
+    const orgs = await listOrganizations([
+      create(OrganizationSearchQuerySchema, {
+        query: {
+          case: "defaultQuery",
+          value: create(DefaultOrganizationQuerySchema, {}),
+        },
+      }),
+    ]);
+    return orgs[0]?.id;
+  } catch {
+    return getServiceAccountOrganizationId().catch(() => undefined);
+  }
+}
+
+/**
+ * Resolves the organization requested by an OIDC authorization request scope.
+ * Mirrors the official Login App: org id scope wins, then the primary domain
+ * scope is resolved when it maps to exactly one organization.
+ */
+export async function resolveOrganizationFromScopes(
+  scopes: string[],
+): Promise<string | undefined> {
+  const orgIdScope = scopes.find((scope) => ORG_ID_SCOPE_PATTERN.test(scope));
+  if (orgIdScope) {
+    return ORG_ID_SCOPE_PATTERN.exec(orgIdScope)?.[1];
+  }
+  const domainScope = scopes.find((scope) =>
+    ORG_DOMAIN_SCOPE_PATTERN.test(scope),
+  );
+  const domain = domainScope
+    ? ORG_DOMAIN_SCOPE_PATTERN.exec(domainScope)?.[1]
+    : undefined;
+  if (!domain) {
+    return undefined;
+  }
+  const orgs = await getOrganizationsByDomain(domain);
+  return orgs.length === 1 ? orgs[0].id : undefined;
+}
+
+/**
+ * Resolves the organization for an IdP-created user using the official Login
+ * App priority: explicit auth-request organization, username domain discovery
+ * (only when the org allows it), then the instance default organization.
+ */
+export async function resolveOrganizationForIdpUser(input: {
+  organizationId?: string;
+  username?: string;
+}): Promise<string | undefined> {
+  if (input.organizationId) {
+    return input.organizationId;
+  }
+  const suffix = input.username?.match(/@([^@]+)$/)?.[1];
+  if (suffix) {
+    const orgs = await getOrganizationsByDomain(suffix);
+    if (orgs.length === 1) {
+      const settings = await getLoginSettings(orgs[0].id).catch(() => undefined);
+      if (settings?.allowDomainDiscovery) {
+        return orgs[0].id;
+      }
+    }
+  }
+  return getDefaultOrganizationId();
+}
+
 export async function startIdpIntent(input: {
   idpId: string;
   successUrl: string;
@@ -1019,19 +1138,31 @@ export async function retrieveIdpIntent(input: {
       );
     }
     const add = response.addHumanUser;
+    const createUser =
+      decodeIdpCreateUser(response) ?? toIdpCreateUserDataFromAddHumanUser(add);
+    const displayName = add?.profile?.displayName || undefined;
+    const email = add?.email?.email;
     return {
       idpId: info.idpId,
       idpUserId: info.userId,
-      idpUserName: info.userName,
+      idpUserName:
+        info.userName || createUser?.username || email || add?.username || "",
       userId: response.userId || undefined,
+      createUser,
       addHumanUser: add
         ? {
             username: add.username,
             profile: add.profile
               ? {
-                  givenName: add.profile.givenName,
-                  familyName: add.profile.familyName,
-                  displayName: add.profile.displayName || undefined,
+                  givenName:
+                    add.profile.givenName ||
+                    createUser?.profile?.givenName ||
+                    "",
+                  familyName:
+                    add.profile.familyName ||
+                    createUser?.profile?.familyName ||
+                    "",
+                  displayName,
                 }
               : undefined,
             email: add.email
@@ -1046,7 +1177,7 @@ export async function retrieveIdpIntent(input: {
             idpLinks: (add.idpLinks ?? []).map((link) => ({
               idpId: link.idpId,
               userId: link.userId,
-              userName: link.userName,
+              userName: link.userName || email || add?.username || "",
             })),
             metadata: (add.metadata ?? []).map((entry) => ({
               key: entry.key,
@@ -1058,6 +1189,65 @@ export async function retrieveIdpIntent(input: {
   } catch (err) {
     throw toApiError(err);
   }
+}
+
+function toIdpCreateUserDataFromAddHumanUser(
+  add: {
+    username?: string;
+    profile?: {
+      givenName?: string;
+      familyName?: string;
+      displayName?: string;
+    };
+    email?: {
+      email: string;
+      verification?: { case?: string; value?: unknown };
+    };
+    phone?: { phone?: string };
+    idpLinks?: Array<{
+      idpId: string;
+      userId: string;
+      userName: string;
+    }>;
+    metadata?: Array<{ key: string; value: Uint8Array }>;
+  } | undefined,
+): IdpCreateUserData | undefined {
+  if (!add) return undefined;
+  const displayName = add.profile?.displayName || undefined;
+  const splitName = splitDisplayName(displayName);
+  return {
+    username: add.username,
+    profile: add.profile
+      ? {
+          givenName: add.profile.givenName || splitName.givenName || "",
+          familyName: add.profile.familyName || splitName.familyName || "",
+          displayName,
+        }
+      : undefined,
+    email: add.email
+      ? {
+          email: add.email.email,
+          isVerified:
+            add.email.verification?.case === "isVerified" &&
+            Boolean(add.email.verification.value),
+        }
+      : undefined,
+    phone: add.phone
+      ? {
+          phone: add.phone.phone || undefined,
+          isVerified: false,
+        }
+      : undefined,
+    idpLinks: (add.idpLinks ?? []).map((link) => ({
+      idpId: link.idpId,
+      userId: link.userId,
+      userName: link.userName,
+    })),
+    metadata: (add.metadata ?? []).map((entry) => ({
+      key: entry.key,
+      value: entry.value,
+    })),
+  };
 }
 
 export async function verifyEmail(input: {

@@ -24,7 +24,7 @@ export default async function CompleteRegistrationPage() {
 
   let providerName = "企业身份源";
   try {
-    const providers = await getActiveIdentityProviders();
+    const providers = await getActiveIdentityProviders(flow.organizationId);
     const provider = providers.find((candidate) => candidate.id === flow.idpId);
     if (!provider?.isCreationAllowed) {
       redirect("/idps/failure?error=creation_not_allowed");

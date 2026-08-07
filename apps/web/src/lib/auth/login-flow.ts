@@ -26,6 +26,7 @@ export type LoginFlowData = z.infer<typeof loginFlowSchema>;
 export const idpFlowSchema = z.object({
   idpId: z.string().min(1).max(200),
   authRequestId: z.string().min(1).max(200).optional(),
+  organizationId: z.string().min(1).max(200).optional(),
   next: z.string().min(1).max(2000).optional(),
   idpIntentId: z.string().min(1).max(200).optional(),
   idpIntentToken: z.string().min(1).max(500).optional(),

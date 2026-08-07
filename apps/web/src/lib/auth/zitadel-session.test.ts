@@ -14,6 +14,7 @@ const baseSettings: LoginSettingsSnapshot = {
   forceMfaLocalOnly: false,
   hidePasswordReset: false,
   ignoreUnknownUsernames: false,
+  allowDomainDiscovery: false,
   defaultRedirectUri: "/console",
   disableLoginWithEmail: false,
   disableLoginWithPhone: false,

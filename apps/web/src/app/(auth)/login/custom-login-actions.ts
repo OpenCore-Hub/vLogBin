@@ -23,12 +23,14 @@ import {
   createSession,
   createUser,
   getActiveIdentityProviders,
+  getAuthRequest,
   getLoginSettings,
   getSession,
   humanMFAInitSkipped,
   listAuthenticationMethodTypes,
   requestOtpChallenge,
   requestWebAuthnChallenge,
+  resolveOrganizationFromScopes,
   searchUsers,
   setSession,
   startIdpIntent,
@@ -194,6 +196,12 @@ async function createUserFromIdpFlow(
   givenName: string,
   familyName: string,
 ): Promise<{ userId: string }> {
+  if (!flow.organizationId) {
+    throw new ZitadelApiError(
+      "无法确定该企业账号所属组织，请联系管理员。",
+      "invalid-response",
+    );
+  }
   const email = flow.email ?? "";
   if (!email || !givenName || !familyName) {
     throw new ZitadelApiError(
@@ -206,6 +214,7 @@ async function createUserFromIdpFlow(
     value: new Uint8Array(Buffer.from(entry.valueBase64, "base64")),
   }));
   return createUser({
+    organizationId: flow.organizationId,
     email,
     givenName,
     familyName,
@@ -309,12 +318,16 @@ export async function startCustomLoginIdp(
   }
 
   try {
-    const providers = await getActiveIdentityProviders();
+    const authRequest = await getAuthRequest(authRequestId);
+    const organizationId = await resolveOrganizationFromScopes(
+      authRequest.scope,
+    );
+    const providers = await getActiveIdentityProviders(organizationId);
     const provider = providers.find((candidate) => candidate.id === idpId);
     if (!provider) {
       return { ...initialState, error: "该企业身份源当前不可用。" };
     }
-    await setIdpFlow({ idpId, authRequestId, next });
+    await setIdpFlow({ idpId, authRequestId, next, organizationId });
     const started = await startIdpIntent({
       idpId,
       successUrl: `${authConfig.baseUrl}/idps/callback`,
@@ -343,6 +356,18 @@ export async function startCustomLoginIdp(
     }
     redirect(started.url);
   } catch (err) {
+    if (
+      err instanceof Error &&
+      "digest" in err &&
+      typeof err.digest === "string" &&
+      err.digest.startsWith("NEXT_REDIRECT")
+    ) {
+      throw err;
+    }
+    recordAuthEvent("custom_login.idp.start.failed", {
+      idpId,
+      error: err instanceof Error ? err.message.slice(0, 500) : "unknown",
+    });
     if (isInfrastructureError(err)) {
       return await redirectToHostedOidc(next);
     }
@@ -374,7 +399,7 @@ export async function completeIdpRegistration(
   }
 
   try {
-    const providers = await getActiveIdentityProviders();
+    const providers = await getActiveIdentityProviders(flow.organizationId);
     const provider = providers.find((candidate) => candidate.id === flow.idpId);
     if (!provider?.isCreationAllowed) {
       return { ...initialState, error: "当前组织未开放该企业身份源的账号创建。" };
@@ -430,13 +455,17 @@ export async function submitCustomLoginIdentifier(
   }
 
   try {
-    const settings = await getLoginSettings();
-    let users = await searchUsers({ loginName: identifier });
+    const authRequest = await getAuthRequest(authRequestId);
+    const organizationId = await resolveOrganizationFromScopes(
+      authRequest.scope,
+    );
+    const settings = await getLoginSettings(organizationId);
+    let users = await searchUsers({ loginName: identifier, organizationId });
     if (users.length === 0 && !settings.disableLoginWithEmail) {
-      users = await searchUsers({ email: identifier });
+      users = await searchUsers({ email: identifier, organizationId });
     }
     if (users.length === 0 && !settings.disableLoginWithPhone) {
-      users = await searchUsers({ phone: identifier });
+      users = await searchUsers({ phone: identifier, organizationId });
     }
     if (users.length > 1) {
       return {

@@ -7,6 +7,7 @@ export type AuthEvent =
   | "custom_login.callback.completed"
   | "custom_login.hosted_fallback"
   | "custom_login.idp.start"
+  | "custom_login.idp.start.failed"
   | "custom_login.idp.redirect"
   | "custom_login.idp.form_post"
   | "custom_login.idp.intent.success"

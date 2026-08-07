@@ -6,6 +6,7 @@ import { NewAuthorizationBearerInterceptor } from "@zitadel/client";
 import { newSystemToken } from "@zitadel/client/node";
 import {
   createOIDCServiceClient,
+  createOrganizationServiceClient,
   createSessionServiceClient,
   createSettingsServiceClient,
   createUserServiceClient,
@@ -24,10 +25,15 @@ export interface ZitadelClients {
   user: ReturnType<typeof createUserServiceClient>;
   settings: ReturnType<typeof createSettingsServiceClient>;
   oidc: ReturnType<typeof createOIDCServiceClient>;
+  org: ReturnType<typeof createOrganizationServiceClient>;
 }
 
 let cachedSystemToken: { token: string; expiresAt: number } | null = null;
 let cachedClients: { token: string; clients: ZitadelClients } | null = null;
+let cachedServiceOrganization: {
+  organizationId: string;
+  expiresAt: number;
+} | null = null;
 
 function baseApiUrl(): string {
   if (!authConfig.zitadel.apiUrl) {
@@ -106,7 +112,36 @@ export async function getZitadelClients(): Promise<ZitadelClients> {
     user: createUserServiceClient(transport),
     settings: createSettingsServiceClient(transport),
     oidc: createOIDCServiceClient(transport),
+    org: createOrganizationServiceClient(transport),
   };
   cachedClients = { token, clients };
   return clients;
+}
+
+export async function getServiceAccountOrganizationId(): Promise<string> {
+  const now = Date.now();
+  if (cachedServiceOrganization && cachedServiceOrganization.expiresAt > now) {
+    return cachedServiceOrganization.organizationId;
+  }
+  const token = await resolveZitadelToken();
+  const response = await fetch(`${baseApiUrl()}/management/v1/orgs/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new ZitadelCredentialError(
+      `ZITADEL 服务账号组织读取失败：${response.status}`,
+    );
+  }
+  const payload = (await response.json()) as { org?: { id?: string } };
+  if (!payload.org?.id) {
+    throw new ZitadelCredentialError(
+      "ZITADEL 未返回服务账号组织 ID。",
+    );
+  }
+  cachedServiceOrganization = {
+    organizationId: payload.org.id,
+    expiresAt: now + 10 * 60 * 1000,
+  };
+  return payload.org.id;
 }

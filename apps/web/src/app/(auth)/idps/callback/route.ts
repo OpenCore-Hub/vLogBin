@@ -18,6 +18,7 @@ import {
   createSession,
   createUser,
   getActiveIdentityProviders,
+  resolveOrganizationForIdpUser,
   getSession,
   getUserByID,
   retrieveIdpIntent,
@@ -114,48 +115,66 @@ export async function GET(req: NextRequest) {
     }
 
     let userId = intent.userId;
-    if (!userId && intent.addHumanUser) {
-      const add = intent.addHumanUser;
+    const createUserData = intent.createUser;
+    if (!userId && createUserData) {
+      const organizationId = await resolveOrganizationForIdpUser({
+        organizationId: flow.organizationId,
+        username: createUserData.username,
+      });
+      if (!organizationId) {
+        return fail(
+          req,
+          "no_organization_context",
+          "无法确定该企业账号所属组织，请联系管理员",
+        );
+      }
       const hasCompleteProfile = Boolean(
-        add.profile?.givenName &&
-          add.profile?.familyName &&
-          add.email?.email,
+        createUserData.profile?.givenName && createUserData.profile?.familyName,
       );
       if (provider.isAutoCreation && hasCompleteProfile) {
         const created = await createUser({
-          email: add.email?.email ?? "",
-          givenName: add.profile?.givenName ?? "",
-          familyName: add.profile?.familyName ?? "",
-          sendEmailCode: !add.email?.isVerified,
-          username: add.username,
+          organizationId,
+          email: createUserData.email?.email ?? "",
+          givenName: createUserData.profile?.givenName ?? "",
+          familyName: createUserData.profile?.familyName ?? "",
+          sendEmailCode: !createUserData.email?.isVerified,
+          username: createUserData.username || createUserData.email?.email,
           idpLinks:
-            add.idpLinks.length > 0
-              ? add.idpLinks
+            createUserData.idpLinks.length > 0
+              ? createUserData.idpLinks
               : [
                   {
                     idpId: intent.idpId,
                     userId: intent.idpUserId,
-                    userName: intent.idpUserName,
+                    userName:
+                      intent.idpUserName ||
+                      createUserData.email?.email ||
+                      createUserData.username ||
+                      "",
                   },
                 ],
-          metadata: add.metadata,
+          metadata: createUserData.metadata,
         });
         userId = created.userId;
         recordAuthEvent("custom_login.idp.auto_created", {
           userId: created.userId,
         });
-      } else if (provider.isCreationAllowed) {
+      } else if (
+        provider.isCreationAllowed ||
+        provider.isAutoCreation
+      ) {
         await setIdpFlow({
           ...flow,
           idpIntentId,
           idpIntentToken,
+          organizationId,
           idpUserId: intent.idpUserId,
-          idpUserName: intent.idpUserName,
-          givenName: add.profile?.givenName,
-          familyName: add.profile?.familyName,
-          email: add.email?.email,
-          emailVerified: add.email?.isVerified,
-          metadata: add.metadata.map((entry) => ({
+          idpUserName: intent.idpUserName || undefined,
+          givenName: createUserData.profile?.givenName || undefined,
+          familyName: createUserData.profile?.familyName || undefined,
+          email: createUserData.email?.email || undefined,
+          emailVerified: createUserData.email?.isVerified,
+          metadata: createUserData.metadata.map((entry) => ({
             key: entry.key,
             valueBase64: Buffer.from(entry.value).toString("base64"),
           })),
