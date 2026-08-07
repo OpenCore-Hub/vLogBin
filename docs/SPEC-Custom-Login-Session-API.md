@@ -170,6 +170,15 @@ IdP 自动建号组织解析（源码依据：`apps/login/src/lib/server/idp-int
 - `logout` 在自建登录模式下调用 Session API `DeleteSession` 终止已记住会话，并清理登录流程 cookie。
 - OIDC 代理补齐 `x-zitadel-public-host` / `x-zitadel-instance-host` / `x-zitadel-i18n-organization` 官方头。
 
+2026-08-07 细胞级审查后追加：
+
+- Session API 与 OIDC 代理统一透传 `x-zitadel-instance-host` / `x-zitadel-public-host`，支持 `ZITADEL_INSTANCE_HOST` / `ZITADEL_PUBLIC_HOST` 显式覆盖，Self Hosted 与 ZITADEL Cloud 通过环境变量切换。
+- 支持 `CUSTOM_REQUEST_HEADERS`（逗号分隔 `Key:Value`，空 Value 删除头），与官方 Login App 一致。
+- 服务凭据优先级对齐官方：系统用户 JWT > Login Client Key > Service Token > 本地 PAT。
+- 登录名搜索支持无组织上下文时的 `@域名` 组织发现（唯一组织 + `allowDomainDiscovery`），避免跨组织歧义。
+- 未知用户/多账号错误统一收敛为“凭据无效”，避免用户枚举差异。
+- E2E 以 `ZITADEL_PUBLIC_HOST=localhost:8080` 模拟 Self-Hosted 同域代理；独立域名生产部署通过显式 `ZITADEL_PUBLIC_HOST` 启用 Cloud 模式。
+
 ## 2. 推荐架构
 
 ```mermaid
@@ -276,6 +285,9 @@ sequenceDiagram
 | `ZITADEL_LOGIN_CLIENT_PAT` | 本地/紧急回退 | 开发用 PAT；生产禁止作为长期主凭据 |
 | `ZITADEL_LOGIN_UI_MODE` | 否 | `redirect`（当前行为）/ `session-api`（渐进切换） |
 | `ZITADEL_TRUSTED_DOMAIN` | 是 | 与 `APP_BASE_URL` 同源，注册进 Trusted Domains |
+| `ZITADEL_INSTANCE_HOST` | 否 | ZITADEL Cloud/多实例路由 Host，默认取 `ZITADEL_API_URL` host；Self Hosted 可省略 |
+| `ZITADEL_PUBLIC_HOST` | 否 | 登录 UI 对外 Host，默认取 `APP_BASE_URL` host |
+| `CUSTOM_REQUEST_HEADERS` | 否 | 逗号分隔 `Key:Value`，透传到 Session API 与 OIDC 代理；空 Value 表示删除 |
 | `SESSION_SECRET` | 是 | 加密 login_flow cookie 与现有 session |
 
 ### 5.2 适配层 API
