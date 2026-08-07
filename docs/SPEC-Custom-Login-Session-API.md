@@ -179,6 +179,8 @@ IdP 自动建号组织解析（源码依据：`apps/login/src/lib/server/idp-int
 - 未知用户/多账号错误统一收敛为“凭据无效”，避免用户枚举差异。
 - E2E 以 `ZITADEL_PUBLIC_HOST=localhost:8080` 模拟 Self-Hosted 同域代理；独立域名生产部署通过显式 `ZITADEL_PUBLIC_HOST` 启用 Cloud 模式。
 
+SDK 升级治理已独立成文：`docs/SDK_UPGRADE.md`。npm `@zitadel/client` / `@zitadel/proto` 1.3.1 滞后于 ZITADEL 主仓库，当前通过有单测覆盖的 compat shim 支撑 `user_action.create_user` 与顶层 metadata；`pnpm run probe:sdk` 在升级后可自动提示移除 shim 的时机。
+
 ## 2. 推荐架构
 
 ```mermaid
