@@ -11,6 +11,7 @@ import {
   GetAuthRequestRequestSchema,
   SessionSchema as OidcSessionSchema,
 } from "@zitadel/proto/zitadel/oidc/v2/oidc_service_pb";
+import { IDPLinkSchema, RedirectURLsSchema } from "@zitadel/proto/zitadel/user/v2/idp_pb";
 import {
   RequestChallenges,
   RequestChallengesSchema,
@@ -24,6 +25,7 @@ import {
   CheckTOTPSchema,
   CheckUserSchema,
   CheckWebAuthNSchema,
+  CheckIDPIntentSchema,
   CreateSessionRequestSchema,
   DeleteSessionRequestSchema,
   GetSessionRequestSchema,
@@ -58,12 +60,16 @@ import {
   HumanMFAInitSkippedRequestSchema,
   ListAuthenticationMethodTypesRequestSchema,
   ListUsersRequestSchema,
+  MetadataSchema,
   RegisterPasskeyRequestSchema,
   ResendEmailCodeRequestSchema,
+  RetrieveIdentityProviderIntentRequestSchema,
+  StartIdentityProviderIntentRequestSchema,
   VerifyPasskeyRegistrationRequestSchema,
   VerifyEmailRequestSchema,
 } from "@zitadel/proto/zitadel/user/v2/user_service_pb";
 import { PasskeyAuthenticator } from "@zitadel/proto/zitadel/user/v2/auth_pb";
+import { GetActiveIdentityProvidersRequestSchema } from "@zitadel/proto/zitadel/settings/v2/settings_service_pb";
 import {
   authConfig,
   isCustomLoginConfigured,
@@ -134,6 +140,7 @@ export interface CreateSessionInput {
   userId?: string;
   loginName?: string;
   password?: string;
+  idpIntent?: { idpIntentId: string; idpIntentToken: string };
   challenges?: RequestChallenges;
   fingerprintId?: string;
   ip?: string;
@@ -168,6 +175,38 @@ export interface CreateUserInput {
   organizationId?: string;
   sendEmailCode?: boolean;
   urlTemplate?: string;
+  username?: string;
+  idpLinks?: Array<{ idpId: string; userId: string; userName: string }>;
+  metadata?: Array<{ key: string; value: Uint8Array }>;
+}
+
+export interface ActiveIdentityProvider {
+  id: string;
+  name: string;
+  type: string;
+  isCreationAllowed: boolean;
+  isAutoCreation: boolean;
+  isAutoUpdate: boolean;
+  isLinkingAllowed: boolean;
+}
+
+export interface IdpIntentSnapshot {
+  idpId: string;
+  idpUserId: string;
+  idpUserName: string;
+  userId?: string;
+  addHumanUser?: {
+    username?: string;
+    profile?: {
+      givenName: string;
+      familyName: string;
+      displayName?: string;
+    };
+    email?: { email: string; isVerified: boolean };
+    phone?: { phone?: string };
+    idpLinks: Array<{ idpId: string; userId: string; userName: string }>;
+    metadata: Array<{ key: string; value: Uint8Array }>;
+  };
 }
 
 function isCustomLoginActive(): asserts this is typeof authConfig & { mode: "oidc-custom-login" } {
@@ -343,6 +382,9 @@ function checksMessage(input: CreateSessionInput | SetSessionInput): Checks | un
   }
   if (input.password) {
     checks.password = create(CheckPasswordSchema, { password: input.password });
+  }
+  if ("idpIntent" in input && input.idpIntent) {
+    checks.idpIntent = create(CheckIDPIntentSchema, input.idpIntent);
   }
   if ("totpCode" in input && input.totpCode) {
     checks.totp = create(CheckTOTPSchema, { code: input.totpCode });
@@ -852,6 +894,7 @@ export async function createUser(
     const response = await clients.user.createUser(
       create(CreateUserRequestSchema, {
         organizationId: input.organizationId || "",
+        username: input.username,
         userType: {
           case: "human",
           value: {
@@ -878,6 +921,12 @@ export async function createUser(
                   }),
                 }
               : { case: undefined },
+            idpLinks: (input.idpLinks ?? []).map((link) =>
+              create(IDPLinkSchema, link),
+            ),
+            metadata: (input.metadata ?? []).map((entry) =>
+              create(MetadataSchema, entry),
+            ),
           },
         },
       }),
@@ -886,6 +935,126 @@ export async function createUser(
       throw new ZitadelApiError("ZITADEL 未返回 userId。", "invalid-response");
     }
     return { userId: response.id, emailCode: response.emailCode };
+  } catch (err) {
+    throw toApiError(err);
+  }
+}
+
+export async function getActiveIdentityProviders(
+  organizationId?: string,
+): Promise<ActiveIdentityProvider[]> {
+  isCustomLoginActive();
+  try {
+    const clients = await getZitadelClients();
+    const response = await clients.settings.getActiveIdentityProviders(
+      create(GetActiveIdentityProvidersRequestSchema, {
+        ctx: makeReqCtx(organizationId),
+      }),
+    );
+    return (response.identityProviders ?? []).map((provider) => ({
+      id: provider.id,
+      name: provider.name,
+      type: String(provider.type),
+      isCreationAllowed: Boolean(provider.options?.isCreationAllowed),
+      isAutoCreation: Boolean(provider.options?.isAutoCreation),
+      isAutoUpdate: Boolean(provider.options?.isAutoUpdate),
+      isLinkingAllowed: Boolean(provider.options?.isLinkingAllowed),
+    }));
+  } catch (err) {
+    throw toApiError(err);
+  }
+}
+
+export async function startIdpIntent(input: {
+  idpId: string;
+  successUrl: string;
+  failureUrl: string;
+}): Promise<{ url: string; fields?: Record<string, string> }> {
+  isCustomLoginActive();
+  try {
+    const clients = await getZitadelClients();
+    const response = await clients.user.startIdentityProviderIntent(
+      create(StartIdentityProviderIntentRequestSchema, {
+        idpId: input.idpId,
+        content: {
+          case: "urls",
+          value: create(RedirectURLsSchema, {
+            successUrl: input.successUrl,
+            failureUrl: input.failureUrl,
+          }),
+        },
+      }),
+    );
+    const step = response.nextStep;
+    if (step.case === "authUrl" && step.value) {
+      return { url: step.value };
+    }
+    if (step.case === "formData" && step.value) {
+      return { url: step.value.url, fields: step.value.fields };
+    }
+    throw new ZitadelApiError(
+      "ZITADEL 未返回可跳转的企业身份源地址。",
+      "invalid-response",
+    );
+  } catch (err) {
+    throw toApiError(err);
+  }
+}
+
+export async function retrieveIdpIntent(input: {
+  idpIntentId: string;
+  idpIntentToken: string;
+}): Promise<IdpIntentSnapshot> {
+  isCustomLoginActive();
+  try {
+    const clients = await getZitadelClients();
+    const response = await clients.user.retrieveIdentityProviderIntent(
+      create(RetrieveIdentityProviderIntentRequestSchema, input),
+    );
+    const info = response.idpInformation;
+    if (!info) {
+      throw new ZitadelApiError(
+        "ZITADEL 未返回企业身份源信息。",
+        "invalid-response",
+      );
+    }
+    const add = response.addHumanUser;
+    return {
+      idpId: info.idpId,
+      idpUserId: info.userId,
+      idpUserName: info.userName,
+      userId: response.userId || undefined,
+      addHumanUser: add
+        ? {
+            username: add.username,
+            profile: add.profile
+              ? {
+                  givenName: add.profile.givenName,
+                  familyName: add.profile.familyName,
+                  displayName: add.profile.displayName || undefined,
+                }
+              : undefined,
+            email: add.email
+              ? {
+                  email: add.email.email,
+                  isVerified:
+                    add.email.verification?.case === "isVerified" &&
+                    Boolean(add.email.verification.value),
+                }
+              : undefined,
+            phone: add.phone ? { phone: add.phone.phone || undefined } : undefined,
+            idpLinks: (add.idpLinks ?? []).map((link) => ({
+              idpId: link.idpId,
+              userId: link.userId,
+              userName: link.userName,
+            })),
+            metadata: (add.metadata ?? []).map((entry) => ({
+              key: entry.key,
+              value: entry.value,
+            })),
+          }
+        : undefined,
+    };
   } catch (err) {
     throw toApiError(err);
   }

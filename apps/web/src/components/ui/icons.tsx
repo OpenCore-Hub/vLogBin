@@ -340,6 +340,14 @@ export const GlobeIcon = (p: IconProps) => (
   </Svg>
 );
 
+export const Building2Icon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z" />
+    <path d="M6 12H4a2 2 0 0 0-2 2v8h6M18 12h2a2 2 0 0 1 2 2v8h-4M2 22h20" />
+    <path d="M9 6h2M13 6h2M9 10h2M13 10h2M9 14h2M13 14h2" />
+  </Svg>
+);
+
 export const ServerIcon = (p: IconProps) => (
   <Svg {...p}>
     <rect x="2" y="3" width="20" height="7" rx="2" />

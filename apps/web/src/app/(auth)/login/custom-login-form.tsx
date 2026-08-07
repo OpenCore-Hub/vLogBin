@@ -1,18 +1,28 @@
 "use client";
 
-import { useActionState, useEffect, useState, useTransition } from "react";
+import {
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import {
   continueWithSavedSession,
   requestCustomLoginWebAuthn,
   requestCustomLoginOtp,
   skipMfaSetup,
+  startCustomLoginIdp,
   submitCustomLoginIdentifier,
   submitCustomLoginMfa,
   submitCustomLoginPassword,
   submitCustomLoginWebAuthn,
 } from "./custom-login-actions";
 import { CustomLoginActionState } from "./login-state";
-import { LoginSettingsSnapshot } from "@/lib/auth/zitadel-session";
+import {
+  ActiveIdentityProvider,
+  LoginSettingsSnapshot,
+} from "@/lib/auth/zitadel-session";
 import { startOidcLogin } from "./login-actions";
 import {
   assertionToJson,
@@ -21,7 +31,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { Alert } from "@/components/ui/feedback";
-import { KeyIcon, ShieldIcon, UsersIcon } from "@/components/ui/icons";
+import {
+  Building2Icon,
+  GlobeIcon,
+  KeyIcon,
+  ShieldIcon,
+  UsersIcon,
+} from "@/components/ui/icons";
 
 const identifierInitial: CustomLoginActionState = {
   ok: false,
@@ -41,6 +57,8 @@ export function CustomLoginForm({
   next,
   loginSettings,
   savedSessions,
+  identityProviders,
+  initialState,
 }: {
   authRequestId: string;
   next: string;
@@ -52,16 +70,25 @@ export function CustomLoginForm({
     userId: string;
     organizationId?: string;
   }>;
+  identityProviders: ActiveIdentityProvider[];
+  initialState?: CustomLoginActionState;
 }) {
+  const initial: CustomLoginActionState = initialState ?? identifierInitial;
+  const passwordInitialState: CustomLoginActionState =
+    initial.step === "mfa" ? { ...initial, step: "mfa" } : passwordInitial;
   const [identifierState, identifierAction, identifierPending] = useActionState(
     submitCustomLoginIdentifier,
-    identifierInitial,
+    initial,
+  );
+  const [idpState, idpAction, idpPending] = useActionState(
+    startCustomLoginIdp,
+    initial,
   );
   const [savedSessionState, savedSessionAction, savedSessionPending] =
     useActionState(continueWithSavedSession, identifierInitial);
   const [passwordState, passwordAction, passwordPending] = useActionState(
     submitCustomLoginPassword,
-    passwordInitial,
+    passwordInitialState,
   );
   const [otpState, otpAction, otpPending] = useActionState(
     requestCustomLoginOtp,
@@ -81,6 +108,13 @@ export function CustomLoginForm({
   );
   const [, startWebAuthnSubmit] = useTransition();
   const [webAuthnError, setWebAuthnError] = useState<string | null>(null);
+  const idpFormRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if (idpState.step === "idp-post" && idpFormRef.current) {
+      idpFormRef.current.submit();
+    }
+  }, [idpState.step]);
 
   useEffect(() => {
     const options = webAuthnState.webAuthnOptions as
@@ -116,15 +150,46 @@ export function CustomLoginForm({
     };
   }, [webAuthnState.webAuthnOptions, startWebAuthnSubmit]);
 
-  if (!loginSettings.allowUsernamePassword) {
+  if (!loginSettings.allowUsernamePassword && identityProviders.length === 0) {
     return (
       <Alert variant="warning" title="暂不支持本地账号登录">
-        该组织未开放用户名密码登录，请使用 ZITADEL 托管登录页。
+        该组织未开放本地账号或企业身份登录，请联系管理员。
       </Alert>
     );
   }
 
-  if (identifierState.step !== "password") {
+  if (
+    idpState.step === "idp-post" &&
+    idpState.idpFormUrl &&
+    idpState.idpFormFields
+  ) {
+    return (
+      <form
+        ref={idpFormRef}
+        action={idpState.idpFormUrl}
+        method="post"
+        className="space-y-4"
+      >
+        {Object.entries(idpState.idpFormFields).map(([key, value]) => (
+          <input key={key} type="hidden" name={key} value={value} />
+        ))}
+        <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+          <ShieldIcon size={15} className="animate-pulse" />
+          正在跳转到 {idpState.idpName ?? "企业身份源"}…
+        </div>
+        <noscript>
+          <Button type="submit" size="lg" className="w-full">
+            继续
+          </Button>
+        </noscript>
+      </form>
+    );
+  }
+
+  if (
+    identifierState.step !== "password" &&
+    identifierState.step !== "mfa"
+  ) {
     return (
       <div className="space-y-4">
         {savedSessions.length > 0 && (
@@ -201,17 +266,55 @@ export function CustomLoginForm({
           </Button>
         </form>
         {loginSettings.allowExternalIdp && (
-          <form action={startOidcLogin}>
-            <input type="hidden" name="next" value={next} />
-            <Button
-              type="submit"
-              size="lg"
-              variant="secondary"
-              className="w-full"
-            >
-              使用企业身份登录
-            </Button>
-          </form>
+          identityProviders.length > 0 ? (
+            <>
+              <div className="relative" aria-hidden="true">
+                <div className="absolute inset-x-0 top-1/2 border-t border-border" />
+                <span className="relative z-10 mx-auto flex w-fit bg-background px-3 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                  或
+                </span>
+              </div>
+              <div className="space-y-3">
+                {identityProviders.map((provider) => (
+                  <form key={provider.id} action={idpAction}>
+                    <input
+                      type="hidden"
+                      name="authRequestId"
+                      value={authRequestId}
+                    />
+                    <input type="hidden" name="next" value={next} />
+                    <input type="hidden" name="idpId" value={provider.id} />
+                    <Button
+                      type="submit"
+                      size="lg"
+                      variant="secondary"
+                      loading={idpPending}
+                      className="w-full"
+                    >
+                      <Building2Icon size={15} />
+                      {provider.name}
+                    </Button>
+                  </form>
+                ))}
+              </div>
+              {idpState.error && (
+                <Alert variant="danger">{idpState.error}</Alert>
+              )}
+            </>
+          ) : (
+            <form action={startOidcLogin}>
+              <input type="hidden" name="next" value={next} />
+              <Button
+                type="submit"
+                size="lg"
+                variant="secondary"
+                className="w-full"
+              >
+                <GlobeIcon size={15} />
+                使用 ZITADEL 托管登录
+              </Button>
+            </form>
+          )
         )}
       </div>
     );

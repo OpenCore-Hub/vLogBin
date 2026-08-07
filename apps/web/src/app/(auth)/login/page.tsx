@@ -14,20 +14,42 @@ import {
   authConfig,
 } from "@/lib/auth/config";
 import {
+  getActiveIdentityProviders,
   getAuthRequest,
   getLoginSettings,
   getSession,
+  listAuthenticationMethodTypes,
   validateSession,
 } from "@/lib/auth/zitadel-session";
 import {
   RememberedSession,
   getRememberedSessions,
 } from "@/lib/auth/zitadel-sessions-store";
+import { getLoginFlow } from "@/lib/auth/login-flow";
+import { AuthenticationMethodType } from "@zitadel/proto/zitadel/user/v2/user_service_pb";
+import { CustomLoginActionState } from "./login-state";
 import { LockIcon, TerminalIcon } from "@/components/ui/icons";
 
 export const metadata: Metadata = {
   title: "登录 · vLogBin",
 };
+
+function mfaMethodLabel(method: AuthenticationMethodType): string {
+  switch (method) {
+    case AuthenticationMethodType.TOTP:
+      return "TOTP";
+    case AuthenticationMethodType.OTP_EMAIL:
+      return "OTP_EMAIL";
+    case AuthenticationMethodType.OTP_SMS:
+      return "OTP_SMS";
+    case AuthenticationMethodType.U2F:
+      return "U2F";
+    case AuthenticationMethodType.PASSKEY:
+      return "PASSKEY";
+    default:
+      return "UNKNOWN";
+  }
+}
 
 export default async function LoginPage({
   searchParams,
@@ -46,6 +68,10 @@ export default async function LoginPage({
   let loginSettings: Awaited<ReturnType<typeof getLoginSettings>> | null = null;
   const savedSessions: RememberedSession[] = [];
   let customLoginError: string | null = null;
+  let identityProviders: Awaited<
+    ReturnType<typeof getActiveIdentityProviders>
+  > = [];
+  let pendingLoginState: CustomLoginActionState | undefined;
   if (
     authConfig.mode === "oidc-custom-login" &&
     authRequestParam &&
@@ -58,6 +84,13 @@ export default async function LoginPage({
       ]);
       if (!isCustomLoginAllowedForUser(authRequest.hintUserId)) {
         customLoginError = "该账号不在自建登录灰度范围，请使用托管登录。";
+      }
+      if (loginSettings?.allowExternalIdp) {
+        try {
+          identityProviders = await getActiveIdentityProviders();
+        } catch {
+          // 身份源列表失败时仍保留本地账号登录入口。
+        }
       }
       const remembered = await getRememberedSessions();
       for (const candidate of remembered) {
@@ -78,6 +111,48 @@ export default async function LoginPage({
           }
         } catch {
           // 过期/失效会话由继续会话 action 清理，登录页保持可操作。
+        }
+      }
+      const pendingFlow = await getLoginFlow();
+      if (pendingFlow?.sessionId && pendingFlow.userId) {
+        try {
+          const pendingSession = await getSession({
+            sessionId: pendingFlow.sessionId,
+            sessionToken: pendingFlow.sessionToken,
+          });
+          const pendingValidation = await validateSession(pendingSession);
+          if (
+            !pendingValidation.valid &&
+            pendingValidation.reason === "mfa-required" &&
+            pendingSession.user
+          ) {
+            const [pendingSettings, rawMethods] = await Promise.all([
+              getLoginSettings(
+                pendingSession.user.organizationId || undefined,
+              ),
+              listAuthenticationMethodTypes(pendingSession.user.id),
+            ]);
+            const methods = rawMethods
+              .map(mfaMethodLabel)
+              .filter((method) =>
+                ["TOTP", "OTP_EMAIL", "OTP_SMS", "U2F", "PASSKEY"].includes(
+                  method,
+                ),
+              );
+            pendingLoginState = {
+              ok: false,
+              step: "mfa",
+              loginName: pendingFlow.loginName,
+              userId: pendingSession.user.id,
+              sessionId: pendingFlow.sessionId,
+              mfaMethods: methods,
+              mfaSetupRequired:
+                methods.length === 0 &&
+                Boolean(pendingSettings.mfaInitSkipLifetimeSeconds),
+            };
+          }
+        } catch {
+          // 待完成 MFA 的会话若已失效，让用户重新登录即可。
         }
       }
     } catch {
@@ -132,6 +207,8 @@ export default async function LoginPage({
                 next={safeNext}
                 loginSettings={loginSettings}
                 savedSessions={savedSessions}
+                identityProviders={identityProviders}
+                initialState={pendingLoginState}
               />
             ) : (
               <div className="space-y-4">

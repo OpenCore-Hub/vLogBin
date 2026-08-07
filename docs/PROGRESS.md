@@ -865,6 +865,18 @@
 - [x] 修复全部 CI 偶发：集成套件隔离缺陷、已知 outbox flaky、限流余量均已收敛
 - [x] 验收：`make release-gate` 全绿（含 63/63 E2E）；P0/P1 Runbook 演练记录由运营侧补充后签署
 
+#### 候选 85：原生企业 IdP 登录（ZITADEL Session API）
+- [x] `zitadel-session.ts` 补齐 `getActiveIdentityProviders` / `startIdpIntent` / `retrieveIdpIntent`，统一 `ZitadelApiError` 契约
+- [x] `createSession` 支持 `idpIntent` 主因子校验；`intentVerifiedAt` 进入既有 MFA 门槛判定（`forceMfaLocalOnly` 对 IdP 主因素放行）
+- [x] 登录页展示实例/组织 Active IdP 列表，点击后服务端发起 intent 并 302 到 `authUrl`，SAML/表单流走隐藏字段自动 POST
+- [x] `/idps/callback` 回读单次 intent token：已有用户直接建会话；`isAutoCreation` 自动建用户；资料不全且允许创建时进入 `/idps/complete-registration`
+- [x] `/idps/failure` 统一错误展示；IdP 流程状态存服务端加密 `vlb_idp_flow` cookie，防止篡改回调参数
+- [x] IDP 主因子 + MFA 门槛：会话待 MFA 时写入既有登录流程并回到自建登录页继续 TOTP/OTP/Passkey/U2F
+- [x] IDP 自动建用户保留 username / idpLinks / metadata，邮箱未验证不伪造验证状态
+- [x] 结构化认证事件：`custom_login.idp.*` 全链路记录（start/redirect/form_post/intent/failed/auto_created/registration/mfa_required）
+- [x] 测试：MFA 因子单测 +3（IdP intent 主因素/全局 MFA/已配 TOTP）；tsc/eslint/build 全绿；standalone 路由冒烟通过
+- **状态：✅ 已完成，待提交**
+
 ### 技术债 / 结构偏差（M0 遗留，随里程碑消化）
 
 - [x] **环境标识色独立 token**（§7.1：`--color-env-test` 琥珀 / `--color-env-live` 红，不与状态色混用）——候选 35 已落地到 EnvSwitcher / Topbar / EnvBadge

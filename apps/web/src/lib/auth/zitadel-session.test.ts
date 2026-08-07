@@ -108,6 +108,48 @@ describe("evaluateSessionFactors", () => {
     ).toEqual({ valid: true, reason: "ok" });
   });
 
+  it("accepts an IDP intent as primary factor when MFA is local-only", () => {
+    expect(
+      evaluateSessionFactors(
+        session({
+          passwordVerifiedAt: 0,
+          intentVerifiedAt: 1_700_000_000_000,
+        }),
+        { ...baseSettings, forceMfaLocalOnly: true },
+        [AuthenticationMethodType.PASSWORD],
+      ),
+    ).toEqual({ valid: true, reason: "ok" });
+  });
+
+  it("still requires an additional factor for IDP login when MFA is forced globally", () => {
+    expect(
+      evaluateSessionFactors(
+        session({
+          passwordVerifiedAt: 0,
+          intentVerifiedAt: 1_700_000_000_000,
+        }),
+        { ...baseSettings, forceMfa: true },
+        [AuthenticationMethodType.PASSWORD],
+      ),
+    ).toEqual({ valid: false, reason: "mfa-required" });
+  });
+
+  it("rejects an IDP primary factor when configured MFA is not verified", () => {
+    expect(
+      evaluateSessionFactors(
+        session({
+          passwordVerifiedAt: 0,
+          intentVerifiedAt: 1_700_000_000_000,
+        }),
+        baseSettings,
+        [
+          AuthenticationMethodType.PASSWORD,
+          AuthenticationMethodType.TOTP,
+        ],
+      ),
+    ).toEqual({ valid: false, reason: "mfa-required" });
+  });
+
   it("requires an additional factor when forceMfa is enabled", () => {
     expect(
       evaluateSessionFactors(

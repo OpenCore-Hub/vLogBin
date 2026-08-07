@@ -10,7 +10,12 @@ export interface LoginActionState {
   next?: string;
 }
 
-export type CustomLoginStep = "identifier" | "password" | "mfa" | "done";
+export type CustomLoginStep =
+  | "identifier"
+  | "password"
+  | "mfa"
+  | "done"
+  | "idp-post";
 
 export interface CustomLoginActionState extends LoginActionState {
   step: CustomLoginStep;
@@ -22,4 +27,7 @@ export interface CustomLoginActionState extends LoginActionState {
   otpRequested?: boolean;
   webAuthnOptions?: unknown;
   failedAttempts?: number;
+  idpFormUrl?: string;
+  idpFormFields?: Record<string, string>;
+  idpName?: string;
 }

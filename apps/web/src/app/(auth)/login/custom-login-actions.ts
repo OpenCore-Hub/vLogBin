@@ -4,9 +4,13 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getOrCreateDeviceFingerprint } from "@/lib/auth/device";
 import {
+  IdpFlowData,
   LoginFlowData,
+  clearIdpFlow,
   clearLoginFlow,
+  getIdpFlow,
   getLoginFlow,
+  setIdpFlow,
   setLoginFlow,
 } from "@/lib/auth/login-flow";
 import {
@@ -17,6 +21,8 @@ import {
   ZitadelApiError,
   createCallback,
   createSession,
+  createUser,
+  getActiveIdentityProviders,
   getLoginSettings,
   getSession,
   humanMFAInitSkipped,
@@ -25,6 +31,7 @@ import {
   requestWebAuthnChallenge,
   searchUsers,
   setSession,
+  startIdpIntent,
   submitWebAuthnAssertion,
   validateSession,
 } from "@/lib/auth/zitadel-session";
@@ -171,6 +178,232 @@ export async function completeLoginFlow(flow: LoginFlowData): Promise<never> {
     organizationId: flow.organizationId,
   });
   redirect(callback.callbackUrl);
+}
+
+function isSafeExternalUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+async function createUserFromIdpFlow(
+  flow: IdpFlowData,
+  givenName: string,
+  familyName: string,
+): Promise<{ userId: string }> {
+  const email = flow.email ?? "";
+  if (!email || !givenName || !familyName) {
+    throw new ZitadelApiError(
+      "企业身份源未提供完整用户资料。",
+      "invalid-response",
+    );
+  }
+  const metadata = (flow.metadata ?? []).map((entry) => ({
+    key: entry.key,
+    value: new Uint8Array(Buffer.from(entry.valueBase64, "base64")),
+  }));
+  return createUser({
+    email,
+    givenName,
+    familyName,
+    sendEmailCode: !flow.emailVerified,
+    username: flow.email,
+    idpLinks: flow.idpUserId
+      ? [
+          {
+            idpId: flow.idpId,
+            userId: flow.idpUserId,
+            userName: flow.idpUserName ?? flow.email ?? "",
+          },
+        ]
+      : [],
+    metadata,
+  });
+}
+
+interface FinalizedIdpSession {
+  flow: LoginFlowData;
+  outcome: "complete" | "mfa";
+  mfaMethods?: string[];
+  mfaSetupRequired?: boolean;
+}
+
+async function finalizeIdpSession(input: {
+  userId: string;
+  idpIntentId: string;
+  idpIntentToken: string;
+  authRequestId?: string;
+  next?: string;
+}): Promise<FinalizedIdpSession> {
+  const created = await createSession({
+    userId: input.userId,
+    idpIntent: {
+      idpIntentId: input.idpIntentId,
+      idpIntentToken: input.idpIntentToken,
+    },
+    lifetimeSeconds: 24 * 60 * 60,
+  });
+  const session = await getSession({
+    sessionId: created.sessionId,
+    sessionToken: created.sessionToken,
+  });
+  const validation = await validateSession(session);
+  const flow: LoginFlowData = {
+    sessionId: created.sessionId,
+    sessionToken: created.sessionToken,
+    loginName: session.user?.loginName || input.userId,
+    userId: input.userId,
+    organizationId: session.user?.organizationId,
+    authRequestId: input.authRequestId,
+    next: input.next,
+  };
+  if (validation.valid) {
+    return { flow, outcome: "complete" };
+  }
+  if (validation.reason === "mfa-required" && session.user) {
+    const settings = await getLoginSettings(
+      session.user.organizationId || undefined,
+    );
+    const methods = await mfaMethodsFor(session.user.id);
+    return {
+      flow,
+      outcome: "mfa",
+      mfaMethods: methods,
+      mfaSetupRequired:
+        methods.length === 0 && Boolean(settings.mfaInitSkipLifetimeSeconds),
+    };
+  }
+  throw new ZitadelApiError(
+    validation.reason === "email-not-verified"
+      ? "请先完成邮箱验证。"
+      : "登录尚未完成，请重新开始。",
+    "session-invalid",
+  );
+}
+
+async function redirectToIdpMfa(
+  result: FinalizedIdpSession,
+): Promise<never> {
+  await setLoginFlow(result.flow);
+  recordAuthEvent("custom_login.idp.mfa_required", {
+    userId: result.flow.userId,
+  });
+  redirect(
+    `/login?authRequest=${encodeURIComponent(result.flow.authRequestId ?? "")}&idpMfa=1`,
+  );
+}
+
+export async function startCustomLoginIdp(
+  _prev: CustomLoginActionState,
+  formData: FormData,
+): Promise<CustomLoginActionState> {
+  const authRequestId = String(formData.get("authRequestId") ?? "").trim();
+  const next = safeNext(String(formData.get("next") ?? ""));
+  const idpId = String(formData.get("idpId") ?? "").trim();
+
+  if (!authRequestId || !idpId) {
+    return { ...initialState, error: "登录信息不完整，请重试。" };
+  }
+
+  try {
+    const providers = await getActiveIdentityProviders();
+    const provider = providers.find((candidate) => candidate.id === idpId);
+    if (!provider) {
+      return { ...initialState, error: "该企业身份源当前不可用。" };
+    }
+    await setIdpFlow({ idpId, authRequestId, next });
+    const started = await startIdpIntent({
+      idpId,
+      successUrl: `${authConfig.baseUrl}/idps/callback`,
+      failureUrl: `${authConfig.baseUrl}/idps/failure`,
+    });
+    if (!isSafeExternalUrl(started.url)) {
+      throw new ZitadelApiError(
+        "企业身份源返回了非法跳转地址。",
+        "invalid-response",
+      );
+    }
+    recordAuthEvent(
+      started.fields
+        ? "custom_login.idp.form_post"
+        : "custom_login.idp.redirect",
+      { idpId },
+    );
+    if (started.fields) {
+      return {
+        ok: false,
+        step: "idp-post",
+        idpFormUrl: started.url,
+        idpFormFields: started.fields,
+        idpName: provider.name,
+      };
+    }
+    redirect(started.url);
+  } catch (err) {
+    if (isInfrastructureError(err)) {
+      return await redirectToHostedOidc(next);
+    }
+    return errorState(
+      initialState,
+      err,
+      "企业身份登录启动失败，请重试。",
+    );
+  }
+}
+
+export async function completeIdpRegistration(
+  _prev: CustomLoginActionState,
+  formData: FormData,
+): Promise<CustomLoginActionState> {
+  const flow = await getIdpFlow();
+  if (
+    !flow?.idpId ||
+    !flow.idpIntentId ||
+    !flow.idpIntentToken ||
+    !flow.idpUserId
+  ) {
+    return { ...initialState, error: "企业身份登录状态已过期，请重新开始。" };
+  }
+  const givenName = String(formData.get("givenName") ?? "").trim();
+  const familyName = String(formData.get("familyName") ?? "").trim();
+  if (!givenName || !familyName) {
+    return { ...initialState, error: "请完整填写姓名信息。" };
+  }
+
+  try {
+    const providers = await getActiveIdentityProviders();
+    const provider = providers.find((candidate) => candidate.id === flow.idpId);
+    if (!provider?.isCreationAllowed) {
+      return { ...initialState, error: "当前组织未开放该企业身份源的账号创建。" };
+    }
+    const created = await createUserFromIdpFlow(flow, givenName, familyName);
+    recordAuthEvent("custom_login.idp.registration.completed", {
+      userId: created.userId,
+    });
+    const result = await finalizeIdpSession({
+      userId: created.userId,
+      idpIntentId: flow.idpIntentId,
+      idpIntentToken: flow.idpIntentToken,
+      authRequestId: flow.authRequestId,
+      next: flow.next,
+    });
+    if (result.outcome === "mfa") {
+      return await redirectToIdpMfa(result);
+    }
+    await clearIdpFlow();
+    return await completeLoginFlow(result.flow);
+  } catch (err) {
+    if (
+      err instanceof ZitadelApiError &&
+      err.message === "请先完成邮箱验证。"
+    ) {
+      return { ...initialState, error: err.message };
+    }
+    return errorState(initialState, err, "企业身份注册失败，请重试。");
+  }
 }
 
 async function mfaMethodsFor(
