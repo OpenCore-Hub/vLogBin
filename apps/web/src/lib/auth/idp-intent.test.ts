@@ -6,7 +6,10 @@ import {
   RetrieveIdentityProviderIntentResponseSchema,
 } from "@zitadel/proto/zitadel/user/v2/user_service_pb";
 import { describe, expect, it } from "vitest";
-import { decodeIdpCreateUser } from "./idp-intent";
+import {
+  decodeIdpCreateUser,
+  withCreateUserMetadata,
+} from "./idp-intent";
 
 function concatBytes(parts: Uint8Array[]): Uint8Array {
   const length = parts.reduce((total, part) => total + part.length, 0);
@@ -40,6 +43,25 @@ function responseWithCreateUser(createUserData: Uint8Array): unknown {
     RetrieveIdentityProviderIntentResponseSchema,
     lengthDelimitedField(6, createUserData),
   );
+}
+
+function readLengthDelimited(data: Uint8Array): Uint8Array | undefined {
+  let offset = 0;
+  let length = 0;
+  let shift = 0;
+  while (offset < data.length && shift < 63) {
+    const byte = data[offset];
+    if (byte === undefined) return undefined;
+    offset += 1;
+    length |= (byte & 0x7f) << shift;
+    if ((byte & 0x80) === 0) {
+      return offset + length <= data.length
+        ? data.subarray(offset, offset + length)
+        : undefined;
+    }
+    shift += 7;
+  }
+  return undefined;
 }
 
 function createUserRequest() {
@@ -142,6 +164,43 @@ describe("decodeIdpCreateUser", () => {
     expect(data?.metadata).toEqual([
       { key: "tenant", value: new Uint8Array([1, 2, 3]) },
     ]);
+  });
+
+  it("serializes metadata as the non-deprecated top-level create_user field", () => {
+    const request = create(CreateUserRequestSchema, {
+      organizationId: "org-1",
+      userType: {
+        case: "human",
+        value: {
+          profile: { givenName: "Kilgore", familyName: "Trout" },
+          email: {
+            email: "idp-user@example.com",
+            verification: { case: "isVerified", value: true },
+          },
+        },
+      },
+    });
+
+    const withMetadata = withCreateUserMetadata(request, [
+      { key: "tenant", value: new Uint8Array([1, 2, 3]) },
+    ]);
+    const decoded = fromBinary(
+      CreateUserRequestSchema,
+      toBinary(CreateUserRequestSchema, withMetadata),
+    ) as unknown as {
+      $unknown?: Array<{ no: number; wireType: number; data: Uint8Array }>;
+    };
+    const unknown = decoded.$unknown?.find(
+      (field) => field.no === 6 && field.wireType === 2,
+    );
+    const payload = unknown ? readLengthDelimited(unknown.data) : undefined;
+
+    expect(payload).toBeDefined();
+    const metadata = payload
+      ? fromBinary(MetadataSchema, payload)
+      : undefined;
+    expect(metadata?.key).toBe("tenant");
+    expect(metadata?.value).toEqual(new Uint8Array([1, 2, 3]));
   });
 
   it("returns undefined without create_user information", () => {

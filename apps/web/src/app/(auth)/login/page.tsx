@@ -109,6 +109,12 @@ export default async function LoginPage({
           });
           const validation = await validateSession(session);
           if (validation.valid) {
+            if (
+              organizationId &&
+              session.user?.organizationId !== organizationId
+            ) {
+              continue;
+            }
             savedSessions.push(candidate);
           }
         } catch {
@@ -116,7 +122,11 @@ export default async function LoginPage({
         }
       }
       const pendingFlow = await getLoginFlow();
-      if (pendingFlow?.sessionId && pendingFlow.userId) {
+      if (
+        pendingFlow?.sessionId &&
+        pendingFlow.userId &&
+        pendingFlow.authRequestId === authRequestParam
+      ) {
         try {
           const pendingSession = await getSession({
             sessionId: pendingFlow.sessionId,

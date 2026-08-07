@@ -21,6 +21,7 @@ import {
   ZitadelApiError,
   createCallback,
   createSession,
+  createSessionWithProjectionRetry,
   createUser,
   getActiveIdentityProviders,
   getAuthRequest,
@@ -247,7 +248,7 @@ async function finalizeIdpSession(input: {
   authRequestId?: string;
   next?: string;
 }): Promise<FinalizedIdpSession> {
-  const created = await createSession({
+  const created = await createSessionWithProjectionRetry({
     userId: input.userId,
     idpIntent: {
       idpIntentId: input.idpIntentId,
@@ -802,25 +803,37 @@ export async function continueWithSavedSession(
   const sessionToken = String(formData.get("sessionToken") ?? "").trim();
   const loginName = String(formData.get("loginName") ?? "").trim();
   const userId = String(formData.get("userId") ?? "").trim();
-  const organizationId = String(formData.get("organizationId") ?? "").trim();
 
   if (!authRequestId || !sessionId || !sessionToken || !userId || !loginName) {
     return { ...initialState, error: "会话信息不完整，请重新登录。" };
   }
 
   try {
+    const authRequest = await getAuthRequest(authRequestId);
+    const expectedOrganizationId = await resolveOrganizationFromScopes(
+      authRequest.scope,
+    );
     const session = await getSession({ sessionId, sessionToken });
     const validation = await validateSession(session);
     if (!validation.valid) {
       await forgetSession(sessionId);
       return { ...initialState, error: "会话已失效，请重新登录。" };
     }
+    if (
+      expectedOrganizationId &&
+      session.user?.organizationId !== expectedOrganizationId
+    ) {
+      return {
+        ...initialState,
+        error: "该会话不属于当前登录请求指定的组织，请重新登录。",
+      };
+    }
     const flow: LoginFlowData = {
       sessionId,
       sessionToken,
       loginName,
       userId,
-      organizationId: organizationId || undefined,
+      organizationId: session.user?.organizationId || undefined,
       authRequestId,
       next,
     };

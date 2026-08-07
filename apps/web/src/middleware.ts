@@ -27,8 +27,21 @@ export function middleware(req: NextRequest) {
         pathname + req.nextUrl.search,
         authConfig.zitadel.apiUrl,
       );
+      const requestHeaders = new Headers(req.headers);
+      requestHeaders.set(
+        "x-zitadel-public-host",
+        new URL(authConfig.baseUrl).host,
+      );
+      requestHeaders.set(
+        "x-zitadel-instance-host",
+        new URL(authConfig.zitadel.apiUrl).host,
+      );
+      const organization = req.nextUrl.searchParams.get("organization");
+      if (organization) {
+        requestHeaders.set("x-zitadel-i18n-organization", organization);
+      }
       return NextResponse.rewrite(target, {
-        request: { headers: req.headers },
+        request: { headers: requestHeaders },
       });
     }
   }

@@ -67,7 +67,6 @@ import {
   HumanMFAInitSkippedRequestSchema,
   ListAuthenticationMethodTypesRequestSchema,
   ListUsersRequestSchema,
-  MetadataSchema,
   RegisterPasskeyRequestSchema,
   ResendEmailCodeRequestSchema,
   RetrieveIdentityProviderIntentRequestSchema,
@@ -84,6 +83,7 @@ import {
 import {
   decodeIdpCreateUser,
   type IdpCreateUserData,
+  withCreateUserMetadata,
 } from "./idp-intent";
 import { splitDisplayName } from "./identity-profile";
 import {
@@ -186,6 +186,7 @@ export interface CreateUserInput {
   email: string;
   givenName: string;
   familyName: string;
+  displayName?: string;
   password?: string;
   organizationId?: string;
   sendEmailCode?: boolean;
@@ -219,7 +220,10 @@ export interface IdpIntentSnapshot {
       displayName?: string;
     };
     email?: { email: string; isVerified: boolean };
-    phone?: { phone?: string };
+    phone?: {
+      phone?: string;
+      verification?: { case?: string; value?: unknown };
+    };
     idpLinks: Array<{ idpId: string; userId: string; userName: string }>;
     metadata: Array<{ key: string; value: Uint8Array }>;
   };
@@ -554,6 +558,36 @@ export async function createSession(
   } catch (err) {
     throw toApiError(err);
   }
+}
+
+const SESSION_PROJECTION_RETRIES = 3;
+const SESSION_PROJECTION_RETRY_DELAYS_MS = [500, 1000, 2000];
+
+/**
+ * Creates a session and retries transient NotFound responses. ZITADEL user
+ * projections lag right after user creation; this mirrors the official Login
+ * App registration helper without masking real failures.
+ */
+export async function createSessionWithProjectionRetry(
+  input: CreateSessionInput,
+): Promise<CreateSessionResult> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < SESSION_PROJECTION_RETRIES; attempt++) {
+    try {
+      return await createSession(input);
+    } catch (err) {
+      lastError = err;
+      const isNotFound =
+        err instanceof ZitadelApiError && err.code === "not-found";
+      if (!isNotFound || attempt + 1 >= SESSION_PROJECTION_RETRIES) {
+        throw err;
+      }
+      const delay =
+        SESSION_PROJECTION_RETRY_DELAYS_MS[attempt] ?? 2000;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  throw lastError;
 }
 
 export async function setSession(
@@ -909,45 +943,43 @@ export async function createUser(
   isCustomLoginActive();
   try {
     const clients = await getZitadelClients();
-    const response = await clients.user.createUser(
-      create(CreateUserRequestSchema, {
-        organizationId: input.organizationId || "",
-        username: input.username,
-        userType: {
-          case: "human",
-          value: {
-            profile: create(SetHumanProfileSchema, {
-              givenName: input.givenName,
-              familyName: input.familyName,
-              displayName: `${input.givenName} ${input.familyName}`.trim(),
-            }),
-            email: create(SetHumanEmailSchema, {
-              email: input.email,
-              verification: input.sendEmailCode
-                ? {
-                    case: "sendCode",
-                    value: input.urlTemplate ? { urlTemplate: input.urlTemplate } : {},
-                  }
-                : { case: "isVerified", value: false },
-            }),
-            passwordType: input.password
+    const request = create(CreateUserRequestSchema, {
+      organizationId: input.organizationId || "",
+      username: input.username,
+      userType: {
+        case: "human",
+        value: {
+          profile: create(SetHumanProfileSchema, {
+            givenName: input.givenName,
+            familyName: input.familyName,
+            displayName: input.displayName || `${input.givenName} ${input.familyName}`.trim(),
+          }),
+          email: create(SetHumanEmailSchema, {
+            email: input.email,
+            verification: input.sendEmailCode
               ? {
-                  case: "password",
-                  value: create(PasswordSchema, {
-                    password: input.password,
-                    changeRequired: false,
-                  }),
+                  case: "sendCode",
+                  value: input.urlTemplate ? { urlTemplate: input.urlTemplate } : {},
                 }
-              : { case: undefined },
-            idpLinks: (input.idpLinks ?? []).map((link) =>
-              create(IDPLinkSchema, link),
-            ),
-            metadata: (input.metadata ?? []).map((entry) =>
-              create(MetadataSchema, entry),
-            ),
-          },
+              : { case: "isVerified", value: true },
+          }),
+          passwordType: input.password
+            ? {
+                case: "password",
+                value: create(PasswordSchema, {
+                  password: input.password,
+                  changeRequired: false,
+                }),
+              }
+            : { case: undefined },
+          idpLinks: (input.idpLinks ?? []).map((link) =>
+            create(IDPLinkSchema, link),
+          ),
         },
-      }),
+      },
+    });
+    const response = await clients.user.createUser(
+      withCreateUserMetadata(request, input.metadata ?? []),
     );
     if (!response.id) {
       throw new ZitadelApiError("ZITADEL 未返回 userId。", "invalid-response");
@@ -1203,7 +1235,10 @@ function toIdpCreateUserDataFromAddHumanUser(
       email: string;
       verification?: { case?: string; value?: unknown };
     };
-    phone?: { phone?: string };
+    phone?: {
+      phone?: string;
+      verification?: { case?: string; value?: unknown };
+    };
     idpLinks?: Array<{
       idpId: string;
       userId: string;
@@ -1235,7 +1270,9 @@ function toIdpCreateUserDataFromAddHumanUser(
     phone: add.phone
       ? {
           phone: add.phone.phone || undefined,
-          isVerified: false,
+          isVerified:
+            add.phone.verification?.case === "isVerified" &&
+            Boolean(add.phone.verification.value),
         }
       : undefined,
     idpLinks: (add.idpLinks ?? []).map((link) => ({

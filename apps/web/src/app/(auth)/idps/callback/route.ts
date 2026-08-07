@@ -15,7 +15,7 @@ import {
 import { rememberSession } from "@/lib/auth/zitadel-sessions-store";
 import {
   createCallback,
-  createSession,
+  createSessionWithProjectionRetry,
   createUser,
   getActiveIdentityProviders,
   resolveOrganizationForIdpUser,
@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
     recordAuthEvent("custom_login.idp.intent.success", {
       idpId: intent.idpId,
     });
-    const providers = await getActiveIdentityProviders();
+    const providers = await getActiveIdentityProviders(flow.organizationId);
     const provider = providers.find((candidate) => candidate.id === intent.idpId);
     if (!provider) {
       return fail(req, "idp_unavailable", "企业身份源当前不可用");
@@ -137,6 +137,7 @@ export async function GET(req: NextRequest) {
           email: createUserData.email?.email ?? "",
           givenName: createUserData.profile?.givenName ?? "",
           familyName: createUserData.profile?.familyName ?? "",
+          displayName: createUserData.profile?.displayName,
           sendEmailCode: !createUserData.email?.isVerified,
           username: createUserData.username || createUserData.email?.email,
           idpLinks:
@@ -211,7 +212,7 @@ export async function GET(req: NextRequest) {
       requestHeaders.get("x-real-ip") ||
       "0.0.0.0";
     const fingerprintId = await getOrCreateDeviceFingerprint();
-    const created = await createSession({
+    const created = await createSessionWithProjectionRetry({
       userId,
       idpIntent: { idpIntentId, idpIntentToken },
       fingerprintId,

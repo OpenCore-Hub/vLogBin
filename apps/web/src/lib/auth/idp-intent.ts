@@ -1,4 +1,9 @@
-import { fromBinary, type UnknownField } from "@bufbuild/protobuf";
+import {
+  create,
+  fromBinary,
+  toBinary,
+  type UnknownField,
+} from "@bufbuild/protobuf";
 import { MetadataSchema } from "@zitadel/proto/zitadel/metadata/v2/metadata_pb";
 import {
   CreateUserRequestSchema,
@@ -44,12 +49,28 @@ function lengthDelimitedPayload(data: Uint8Array): Uint8Array | undefined {
   return undefined;
 }
 
+function lengthDelimitedValue(data: Uint8Array): Uint8Array {
+  const bytes: number[] = [];
+  let length = data.length;
+  while (length > 0x7f) {
+    bytes.push((length & 0x7f) | 0x80);
+    length = Math.floor(length / 0x80);
+  }
+  bytes.push(length);
+  return new Uint8Array([...bytes, ...data]);
+}
+
 function flattenCreateUser(request: CreateUserRequest): IdpCreateUserData {
   const human =
     request.userType?.case === "human" ? request.userType.value : undefined;
   const profile = human?.profile;
   const email = human?.email;
   const phone = human?.phone;
+  const typedTopLevelMetadata = (
+    request as unknown as {
+      metadata?: Array<{ key: string; value: Uint8Array }>;
+    }
+  ).metadata;
   const topLevelMetadata = (
     request as unknown as IntentResponseWithUnknownFields
   ).$unknown
@@ -61,7 +82,12 @@ function flattenCreateUser(request: CreateUserRequest): IdpCreateUserData {
     .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry)) ?? [];
   const deprecatedHumanMetadata = human?.metadata ?? [];
   const metadata =
-    topLevelMetadata.length > 0
+    typedTopLevelMetadata && typedTopLevelMetadata.length > 0
+      ? typedTopLevelMetadata.map((entry) => ({
+          key: entry.key,
+          value: entry.value,
+        }))
+      : topLevelMetadata.length > 0
       ? topLevelMetadata.map((entry) => ({
           key: entry.key,
           value: entry.value,
@@ -103,6 +129,40 @@ function flattenCreateUser(request: CreateUserRequest): IdpCreateUserData {
     })),
     metadata,
   };
+}
+
+/**
+ * Attaches metadata as the non-deprecated top-level `CreateUserRequest.metadata`
+ * field while npm @zitadel/proto 1.3.1 still lacks the typed field. The unknown
+ * field bytes follow the same length-prefixed representation @bufbuild stores
+ * for parsed unknown fields, so Connect serializes them unchanged.
+ */
+export function withCreateUserMetadata(
+  request: CreateUserRequest,
+  metadata: IdpCreateUserData["metadata"],
+): CreateUserRequest {
+  if (metadata.length === 0) {
+    return request;
+  }
+  const fields = metadata.map((entry) => ({
+    no: 6,
+    wireType: 2,
+    data: lengthDelimitedValue(
+      toBinary(
+        MetadataSchema,
+        create(MetadataSchema, {
+          key: entry.key,
+          value: entry.value,
+        }),
+      ),
+    ),
+  }));
+  const target = request as unknown as { $unknown?: UnknownField[] };
+  target.$unknown = [
+    ...(target.$unknown ?? []).filter((field) => field.no !== 6),
+    ...fields,
+  ];
+  return request;
 }
 
 /**
