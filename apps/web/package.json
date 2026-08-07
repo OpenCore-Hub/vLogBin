@@ -11,7 +11,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
-    "probe:zitadel": "node scripts/zitadel-contract-probe.mjs"
+    "probe:zitadel": "node scripts/zitadel-contract-probe.mjs",
+    "probe:sdk": "node scripts/zitadel-sdk-probe.mjs"
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.13.0",
