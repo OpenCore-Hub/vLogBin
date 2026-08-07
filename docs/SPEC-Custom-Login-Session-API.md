@@ -143,6 +143,23 @@ Connect/gRPC 错误详情可能携带 `CredentialsCheckError.failed_attempts`，
 - 服务端为每个 step 调用 `createSession` / `setSession`，并把响应中的新 token 写回 cookie。
 - 服务端在 `CreateCallback` 前执行 `isSessionValid`：区分 passwordless（WebAuthN `userVerified=true`）与 U2F 二因素（`userVerified=false`），禁止把 U2F 当作主认证因素。
 
+### 1.8 官方 Login App / Go SDK / OIDC 库路线核对（2026-08-07）
+
+官方资料核对结论：
+
+- ZITADEL 文档明确推荐用 `Session v2 API` + `OIDC v2 API` + `@zitadel/proto` / `@zitadel/client` 构建自建登录 UI；`zitadel-go` 文档也把 `Session API` 列为后续扩展目标。
+- `zitadel-go` v3 的高层 `pkg/authentication` 是 `zitadel/oidc` RP 的封装，适合“跳转托管登录页 + 标准 OIDC”，不包含自建登录 UI 的状态机。其 `pkg/client/session/v2` 与 `pkg/client/oidc/v2` 是生成型 gRPC 客户端，与 `@zitadel/client` 等价，但没有官方 Login App 级别的业务实现。
+- `zitadel/oidc` v3 是经过 OpenID 认证的底层 RP/OP 库，负责协议与令牌语义，不承载 ZITADEL Session/User API 的登录流程。
+- 官方 Login App（`zitadel/zitadel` 仓库 `apps/login`）是当前唯一被 ZITADEL Cloud 使用的自建登录参考实现，业务契约应以其源码为准。
+
+IdP 自动建号组织解析（源码依据：`apps/login/src/lib/server/idp-intent.ts`）：
+
+1. 优先使用授权请求上下文中的 `organization`（来自 `urn:zitadel:iam:org:id:{orgid}` 或 primary-domain scope 解析出的唯一组织）。
+2. 其次使用 IdP 返回的 username 后缀做域名发现；仅当命中唯一组织且该组织 `allowDomainDiscovery=true` 时采用。
+3. 最后回退到实例默认组织，官方通过 Organization v2 `ListOrganizations(defaultQuery)` 获取。
+
+新 `user_action.create_user` 是官方推荐字段，替代 deprecated `add_human_user`；npm `@zitadel/proto` 1.3.1 尚未暴露该字段，unknown field 6 的 `data` 在 @bufbuild v2 中包含长度前缀，vLogBin 已实现确定性兼容解码并保留 typed field 优先路径，SDK 升级后无需改业务代码。
+
 ## 2. 推荐架构
 
 ```mermaid
