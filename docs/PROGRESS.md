@@ -876,6 +876,7 @@
 - [x] 结构化认证事件：`custom_login.idp.*` 全链路记录（start/redirect/form_post/intent/failed/auto_created/registration/mfa_required）
 - [x] 深入核对官方 Login App / `zitadel-go` / `zitadel/oidc`：结论为 Next.js + `@zitadel/client` 是官方维护的自建登录参考，Go SDK 仅提供生成型 Session/OIDC v2 客户端，不提供 Login App 级业务实现
 - [x] IdP 自动建号组织解析对齐官方 `idp-intent.ts`：授权请求组织 → username 域名发现（`allowDomainDiscovery`）→ 默认组织；使用非 deprecated `user_action.create_user`，兼容 npm 1.3.1 unknown field 6（含长度前缀确定性解码）
+- [x] 深度代码审查修复：已验证邮箱不再被写为未验证；metadata 走顶层非 deprecated 字段；账号选择器按组织过滤；IdP 回调带组织上下文；建号后 Session 投影重试；logout 终止 ZITADEL Session；OIDC 代理补官方主机头
 - [x] 真实 IdP E2E 闭环：Dex mockCallback 资料不全时进入补全注册页，填写姓名后建号到达 `/console`；自建密码登录 + IdP 注册双链路全绿
 - [x] 测试：MFA 因子单测 +3（IdP intent 主因素/全局 MFA/已配 TOTP）；tsc/eslint/build 全绿；standalone 路由冒烟通过
 - **状态：✅ 已完成，待提交**

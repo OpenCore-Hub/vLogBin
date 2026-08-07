@@ -160,6 +160,16 @@ IdP 自动建号组织解析（源码依据：`apps/login/src/lib/server/idp-int
 
 新 `user_action.create_user` 是官方推荐字段，替代 deprecated `add_human_user`；npm `@zitadel/proto` 1.3.1 尚未暴露该字段，unknown field 6 的 `data` 在 @bufbuild v2 中包含长度前缀，vLogBin 已实现确定性兼容解码并保留 typed field 优先路径，SDK 升级后无需改业务代码。
 
+2026-08-07 深入代码审查后追加：
+
+- 邮箱已验证的 IdP 用户创建时写 `is_verified=true`，未验证时走 `send_code`，不再把已验证邮箱错误写成未验证。
+- `CreateUser` 的 metadata 走非 deprecated 顶层字段 6（npm 1.3.1 兼容编码），不再使用 deprecated 的 human.metadata。
+- 登录页账号选择器与会话续用按授权请求组织过滤；`continueWithSavedSession` 服务端二次校验 session 组织，避免跨组织会话误用。
+- IdP 回调读取 Active IdP 时携带目标组织上下文。
+- 新建用户后建 Session 使用官方同款投影延迟重试（500ms/1s/2s，仅重试 NotFound），吸收 ZITADEL 投影就绪竞态。
+- `logout` 在自建登录模式下调用 Session API `DeleteSession` 终止已记住会话，并清理登录流程 cookie。
+- OIDC 代理补齐 `x-zitadel-public-host` / `x-zitadel-instance-host` / `x-zitadel-i18n-organization` 官方头。
+
 ## 2. 推荐架构
 
 ```mermaid
